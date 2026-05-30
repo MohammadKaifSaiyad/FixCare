@@ -1,0 +1,11 @@
+# FixCare monorepo — pnpm workspace.
+# Covers ONLY the TypeScript/Node sides. The Flutter apps
+# (apps/customer, apps/technician) use their own Dart/Flutter toolchain and are
+# deliberately excluded — see docs/adrs/ADR-0001-monorepo.md.
+#
+# STUB: packages are listed by their target paths; the actual package.json
+# files land when each component is built (backend Months 1-2, admin Month 4).
+packages:
+  - "apps/backend"
+  - "apps/admin"
+  - "packages/*"
