@@ -16,3 +16,4 @@ Decision, Alternatives Considered, Consequences.
 - [ADR-0001 — Monorepo over separate repos](ADR-0001-monorepo.md)
 - [ADR-0002 — Trunk-based branching](ADR-0002-trunk-based-branching.md)
 - [ADR-0003 — "Worker" → "Technician" naming](ADR-0003-worker-to-technician.md)
+- [ADR-0004 — Build order: apps before admin](ADR-0004-build-order.md)

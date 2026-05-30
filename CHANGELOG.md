@@ -10,6 +10,14 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ## 2026-05-30
 
+- **Build order changed (ADR-0004).** New order: Backend → Customer app → Technician
+  app → Admin → Merchant (admin moved from 2nd to 4th). Trade-off: operate the platform
+  via direct API calls until admin is built. Updated `CLAUDE.md` Build Order,
+  `build-sequence.md` (reality-check bullets + month-section banner), `STATUS.md`.
+- **Enforced commit authorship via hooks.** `.githooks/commit-msg` (via `core.hooksPath`)
+  + a Claude Code PreToolUse hook reject commits with a Claude co-author trailer or a
+  non-`saiyedkgn6@gmail.com` author. Rewrote the prior 11 commits to the correct author.
+
 - **Added project skills + custom agents.** Expanded `.claude/` with FixCare-specific
   automation (generic workflow stays with Superpowers):
   - 4 new backend skills: `prisma-schema-model`, `keystone-handshake`,

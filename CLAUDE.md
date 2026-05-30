@@ -133,13 +133,15 @@ Update the matching skill/agent too.
 
 ## Build Order (Don't Reorder)
 
-Backend foundation → core business logic → admin dashboard → customer app →
-technician app → merchant (WhatsApp) flow → polish/launch.
+Backend foundation → core business logic → **customer app → technician app →
+admin dashboard** → merchant (WhatsApp) flow → polish/launch.
 
 Rationale and month-by-month: `docs/05-development/build-sequence.md`.
+Build-order change (admin moved after the apps) recorded in `docs/adrs/ADR-0004-build-order.md`.
 
-Reason for order: admin dashboard lets you run the platform manually before apps
-exist; customer app validates demand before you invest in supply-side technician app.
+Reason for order: customer app validates demand before investing in the supply-side
+technician app. **Admin is built after the apps** — until then the platform is
+operated via direct API calls (Bruno/Postman), a deliberate trade-off (see ADR-0004).
 
 ---
 

@@ -22,9 +22,10 @@ Prisma schema (brainstorm first), then OTP auth. See
 - Doc paths reconciled; Superpowers specs pinned to `docs/designs/`.
 - "Worker" → "Technician" rename across all docs.
 - Progress-tracking system (this file + weekly notes).
-- ADRs 0001-0003.
+- ADRs 0001-0004.
 - **11 project skills** (7 backend, 4 Flutter) + **4 custom review agents**
   in `.claude/`. Listed in CLAUDE.md → "Project Skills & Agents".
+- Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
 1. `apps/backend` Hello-World Fastify API running locally (then deployed to Hetzner).
@@ -38,5 +39,7 @@ Prisma schema (brainstorm first), then OTP auth. See
   legal structure, customer-support channel, designer hire.
 
 ## Pointers
+- **Build order:** Backend → Customer app → Technician app → Admin → Merchant
+  (ADR-0004). Operate via direct API calls (Bruno/Postman) until admin is built.
 - Branch model: trunk-based, `feature/*` → PR → `/code-review` → `main` (ADR-0002).
 - Current week's retro: `docs/progress/weekly-notes/` (none yet — first on Saturday).

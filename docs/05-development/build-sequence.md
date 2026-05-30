@@ -10,10 +10,18 @@ Month-by-month roadmap for solo developer with vibe coding.
 - Skip iOS in V1 (saves ~40% time)
 - Skip dedicated merchant app in V1 (WhatsApp bot suffices)
 - Build backend before mobile
-- Build admin dashboard before customer app
-- Build customer app before technician app
+- Build customer app before technician app (validate demand before supply-side)
+- Build the admin dashboard **after** the apps — operate via direct API calls
+  (Bruno/Postman) until then. Build-order change recorded in `docs/adrs/ADR-0004-build-order.md`.
 
 ---
+
+> ⚠️ **Build order changed — see [ADR-0004](../adrs/ADR-0004-build-order.md).**
+> The month-by-month sections below were written for the original order
+> (Admin Month 4, Customer 5-6, Technician 7-9). The **current** order is
+> Backend → Customer app → Technician app → **Admin** → Merchant. The *content* of
+> each phase still applies; only the sequence/month-numbering of Admin vs the apps
+> has changed. These sections will be renumbered at the next schedule revision.
 
 ## Month 0: Foundation Week (Days 1-7)
 
