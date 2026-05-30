@@ -10,6 +10,17 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ## 2026-05-30
 
+- **Added project skills + custom agents.** Expanded `.claude/` with FixCare-specific
+  automation (generic workflow stays with Superpowers):
+  - 4 new backend skills: `prisma-schema-model`, `keystone-handshake`,
+    `bullmq-worker` (backend-only — apps use in-app retry, not BullMQ),
+    `third-party-wrapper`. (Now 7 backend skills total.)
+  - 4 new Flutter/apps skills (first app-side skills): `flutter-feature`,
+    `api-repository`, `camera-evidence-capture`, `riverpod-provider`.
+  - 4 read-only review agents in `.claude/agents/`: `golden-rules-auditor`,
+    `prisma-migration-reviewer`, `flutter-widget-reviewer`, `fraud-vector-checker`.
+  - Listed them in `CLAUDE.md` → "Project Skills & Agents". Each cites its source doc.
+
 - **Project setup (pre-development).** Established the working structure so the
   documented Claude-Code + Superpowers workflow can actually run:
   - Initialized git (single **monorepo**, trunk = `main`) and committed the

@@ -97,6 +97,31 @@ Workflow detail: `docs/05-development/vibe-coding-workflow.md`.
 
 ---
 
+## Project Skills & Agents (FixCare-specific)
+
+Superpowers owns the generic *workflow*. These project-local artifacts (in
+`.claude/skills/` and `.claude/agents/`) encode FixCare's *domain rules* and trigger
+automatically by relevance. Use them — they apply the Golden Rules and conventions
+so you don't re-derive them each session. (Run `/reload-plugins` if newly added.)
+
+**Skills** — reusable patterns Claude pulls in:
+- Backend: `scaffold-module`, `zod-validated-route`, `audit-logged-mutation`,
+  `prisma-schema-model`, `keystone-handshake`, `bullmq-worker` (backend-only),
+  `third-party-wrapper`.
+- Flutter apps: `flutter-feature`, `api-repository`, `camera-evidence-capture`,
+  `riverpod-provider`.
+
+**Agents** — delegated, read-only reviewers (spawn before merging the relevant code):
+- `golden-rules-auditor` — diff vs the 7 Golden Rules + money/PII/audit rules.
+- `prisma-migration-reviewer` — schema/migration safety.
+- `flutter-widget-reviewer` — mobile conventions + low-end perf.
+- `fraud-vector-checker` — feature vs `docs/02-product/fraud-defenses.md`.
+
+These complement (do not replace) `/code-review`. Editing a convention doc?
+Update the matching skill/agent too.
+
+---
+
 ## Current Phase
 
 > The live phase / active task / last shipped / blockers live in **[`STATUS.md`](STATUS.md)**
