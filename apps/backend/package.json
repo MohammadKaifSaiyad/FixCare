@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.2",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9"
+  },
   "scripts": {
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -16,7 +20,7 @@
     "fastify": "^5"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^22",
     "prisma": "^6",
     "tsx": "^4.22.3",
     "typescript": "^5",
