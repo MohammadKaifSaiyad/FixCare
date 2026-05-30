@@ -13,17 +13,17 @@ Every fraud vector and its specific structural block.
 ## Fraud Vector → Defense Map
 
 ### 1. Visit Fee Farming
-**Attack:** Worker accepts job, arrives, "diagnoses" something unfixable, takes ₹149, leaves. Repeat 6x/day = ₹900/day with no work.
+**Attack:** Technician accepts job, arrives, "diagnoses" something unfixable, takes ₹149, leaves. Repeat 6x/day = ₹900/day with no work.
 
 **Defense:**
-- Visit fee credits toward labor if repair done (worker only profits on repairs)
-- Worker cancellation rate >25% over 7 days → auto-restricted to repair-only jobs
+- Visit fee credits toward labor if repair done (technician only profits on repairs)
+- Technician cancellation rate >25% over 7 days → auto-restricted to repair-only jobs
 - Pattern detection: same diagnoses + same outcomes flagged
 
 ---
 
 ### 2. Phantom Parts
-**Attack:** Worker claims part was replaced, charges for it, but nothing actually changed.
+**Attack:** Technician claims part was replaced, charges for it, but nothing actually changed.
 
 **Defense:**
 - **3 mandatory photos:**
@@ -35,31 +35,31 @@ Every fraud vector and its specific structural block.
 
 ---
 
-### 3. Worker-Merchant Collusion
-**Attack:** Worker has cousin running merchant account. They split inflated prices.
+### 3. Technician-Merchant Collusion
+**Attack:** Technician has cousin running merchant account. They split inflated prices.
 
 **Defense:**
 - Catalog pricing — merchants quote at platform-set rates
 - Merchant onboarding verifies physical shop (visit + license check)
-- Same address/PAN/bank between worker and merchant → blocked
-- Open market usage capped at 20% of monthly jobs per worker
-- Periodic ops audit of high-volume worker-merchant pairs
+- Same address/PAN/bank between technician and merchant → blocked
+- Open market usage capped at 20% of monthly jobs per technician
+- Periodic ops audit of high-volume technician-merchant pairs
 
 ---
 
 ### 4. Self-Dealing
-**Attack:** Worker creates fake customer account, books jobs at relative's house, generates fake completions.
+**Attack:** Technician creates fake customer account, books jobs at relative's house, generates fake completions.
 
 **Defense:**
 - Multi-account detection: device fingerprint, UPI VPA, bank IFSC, address
-- Address-pattern check: worker frequently servicing same/nearby addresses → flagged
+- Address-pattern check: technician frequently servicing same/nearby addresses → flagged
 - Email/phone reuse blocked
 - Manual ops review for repeat patterns
 
 ---
 
 ### 5. Cash Skim Under the Limit
-**Attack:** Worker keeps debt at ₹1800 indefinitely, collects cash, never escalates.
+**Attack:** Technician keeps debt at ₹1800 indefinitely, collects cash, never escalates.
 
 **Defense:**
 - Dynamic cash limit based on tenure + GMV (not flat ₹2000)
@@ -70,7 +70,7 @@ Every fraud vector and its specific structural block.
 ---
 
 ### 6. Account Multiplication
-**Attack:** Worker's wife/brother registers as a worker. Two cash limits = 2x effective skim.
+**Attack:** Technician's wife/brother registers as a technician. Two cash limits = 2x effective skim.
 
 **Defense:**
 - Device fingerprint matching
@@ -81,23 +81,23 @@ Every fraud vector and its specific structural block.
 ---
 
 ### 7. Customer Dispute Griefing
-**Attack:** Customer files dispute to freeze payout, then settles with worker offline at discount.
+**Attack:** Customer files dispute to freeze payout, then settles with technician offline at discount.
 
 **Defense:**
 - Customer dispute frequency tracked: >2 disputes in 30 days → account review
 - Disputes require evidence (photo/explanation)
-- Worker OTP at completion means customer already confirmed satisfaction
+- Technician OTP at completion means customer already confirmed satisfaction
 - False dispute history → reduced customer trust → manual review for future disputes
 
 ---
 
-### 8. Worker-Customer Collusion Against Merchant
-**Attack:** Worker tells customer "say the part was defective" to trigger return + refund split.
+### 8. Technician-Customer Collusion Against Merchant
+**Attack:** Technician tells customer "say the part was defective" to trigger return + refund split.
 
 **Defense:**
 - Returns require physical QR scan at merchant
 - Damaged-return reports cross-checked with photos
-- High return rates per worker-customer pair → flagged
+- High return rates per technician-customer pair → flagged
 - Merchant can dispute return (damaged-on-arrival flagged separately)
 
 ---
@@ -114,7 +114,7 @@ Every fraud vector and its specific structural block.
 ---
 
 ### 10. Trust Meter Reset Hopping
-**Attack:** Worker hits ₹2000 → pays UPI → immediately starts again. Uses platform as rolling float.
+**Attack:** Technician hits ₹2000 → pays UPI → immediately starts again. Uses platform as rolling float.
 
 **Defense:**
 - Detect cyclical debt-then-pay-then-debt pattern
@@ -124,36 +124,36 @@ Every fraud vector and its specific structural block.
 ---
 
 ### 11. Visitation Without Arrival
-**Attack:** Worker marks "arrived" from home, never actually goes, customer "doesn't answer," collects fee.
+**Attack:** Technician marks "arrived" from home, never actually goes, customer "doesn't answer," collects fee.
 
 **Defense:**
 - GPS validation on "arrived" tap (must be within X meters of customer location)
-- Customer QR scan / OTP entry required — proves worker present
+- Customer QR scan / OTP entry required — proves technician present
 - Customer can report "no one came" → triggers investigation
 
 ---
 
 ### 12. Open Market Bill Fraud
-**Attack:** Worker shows fake bill from "any local shop" at inflated price.
+**Attack:** Technician shows fake bill from "any local shop" at inflated price.
 
 **Defense:**
 - Bill photo required + parts photo in sealed packaging
 - Customer must confirm in-app: "I saw these parts"
 - Price capped at catalog × 1.15
-- Open market usage capped per worker
+- Open market usage capped per technician
 - Manual sampling weekly; OCR validation in V2
 
 ---
 
 ### 13. Disintermediation
-**Attack:** Worker says "next time call me direct, 20% cheaper."
+**Attack:** Technician says "next time call me direct, 20% cheaper."
 
 **Defense:**
-- All worker-customer calls go through Exotel masked numbers (V2)
+- All technician-customer calls go through Exotel masked numbers (V2)
 - In-app chat only (V1)
-- Worker repeat-customer rate monitored — drop below cohort baseline = flag
+- Technician repeat-customer rate monitored — drop below cohort baseline = flag
 - Customer incentive to book through platform (warranty, rework guarantee, loyalty credits)
-- Worker incentive to stay (bonuses, ratings, dispute protection)
+- Technician incentive to stay (bonuses, ratings, dispute protection)
 
 ---
 
@@ -164,7 +164,7 @@ Every fraud vector and its specific structural block.
 - DigiLocker integration (Aadhaar pulled from government source, not uploaded)
 - Live selfie + face match at onboarding
 - Video skill verification (face visible)
-- ₹500 deposit from worker's verified bank account
+- ₹500 deposit from technician's verified bank account
 - Periodic re-verification at trust threshold transitions
 
 ---
@@ -186,15 +186,15 @@ These rules run continuously in background workers:
 | Rule | Trigger | Action |
 |---|---|---|
 | Multi-account | Same device/UPI/IFSC across accounts | Block, manual review |
-| Self-dealing | Worker job address frequency anomaly | Flag for review |
+| Self-dealing | Technician job address frequency anomaly | Flag for review |
 | Visit farming | >25% cancellation rate over 7d | Repair-only mode |
 | Open market overuse | >20% fallback usage | Pause + audit |
 | Cash drift | Debt aging >7 days | Auto-restrict new jobs |
-| Disintermediation | Worker repeat rate below baseline | Retention investigation |
+| Disintermediation | Technician repeat rate below baseline | Retention investigation |
 | Photo absence | Any of 3 photos missing | Hard block completion |
-| OTP bypass attempt | Worker tries to complete without OTP | Hard block + flag |
+| OTP bypass attempt | Technician tries to complete without OTP | Hard block + flag |
 | Dispute clustering (customer) | >2 disputes in 30 days | Customer review |
-| Dispute clustering (worker) | >5% dispute rate | Worker training |
+| Dispute clustering (technician) | >5% dispute rate | Technician training |
 | Debt cycling | 3+ reset cycles in 14 days | Convert to credit OR restrict |
 | Cash velocity | >₹3000 in 24h | Block further cash collection |
 | GPS spoof | "Arrived" location far from real GPS | Block visit fee claim |
@@ -208,7 +208,7 @@ Even with automation, human eyes catch things rules miss:
 - 5% random job sample reviewed against photos
 - 1% customer phone audit: "Did you actually pay ₹X cash?"
 - Top 10 merchants visited physically each month
-- Worker spot-checks: random selfies during job
+- Technician spot-checks: random selfies during job
 - Catalog price variance review (per SKU, per zone)
 
 ---

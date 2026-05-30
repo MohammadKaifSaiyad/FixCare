@@ -11,7 +11,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 - Skip dedicated merchant app in V1 (WhatsApp bot suffices)
 - Build backend before mobile
 - Build admin dashboard before customer app
-- Build customer app before worker app
+- Build customer app before technician app
 
 ---
 
@@ -59,7 +59,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 ### Tasks
 
 **Week 1-2: Database & Project Structure**
-- [ ] Prisma schema for all entities (users, customers, workers, merchants, services, bookings, etc.)
+- [ ] Prisma schema for all entities (users, customers, technicians, merchants, services, bookings, etc.)
 - [ ] Initial migration run
 - [ ] Project structure setup (modules folder)
 - [ ] Seed scripts for test data
@@ -74,7 +74,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 **Week 5-6: User Management**
 - [ ] Customer CRUD
-- [ ] Worker CRUD (basic, KYC later)
+- [ ] Technician CRUD (basic, KYC later)
 - [ ] Merchant CRUD
 - [ ] Admin CRUD
 - [ ] Role-based access control
@@ -97,7 +97,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 ### Goals
 - Booking lifecycle works end-to-end
-- Worker dispatch algorithm functional
+- Technician dispatch algorithm functional
 - Payment integration with Razorpay test mode
 
 ### Tasks
@@ -110,7 +110,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 **Week 11-12: Dispatch Algorithm**
 - [ ] PostGIS setup for location queries
-- [ ] Worker availability tracking (online/offline)
+- [ ] Technician availability tracking (online/offline)
 - [ ] Matching algorithm: rating × proximity × load × trust
 - [ ] Assignment endpoint
 - [ ] Reject/accept flow
@@ -133,7 +133,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 ### Goals
 - Manage everything from web before mobile apps exist
-- Manual job creation, worker assignment, dispute resolution
+- Manual job creation, technician assignment, dispute resolution
 
 ### Tasks
 
@@ -146,7 +146,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 **Week 16: Core Pages**
 - [ ] Users list (filter by role)
-- [ ] Worker management (verify KYC manually)
+- [ ] Technician management (verify KYC manually)
 - [ ] Merchant management
 - [ ] Booking list + detail view
 
@@ -160,7 +160,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 ### Deliverable
 - Admin can run entire platform from dashboard
 - Useful for ops before mobile apps exist
-- Test workers/customers manageable
+- Test technicians/customers manageable
 
 ---
 
@@ -189,8 +189,8 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 **Week 22-23: Job Tracking**
 - [ ] WebSocket connection
-- [ ] Worker location on map
-- [ ] Worker arrival confirmation (QR scan + OTP)
+- [ ] Technician location on map
+- [ ] Technician arrival confirmation (QR scan + OTP)
 - [ ] Diagnosis approval screen
 - [ ] Live status updates
 
@@ -217,10 +217,10 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 ---
 
-## Months 7-9: Worker App
+## Months 7-9: Technician App
 
 ### Goals
-- Worker can onboard, accept jobs, complete with photo evidence
+- Technician can onboard, accept jobs, complete with photo evidence
 - KYC, cash tracking, wallet all working
 
 ### Tasks
@@ -269,11 +269,11 @@ Month-by-month roadmap for solo developer with vibe coding.
 - [ ] Performance optimization (low-end Android testing)
 - [ ] Offline mode handling
 - [ ] Edge cases
-- [ ] Beta distributed to 5 real workers
+- [ ] Beta distributed to 5 real technicians
 
 ### Deliverable
-- Worker app functional end-to-end
-- Real workers testing in Vadodara
+- Technician app functional end-to-end
+- Real technicians testing in Vadodara
 - Iterating based on feedback
 
 ---
@@ -297,7 +297,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 - [ ] Button-based responses (Yes/Partial/No)
 - [ ] Webhook handler for responses
 - [ ] Notification on settlement
-- [ ] QR scan for returns (via worker app)
+- [ ] QR scan for returns (via technician app)
 
 ### Deliverable
 - 5-10 merchants onboarded in Vadodara
@@ -324,14 +324,14 @@ Month-by-month roadmap for solo developer with vibe coding.
 - [ ] Security review (OWASP top 10)
 
 **Week 43-44: Internal Testing**
-- [ ] Test workers + test customers do 50 jobs
+- [ ] Test technicians + test customers do 50 jobs
 - [ ] Document every issue
 - [ ] Fix critical bugs
 - [ ] Performance test (load 100 concurrent users)
 
 **Week 45-46: Beta Launch**
 - [ ] 20-50 real customers in Vadodara
-- [ ] 10-15 real workers
+- [ ] 10-15 real technicians
 - [ ] 5-10 merchants
 - [ ] Daily monitoring
 - [ ] Daily customer calls (first 2 weeks)
@@ -344,7 +344,7 @@ Month-by-month roadmap for solo developer with vibe coding.
 
 ### Deliverable
 - 100+ customers in Vadodara
-- 30+ active workers
+- 30+ active technicians
 - Real revenue flowing
 - Lessons documented for V2 planning
 
@@ -363,7 +363,7 @@ Not in this roadmap, but worth knowing:
 ### V2 (Months 16-20)
 - Expand to Ahmedabad
 - Add plumbing service category
-- Worker insurance partnership
+- Technician insurance partnership
 - Loyalty program
 
 ### V3 (Year 2+)
@@ -383,7 +383,7 @@ Not in this roadmap, but worth knowing:
 | Backend deployed to Hetzner | End of Month 2 | Real environment matters |
 | First end-to-end test booking | Month 4 | Validates architecture |
 | Designer hired for V1 | Month 5 | Mobile UX matters |
-| First real worker onboarded | Month 9 | Real KYC test |
+| First real technician onboarded | Month 9 | Real KYC test |
 | First paying customer | Month 11-12 | Product-market fit signal |
 
 ---
@@ -408,7 +408,7 @@ Not in this roadmap, but worth knowing:
 - Photo evidence checkpoints (security-critical)
 - OTP handshakes (security-critical)
 - Payment integration (no business without it)
-- Worker KYC (legal requirement)
+- Technician KYC (legal requirement)
 - Backup/disaster recovery (existential)
 
 ---

@@ -5,18 +5,18 @@
 A trusted marketplace for **home appliance repair and electrical services** in Vadodara and Padra, connecting:
 
 - **Customers** — homeowners/businesses needing repair
-- **Workers** — verified technicians with trust scores
+- **Technicians** — verified repair professionals with trust scores
 - **Merchants** — local hardware shops supplying parts
 
 ## Core Promise
 
-> "Customers get honest service at fair prices. Workers get fair pay and steady work. Merchants get steady customers and on-time payouts. The platform watches everything — no one can cheat."
+> "Customers get honest service at fair prices. Technicians get fair pay and steady work. Merchants get steady customers and on-time payouts. The platform watches everything — no one can cheat."
 
 ## Three Pillars
 
-1. **Trust** — Verified workers, transparent pricing, photo evidence
+1. **Trust** — Verified technicians, transparent pricing, photo evidence
 2. **Transparency** — Catalog pricing, no hidden charges, customer sees everything
-3. **Fair money flow** — Workers paid quickly, merchants settled T+1, platform earns predictably
+3. **Fair money flow** — Technicians paid quickly, merchants settled T+1, platform earns predictably
 
 ---
 
@@ -34,14 +34,14 @@ A trusted marketplace for **home appliance repair and electrical services** in V
 
 ### Apps (V1)
 - **FixCare** — Customer app (Android only)
-- **FixCare Pro** — Worker app (Android only)
+- **FixCare Pro** — Technician app (Android only)
 - **Admin Dashboard** — Web (Next.js)
 - **Merchant flow** — WhatsApp bot + web form (NO dedicated app in V1)
 
 ### Key Features
 - Phone OTP authentication
 - Service catalog & booking
-- Worker dispatch & live tracking
+- Technician dispatch & live tracking
 - 3-photo evidence checkpoints
 - QR/OTP arrival & completion handshakes
 - Visit fee + labor + parts pricing
@@ -90,12 +90,12 @@ Will tackle after V1 ships:
 ## Success Criteria for V1
 
 - 100 active customers in Vadodara within 3 months of launch
-- 30 active workers onboarded and rated 4.0+
+- 30 active technicians onboarded and rated 4.0+
 - 5 active merchants per service zone
 - Dispute rate <5%
-- Cash debt aging issues <10% of workers
+- Cash debt aging issues <10% of technicians
 - Repeat customer rate >25% within 6 months
-- Worker retention >60% at 6 months
+- Technician retention >60% at 6 months
 
 ---
 
@@ -103,9 +103,9 @@ Will tackle after V1 ships:
 
 Be honest about risks:
 
-1. **Worker disintermediation** — Customer takes worker's number, calls direct next time
+1. **Technician disintermediation** — Customer takes technician's number, calls direct next time
 2. **Low repair frequency** — Most homes need 2-4 jobs/year only
-3. **Cash leakage** — Workers under-report cash collections
+3. **Cash leakage** — Technicians under-report cash collections
 4. **Merchant disengagement** — Hardware shops ignore platform requests
 5. **Competition** — UrbanCompany expands to Vadodara
 6. **Solo dev burnout** — 10-14 months is long

@@ -9,16 +9,16 @@ Every locked decision in one place. For reasoning, follow the linked doc.
 | Decision | Choice |
 |---|---|
 | Market | Vadodara + Padra, home appliance repair + electrical |
-| Actors | Customer, Worker, Merchant |
+| Actors | Customer, Technician, Merchant |
 | Pricing | Visit fee (₹149/₹99) + catalog labor + catalog parts |
 | Visit fee | Credited toward labor if repair done; kept only on cancel |
-| Worker pricing discretion | None (catalog only) |
+| Technician pricing discretion | None (catalog only) |
 | Parts (V1) | Preferred-merchant routing, NOT bidding |
 | Payment default | UPI; cash is friction-added exception |
 | Trust | Two scores: Service Trust (public) + Cash Compliance (internal) |
 | Cash limit | Graduated ₹500 → ₹5000 by tenure/rating; ₹3000/24h velocity cap |
 | Merchant settlement | T+1 |
-| Worker payout | T+2 (after dispute window) |
+| Technician payout | T+2 (after dispute window) |
 | Warranty | 7-day same-issue rework free |
 | Name | FixCare / FixCare Pro / FixCare Partner |
 
@@ -30,7 +30,7 @@ Detail: `02-product/`, `01-overview/`.
 
 | In V1 | Out of V1 (deferred) |
 |---|---|
-| Android customer + worker apps | iOS (V2) |
+| Android customer + technician apps | iOS (V2) |
 | Admin dashboard (web) | Dedicated merchant app (V2) |
 | Merchant via WhatsApp + web | Merchant bidding auctions (V2) |
 | Geofenced labor pricing | OCR bill scanning (V2) |
@@ -113,7 +113,7 @@ Detail: `05-development/build-sequence.md`, `assumptions-and-doubts.md`.
 1. Android background location (OEM battery killing) — budget extra time
 2. Razorpay Route approval delay — apply day 1
 3. Cash-handling RBI/GST exposure — legal review before Month 6
-4. Worker disintermediation — design stickiness, accept partial loss
+4. Technician disintermediation — design stickiness, accept partial loss
 5. Solo burnout — ship less but working
 
 Detail: `05-development/assumptions-and-doubts.md`.

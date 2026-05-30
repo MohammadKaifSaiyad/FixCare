@@ -57,7 +57,7 @@ These have multi-week approval cycles. Starting late blocks launch.
 In order:
 1. [ ] Database schema migrated
 2. [ ] Auth: phone OTP → JWT → refresh
-3. [ ] User/Worker/Customer/Merchant CRUD
+3. [ ] User/Technician/Customer/Merchant CRUD
 4. [ ] Service categories + labor catalog + parts catalog
 5. [ ] Deployed to `api.fixcare.in` with HTTPS
 
@@ -71,8 +71,8 @@ These aren't decided yet — make the call before you hit them:
 
 - [ ] **Customer support channel** — WhatsApp / phone / in-app? (needed by Month 9)
 - [ ] **Designer hire** — budget ₹40-60k, find via Dribbble/Behance/Topmate (needed by Month 5)
-- [ ] **Cash model legal structure** — direct worker-collects vs platform-collects (legal review)
-- [ ] **First-50-worker verification** — you personally? (yes, plan for it)
+- [ ] **Cash model legal structure** — direct technician-collects vs platform-collects (legal review)
+- [ ] **First-50-technician verification** — you personally? (yes, plan for it)
 - [ ] **Co-founder** — actively look while building solo; transition if you find the right person
 
 ---

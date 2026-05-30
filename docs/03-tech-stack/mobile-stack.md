@@ -1,6 +1,6 @@
 # Mobile Stack
 
-Flutter for both customer and worker apps. Single codebase, Android-first.
+Flutter for both customer and technician apps. Single codebase, Android-first.
 
 ---
 
@@ -86,7 +86,7 @@ Database:        drift (sqlite) — only if needed for offline mode
 ```
 
 **V1 default:** No local DB. Server is single source of truth.
-**Add drift only when:** Worker app needs offline job queue.
+**Add drift only when:** Technician app needs offline job queue.
 
 ---
 
@@ -95,15 +95,15 @@ Database:        drift (sqlite) — only if needed for offline mode
 ```
 Maps:            google_maps_flutter
 GPS:             geolocator
-Background loc:  flutter_background_geolocation (worker app only)
+Background loc:  flutter_background_geolocation (technician app only)
 Place picker:    google_places_flutter
 ```
 
 ### Permissions Needed
-- Location (foreground + background for worker)
+- Location (foreground + background for technician)
 - Foreground service notification (Android requirement)
 
-### Battery Strategy (Worker App)
+### Battery Strategy (Technician App)
 - Online but no active job: GPS every 60 seconds
 - Active job: GPS every 10 seconds
 - Stop background updates when offline
@@ -120,7 +120,7 @@ Deep linking:    via go_router + notification payload
 
 ### Why OneSignal over raw FCM
 - Easier setup
-- Built-in segmentation (worker vs customer)
+- Built-in segmentation (technician vs customer)
 - Free tier covers 10K subscribers
 - Cross-platform when iOS launches
 - A/B testing built-in
@@ -137,7 +137,7 @@ Geotag:          via geolocator at capture time
 ```
 
 ### Critical Photo Rules
-- Worker app photos: **camera only**, gallery disabled
+- Technician app photos: **camera only**, gallery disabled
 - Photos must be geotagged + timestamped at capture
 - Compress before upload (max 1MB per photo)
 - Upload to backend, get S3-style URL back
@@ -153,9 +153,9 @@ Generator:       qr_flutter
 ```
 
 ### Use Cases
-- Worker badge QR (generated, shown in worker app, scanned by customer)
-- Merchant return QR (generated on merchant side, scanned by worker)
-- Customer verification (customer scans worker QR on arrival)
+- Technician badge QR (generated, shown in technician app, scanned by customer)
+- Merchant return QR (generated on merchant side, scanned by technician)
+- Customer verification (customer scans technician QR on arrival)
 
 ---
 
@@ -334,7 +334,7 @@ pin_code_fields: ^8.x
 # Maps & Location
 google_maps_flutter: ^2.x
 geolocator: ^11.x
-flutter_background_geolocation: ^4.x  # worker app only
+flutter_background_geolocation: ^4.x  # technician app only
 
 # Camera & Files
 camera: ^0.10.x

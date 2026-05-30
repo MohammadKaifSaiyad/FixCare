@@ -10,8 +10,8 @@ Original design conflated two different things:
 - Cash discipline (paying back debts)
 - Service quality (good work)
 
-A worker with ₹0 cash debt and terrible ratings would look "trusted."
-A great worker with temporary debt would be punished.
+A technician with ₹0 cash debt and terrible ratings would look "trusted."
+A great technician with temporary debt would be punished.
 
 **Solution:** Separate them.
 
@@ -71,26 +71,26 @@ cash_compliance = (
 ```
 
 ### Display
-Worker sees in their app: "Cash Compliance: 87/100"
+Technician sees in their app: "Cash Compliance: 87/100"
 Not shown to customers.
 
 ---
 
 ## Dynamic Cash Limit
 
-**Graduated trust ladder.** Workers earn higher cash capacity by behaving well.
+**Graduated trust ladder.** Technicians earn higher cash capacity by behaving well.
 
 | Stage | Conditions | Cash Limit |
 |---|---|---|
-| New worker | 0-19 jobs | ₹500 |
+| New technician | 0-19 jobs | ₹500 |
 | Established | 20+ jobs | ₹1,500 |
 | Trusted | 50+ jobs, ≥4.0 rating, ≤2 disputes | ₹3,000 |
 | Senior | 100+ jobs, ≥4.5 rating, ≥90% cash compliance | ₹5,000 |
 
 ### Reset Conditions
 - Any pending dispute → limit drops to ₹0 immediately
-- Resolved in worker's favor → limit restored
-- Resolved against worker → limit drops one tier
+- Resolved in technician's favor → limit restored
+- Resolved against technician → limit drops one tier
 
 ---
 
@@ -101,7 +101,7 @@ Not shown to customers.
 Max ₹3,000 cash collected per 24-hour window.
 
 Why: Prevents single-day blowup scenarios.
-A worker can have ₹5,000 limit but still can't collect ₹4,000 cash in one day.
+A technician can have ₹5,000 limit but still can't collect ₹4,000 cash in one day.
 
 ---
 
@@ -111,29 +111,29 @@ For every cash transaction:
 
 1. Customer sees in-app: "I will pay ₹[X] cash"
 2. Customer taps confirm
-3. Worker confirms receipt via separate OTP
+3. Technician confirms receipt via separate OTP
 4. If amounts mismatch → auto-dispute
 
-This kills "worker says ₹600, customer paid ₹500" disputes.
+This kills "technician says ₹600, customer paid ₹500" disputes.
 
 ---
 
-## Worker Security Deposit
+## Technician Security Deposit
 
 **₹500 refundable** collected at onboarding.
 
 - Held by platform
 - Refunded after 50 successful jobs (or on exit)
-- Forfeited if worker disappears with cash debt
+- Forfeited if technician disappears with cash debt
 - Acts as skin-in-the-game
 
 ---
 
 ## Trust Score Decay
 
-Workers inactive for 30+ days:
+Technicians inactive for 30+ days:
 - Service Trust frozen at last value
-- Returning workers get a "Verification Check" — must re-confirm identity before going online
+- Returning technicians get a "Verification Check" — must re-confirm identity before going online
 
 Prevents account sale/transfer to bad actors.
 
@@ -141,9 +141,9 @@ Prevents account sale/transfer to bad actors.
 
 ## Service Trust Display Examples
 
-| Worker Profile | Customer Sees |
+| Technician Profile | Customer Sees |
 |---|---|
-| 5 jobs, 5.0 rating | "★★★★★ (5 jobs) — New worker" |
+| 5 jobs, 5.0 rating | "★★★★★ (5 jobs) — New technician" |
 | 50 jobs, 4.7 rating | "★★★★★ (50 jobs)" |
 | 200 jobs, 4.3 rating, ⚡Fast response | "★★★★ (200 jobs) — Verified Pro" |
 | 100 jobs, 3.8 rating | "★★★★ (100 jobs)" |
@@ -153,7 +153,7 @@ Prevents account sale/transfer to bad actors.
 
 ## Anti-Gaming Protections
 
-### Detect Multi-Account Workers
+### Detect Multi-Account Technicians
 - Same device fingerprint
 - Same UPI VPA / bank IFSC
 - Same family address
@@ -162,14 +162,14 @@ Prevents account sale/transfer to bad actors.
 → Flag for manual review, suspend if confirmed.
 
 ### Detect Rating Manipulation
-- Worker creates customer accounts to self-rate
+- Technician creates customer accounts to self-rate
 - Same device, low job-completion friction, perfect ratings → flag
 - Multi-account detection above handles most of this
 
 ### Detect Debt Cycling
-- Worker hits ₹2000 → pays UPI → immediately hits again
+- Technician hits ₹2000 → pays UPI → immediately hits again
 - Pattern flagged: "Using platform as working capital"
-- Action: Convert to formal credit product OR restrict cash payments for this worker
+- Action: Convert to formal credit product OR restrict cash payments for this technician
 
 ---
 

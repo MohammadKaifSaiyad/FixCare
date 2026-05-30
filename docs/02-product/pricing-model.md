@@ -6,7 +6,7 @@ Three transparent components. Every rupee visible to every party.
 
 ## Component 1: Visit Fee
 
-Charged when worker arrives at customer location.
+Charged when technician arrives at customer location.
 
 | Zone | Visit Fee |
 |---|---|
@@ -15,18 +15,18 @@ Charged when worker arrives at customer location.
 
 ### Critical Rule
 - **If customer proceeds with repair:** Visit fee is **credited toward labor** (not added on top)
-- **If customer declines repair:** Worker keeps the visit fee, platform takes small cut
+- **If customer declines repair:** Technician keeps the visit fee, platform takes small cut
 
 ### Why This Design
-Kills "visit farming" — workers no longer earn from showing up + leaving.
+Kills "visit farming" — technicians no longer earn from showing up + leaving.
 Visit fee only becomes real revenue when customer cancels (rare).
-Workers are now incentivized to do the actual repair.
+Technicians are now incentivized to do the actual repair.
 
 ---
 
 ## Component 2: Labor Charge
 
-**Catalog-based pricing. Worker cannot change this.**
+**Catalog-based pricing. Technician cannot change this.**
 
 ### Examples (Geofenced)
 | Service | Vadodara | Padra |
@@ -42,7 +42,7 @@ Workers are now incentivized to do the actual repair.
 - **T2** — Standard (multiple parts, 30-90 min)
 - **T3** — Complex (full assembly, 90+ min)
 
-Worker selects tier; customer approves before work starts.
+Technician selects tier; customer approves before work starts.
 
 ---
 
@@ -55,7 +55,7 @@ Worker selects tier; customer approves before work starts.
 - Merchants quote their actual cost (negotiated, locked in catalog)
 - Customer sees catalog price
 - Margin between merchant cost and catalog price = platform's parts revenue
-- Worker has **zero discretion** on parts pricing
+- Technician has **zero discretion** on parts pricing
 
 ### Example
 - 50mfd Capacitor catalog price: ₹500
@@ -66,7 +66,7 @@ Worker selects tier; customer approves before work starts.
 
 ## Revenue Split (Per Job)
 
-| Component | Customer Pays | Worker Gets | Merchant Gets | Platform Gets |
+| Component | Customer Pays | Technician Gets | Merchant Gets | Platform Gets |
 |---|---|---|---|---|
 | Visit fee (no repair) | ₹149 | ₹120 (80%) | — | ₹29 (20%) |
 | Labor (repair done) | ₹600 | ₹480 (80%) | — | ₹120 (20%) |
@@ -78,7 +78,7 @@ Worker selects tier; customer approves before work starts.
 - Labor: ₹600
 - Parts (gas): ₹500
 - **Customer pays:** ₹1,100 total (visit fee credited)
-- **Worker earns:** ₹480 (labor 80%)
+- **Technician earns:** ₹480 (labor 80%)
 - **Merchant earns:** ₹420 (parts cost)
 - **Platform earns:** ₹200 (labor 20% + parts margin)
 
@@ -86,7 +86,7 @@ Worker selects tier; customer approves before work starts.
 
 ## Bonus Tiers (Trust Loop)
 
-### Worker Bonuses
+### Technician Bonuses
 - ₹50 per job after 5 jobs/day
 - ₹100 per job after 25 jobs/week with rating ≥4.5
 - ₹500 monthly retention bonus at 50+ jobs with <2 disputes
@@ -115,12 +115,12 @@ Worker selects tier; customer approves before work starts.
 
 ## Open Market Premium
 
-When worker buys from non-preferred merchant (fallback mode):
+When technician buys from non-preferred merchant (fallback mode):
 
-- Worker pays retail price at any shop
+- Technician pays retail price at any shop
 - Customer charged: catalog price × 1.15 (15% premium for sourcing effort)
-- Difference covers worker's time/effort
-- **Capped at 20% of worker's monthly jobs** to prevent abuse
+- Difference covers technician's time/effort
+- **Capped at 20% of technician's monthly jobs** to prevent abuse
 
 ---
 
@@ -128,9 +128,9 @@ When worker buys from non-preferred merchant (fallback mode):
 
 | Scenario | Customer Refund |
 |---|---|
-| Job cancelled before worker dispatched | 100% |
-| Worker dispatched but didn't arrive | 100% + ₹50 inconvenience credit |
-| Worker arrived, customer declined diagnosis | Visit fee NOT refunded |
+| Job cancelled before technician dispatched | 100% |
+| Technician dispatched but didn't arrive | 100% + ₹50 inconvenience credit |
+| Technician arrived, customer declined diagnosis | Visit fee NOT refunded |
 | Work done but customer disputes (within 24h) | Held in escrow until resolved |
 | Rework needed (within 7 days, same issue) | Free return visit, no refund |
 | Defective part (within 30 days) | Part cost refunded, replacement free |
@@ -152,8 +152,8 @@ This avoids the ₹2000 cash limit problem (meaningless in Mumbai, excessive in 
 ## Why This Pricing Model Wins
 
 1. **Transparent** — Every rupee is itemized for customer
-2. **Fraud-resistant** — Worker has no discretion to inflate
-3. **Aligned incentives** — Worker earns from completion, not visits
+2. **Fraud-resistant** — Technician has no discretion to inflate
+3. **Aligned incentives** — Technician earns from completion, not visits
 4. **Predictable** — Customer knows cost before booking
 5. **Scalable** — Catalog-driven means new services add easily
 6. **Defensible** — Platform margin on every component

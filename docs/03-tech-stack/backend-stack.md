@@ -174,7 +174,7 @@ model User {
 
 enum UserRole {
   CUSTOMER
-  WORKER
+  TECHNICIAN
   MERCHANT
   ADMIN
 }
@@ -187,11 +187,11 @@ Prisma doesn't natively support PostGIS, so:
 - Wrap in service functions for type safety
 
 ```ts
-// Example: find nearest workers
-const workers = await prisma.$queryRaw`
+// Example: find nearest technicians
+const technicians = await prisma.$queryRaw`
   SELECT id, full_name,
     ST_Distance(location, ST_MakePoint(${lng}, ${lat})::geography) as distance
-  FROM workers
+  FROM technicians
   WHERE ST_DWithin(location, ST_MakePoint(${lng}, ${lat})::geography, 5000)
   ORDER BY distance
   LIMIT 10
@@ -221,7 +221,7 @@ const workers = await prisma.$queryRaw`
 ### Why Argon2id for Passwords (Admin Only)
 - Argon2 is the modern password hashing standard
 - Bcrypt is older, slower, less memory-hard
-- Customers/workers don't have passwords (OTP only)
+- Customers/technicians don't have passwords (OTP only)
 - Admins use email + password for dashboard
 
 ### Auth Plugin Pattern
@@ -272,9 +272,9 @@ fastify.post('/auth/otp/send', {
 ## Real-time with WebSockets
 
 ### Use Cases
-- Worker location updates → customer's tracking screen
-- Job status changes → both worker + customer
-- Cash debt updates → worker dashboard
+- Technician location updates → customer's tracking screen
+- Job status changes → both technician + customer
+- Cash debt updates → technician dashboard
 
 ### Pattern
 - Separate Fastify process for WebSocket (port 3001)
@@ -304,7 +304,7 @@ fastify.post('/auth/otp/send', {
 | `fraud` | Rule evaluation | 5 |
 | `settlements` | T+1 merchant payouts | 1 (daily) |
 | `trust-scores` | Recalculate scores | 1 (nightly) |
-| `dispatch` | Worker matching | 5 |
+| `dispatch` | Technician matching | 5 |
 
 ### Pattern
 ```ts
@@ -318,9 +318,9 @@ await notificationQueue.add('push', {
   body: '...',
 });
 
-// Worker (separate process)
-import { Worker } from 'bullmq';
-new Worker('notifications', async (job) => {
+// Technician (separate process)
+import { Technician } from 'bullmq';
+new Technician('notifications', async (job) => {
   if (job.name === 'push') {
     await sendPush(job.data);
   }
@@ -353,7 +353,7 @@ new Worker('notifications', async (job) => {
 ```
 fixcare-prod/
   ├── kyc/                  # KYC documents (Aadhaar, PAN)
-  │   └── {worker_id}/
+  │   └── {technician_id}/
   ├── jobs/                 # Job photos
   │   └── {job_id}/
   │       ├── diagnosis-1.jpg
@@ -378,10 +378,10 @@ fixcare-prod/
 ## API Patterns
 
 ### REST Conventions
-- Plural nouns: `/bookings`, `/workers`
+- Plural nouns: `/bookings`, `/technicians`
 - Standard verbs: GET, POST, PATCH, DELETE
 - Nested resources: `/bookings/:id/photos`
-- Filter via query string: `/bookings?status=active&worker_id=xxx`
+- Filter via query string: `/bookings?status=active&technician_id=xxx`
 - Pagination: `?limit=20&cursor=xxx` (cursor-based)
 
 ### Response Envelope

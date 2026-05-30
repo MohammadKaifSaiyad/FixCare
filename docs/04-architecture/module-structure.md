@@ -68,7 +68,7 @@ modules/bookings/
 - `auth/` — OTP, JWT, refresh tokens
 - `users/` — Base user model
 - `customers/` — Customer-specific
-- `workers/` — Worker-specific, KYC, location, trust
+- `technicians/` — Technician-specific, KYC, location, trust
 - `merchants/` — Merchant-specific, catalog
 - `admins/` — Admin users
 
@@ -80,7 +80,7 @@ modules/bookings/
 
 ### Booking Modules
 - `bookings/` — Booking lifecycle, state machine
-- `dispatch/` — Worker matching algorithm
+- `dispatch/` — Technician matching algorithm
 - `addresses/` — Customer addresses, geofence zones
 
 ### Operation Modules
@@ -92,9 +92,9 @@ modules/bookings/
 ### Financial Modules
 - `payments/` — Razorpay integration
 - `ledger/` — Double-entry ledger
-- `wallet/` — Worker earnings + cash debt
+- `wallet/` — Technician earnings + cash debt
 - `settlements/` — T+1 merchant settlements
-- `payouts/` — Worker withdrawals
+- `payouts/` — Technician withdrawals
 - `refunds/` — Refund processing
 
 ### Trust & Compliance Modules
@@ -183,7 +183,7 @@ workers/
 ├── fraud.worker.ts              # Fraud rule evaluation
 ├── settlements.worker.ts        # Daily settlements
 ├── trust-scores.worker.ts       # Nightly trust recalc
-└── dispatch.worker.ts           # Async worker matching
+└── dispatch.worker.ts           # Async technician matching
 ```
 
 ---
@@ -196,7 +196,7 @@ workers/
 ```ts
 // bookings.service.ts
 import { dispatchService } from '../dispatch/dispatch.service';
-const worker = await dispatchService.findBestWorker(booking);
+const technician = await dispatchService.findBestTechnician(booking);
 ```
 
 **Event emission:**
@@ -211,7 +211,7 @@ await eventQueue.add('booking.created', { bookingId });
 **Direct DB query into another module's tables:**
 ```ts
 // bookings.service.ts — BAD
-const worker = await prisma.worker.findUnique({ ... });  // Use workersService instead
+const technician = await prisma.technician.findUnique({ ... });  // Use techniciansService instead
 ```
 
 **Importing routes from another module:**
@@ -252,7 +252,7 @@ model RefreshToken { ... }
 // USERS & ROLES
 // =============================================================================
 model Customer { ... }
-model Worker { ... }
+model Technician { ... }
 model Merchant { ... }
 model Admin { ... }
 

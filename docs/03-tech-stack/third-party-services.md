@@ -27,7 +27,7 @@ External services we depend on, with setup notes and fallback plans.
 ### Why Razorpay
 - Best India coverage
 - UPI Intent works perfectly
-- Razorpay Route enables split payments (customer → merchant + worker + platform)
+- Razorpay Route enables split payments (customer → merchant + technician + platform)
 - Webhook reliability
 - Test mode is excellent
 
@@ -91,7 +91,7 @@ External services we depend on, with setup notes and fallback plans.
 
 ### Templates Needed
 - OTP for customer login
-- OTP for worker login
+- OTP for technician login
 - OTP for customer arrival confirmation
 - OTP for job completion
 - Cash payment confirmation
@@ -115,7 +115,7 @@ External services we depend on, with setup notes and fallback plans.
 ### Use Cases
 - Merchant notifications (parts request, payout confirmation)
 - Booking confirmations to customer (richer than SMS)
-- Job updates with images (worker arrival selfie)
+- Job updates with images (technician arrival selfie)
 
 ### Setup
 1. Apply at gupshup.io
@@ -153,14 +153,14 @@ External services we depend on, with setup notes and fallback plans.
 **Why Karza**
 - Best Indian KYC API coverage
 - PAN verification via NSDL
-- Video KYC for high-trust workers
+- Video KYC for high-trust technicians
 - Bank account verification
 - GST verification (merchants)
 
 **Cost:** ₹10-30 per verification
 
 **Use Cases:**
-- PAN verification for workers + merchants
+- PAN verification for technicians + merchants
 - Bank account validation (penny drop)
 - Video KYC for senior trust tier
 - GST validation for merchants
@@ -223,11 +223,11 @@ External services we depend on, with setup notes and fallback plans.
 
 ### Notification Types
 - **Booking confirmation** (to customer)
-- **Job assignment** (to worker, high priority)
-- **Worker en route** (to customer)
-- **Worker arrived** (to customer)
+- **Job assignment** (to technician, high priority)
+- **Technician en route** (to customer)
+- **Technician arrived** (to customer)
 - **Diagnosis ready** (to customer)
-- **Payment received** (to worker)
+- **Payment received** (to technician)
 - **Settlement processed** (to merchant)
 - **Dispute resolution** (to relevant party)
 
@@ -248,7 +248,7 @@ External services we depend on, with setup notes and fallback plans.
 ### Use Cases
 - Receipts to customers (booking + payment)
 - Admin notifications (high-priority alerts)
-- Worker onboarding emails
+- Technician onboarding emails
 - Merchant settlement reports
 
 ### Why Brevo
@@ -260,7 +260,7 @@ External services we depend on, with setup notes and fallback plans.
 ### Email Templates
 - Booking receipt
 - Payment confirmation
-- Worker onboarding welcome
+- Technician onboarding welcome
 - Merchant settlement summary
 - Dispute resolution notice
 - Account suspension notice
@@ -277,7 +277,7 @@ External services we depend on, with setup notes and fallback plans.
 ### Setup
 - Free tier: 5K errors/month
 - One project for backend
-- Separate projects for customer + worker apps
+- Separate projects for customer + technician apps
 - Configure source maps for stack traces
 
 ### Best Practices
@@ -304,8 +304,8 @@ External services we depend on, with setup notes and fallback plans.
 - Payment success/failure
 - Photo uploaded
 - Job status changed
-- Customer rated worker
-- Worker went online
+- Customer rated technician
+- Technician went online
 - Cash debt incurred
 
 ### Privacy

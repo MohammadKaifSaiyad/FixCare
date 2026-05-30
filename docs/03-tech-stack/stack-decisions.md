@@ -102,9 +102,9 @@ Final picks with reasoning. **Self-hosted, solo-dev friendly, scale-ready.**
 
 ### Things This Stack Does Well
 - CRUD with strong type safety
-- Real-time updates (worker location, job status)
+- Real-time updates (technician location, job status)
 - Background jobs (notifications, settlements, fraud rules)
-- Geospatial queries (PostGIS for nearest worker/merchant)
+- Geospatial queries (PostGIS for nearest technician/merchant)
 - File uploads with thumbnailing
 - Webhooks (Razorpay, KYC vendors)
 - Auto-generated API docs (Fastify + OpenAPI)

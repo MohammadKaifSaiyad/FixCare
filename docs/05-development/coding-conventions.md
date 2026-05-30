@@ -86,7 +86,7 @@ route handler  →  service  →  repository/Prisma
 - Models use `freezed` + `json_serializable`.
 
 ### Photos
-- Worker app: **camera only**, gallery disabled.
+- Technician app: **camera only**, gallery disabled.
 - Geotag + timestamp at capture.
 - Compress to <500 KB before upload.
 - Upload via queue with retry; don't block UI on upload.
@@ -110,7 +110,7 @@ route handler  →  service  →  repository/Prisma
   feat(auth): add OTP refresh endpoint
   fix(bookings): handle missing visit-fee zone
   refactor(payments): extract Razorpay client
-  test(dispatch): add nearest-worker tests
+  test(dispatch): add nearest-technician tests
   docs(api): update auth flow
   chore(deps): bump prisma to 6.1
   ```
@@ -144,7 +144,7 @@ If asked to do any of these, raise it rather than comply silently:
 
 - Storing raw Aadhaar or any PII in logs.
 - Skipping the audit log on a financial mutation.
-- Giving the worker any pricing discretion.
+- Giving the technician any pricing discretion.
 - Letting a job complete without photos or the customer OTP.
 - Adding a new framework/library without an ADR.
 - Floating-point money math.

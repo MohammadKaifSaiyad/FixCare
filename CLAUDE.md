@@ -12,13 +12,13 @@ A trusted marketplace for **home appliance repair and electrical services** in
 **Vadodara and Padra**, connecting three actors:
 
 - **Customers** — homeowners/businesses needing repair
-- **Workers** — verified technicians with trust scores
+- **Technicians** — verified repair professionals with trust scores
 - **Merchants** — local hardware shops supplying parts
 
 Core promise: honest service, transparent catalog pricing, fair pay, no one can cheat.
 
 Built by a **solo founder-developer** using **Claude Code** for nearly all work.
-Timeline: V1 in ~12-18 months. Android-first. Two apps (customer + worker); merchant
+Timeline: V1 in ~12-18 months. Android-first. Two apps (customer + technician); merchant
 runs on WhatsApp + web for V1.
 
 ---
@@ -28,9 +28,9 @@ runs on WhatsApp + web for V1.
 1. **Money never moves without evidence.** Photos, OTPs, or QR scans gate every
    state transition that touches money.
 2. **No single party confirms a transaction alone.** Two-sided confirmation always
-   (worker GPS + customer OTP; worker photos + customer OTP).
-3. **The platform holds cash, not the worker.** UPI is default; cash is the friction-added exception.
-4. **Catalog prices only.** Workers have zero pricing discretion on labor or parts.
+   (technician GPS + customer OTP; technician photos + customer OTP).
+3. **The platform holds cash, not the technician.** UPI is default; cash is the friction-added exception.
+4. **Catalog prices only.** Technicians have zero pricing discretion on labor or parts.
 5. **Every financial operation writes to the append-only audit log.**
 6. **Never store raw Aadhaar.** Mask all but last 4 digits everywhere (UI, logs, DB).
 7. **No PII in logs or analytics events** (phone, UPI VPA, address, Aadhaar, photos).
@@ -113,12 +113,12 @@ Recent changes: see `CHANGELOG.md`.
 ## Build Order (Don't Reorder)
 
 Backend foundation → core business logic → admin dashboard → customer app →
-worker app → merchant (WhatsApp) flow → polish/launch.
+technician app → merchant (WhatsApp) flow → polish/launch.
 
 Rationale and month-by-month: `docs/05-development/build-sequence.md`.
 
 Reason for order: admin dashboard lets you run the platform manually before apps
-exist; customer app validates demand before you invest in supply-side worker app.
+exist; customer app validates demand before you invest in supply-side technician app.
 
 ---
 
@@ -129,7 +129,7 @@ Read `docs/05-development/assumptions-and-doubts.md` before major decisions. Top
 - **Android background location** is genuinely hard (OEM battery-killing). Budget extra time.
 - **Razorpay Route approval** takes 2-4 weeks beyond KYC — apply day 1.
 - **Cash-handling model may have RBI/GST implications** — legal review required before Month 6.
-- **Worker disintermediation** is the existential business threat — design for stickiness.
+- **Technician disintermediation** is the existential business threat — design for stickiness.
 - **Solo dev burnout** — 6 hour/day hard cap, Sundays off, ship less but working.
 
 ---
@@ -138,10 +138,10 @@ Read `docs/05-development/assumptions-and-doubts.md` before major decisions. Top
 
 If the codebase forgets everything else, these must hold:
 
-1. **Arrival handshake** — worker taps "Arrived" (GPS-validated) + customer scans
-   worker QR or enters worker's code. Locks visit fee. Proves presence.
+1. **Arrival handshake** — technician taps "Arrived" (GPS-validated) + customer scans
+   technician QR or enters technician's code. Locks visit fee. Proves presence.
 2. **Completion handshake** — customer confirms work done → OTP to customer →
-   customer reads OTP to worker → worker enters it. Unlocks payment. Proves completion.
+   customer reads OTP to technician → technician enters it. Unlocks payment. Proves completion.
 
 Plus **3 mandatory repair photos**: old part removed, new part packaging, new part installed.
 

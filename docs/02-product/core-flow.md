@@ -6,7 +6,7 @@ End-to-end journey for a single job, with fraud locks at each phase.
 
 ## Phase 0 — Onboarding (One-Time Per Actor)
 
-### Worker
+### Technician
 - Phone OTP
 - Aadhaar verification via DigiLocker (Setu)
 - PAN verification (Karza)
@@ -42,22 +42,22 @@ End-to-end journey for a single job, with fraud locks at each phase.
 ### Backend Actions
 - Determine zone (Vadodara/Padra) → apply geofenced rate
 - Calculate labor tier if applicable
-- Dispatch algorithm picks worker:
+- Dispatch algorithm picks technician:
   `rating × proximity × current_load × cash_compliance`
 - Visit fee **authorized** (not charged) via UPI AutoPay
 
 ### What Customer Sees
-- Worker name, photo, masked phone, QR-badge ID
-- ETA based on worker location
+- Technician name, photo, masked phone, QR-badge ID
+- ETA based on technician location
 
-### What Worker Sees
+### What Technician Sees
 - Address with masked customer phone
 - Accept/reject (30-second timer)
 
 ### 🔒 Fraud Locks at This Phase
 - Customer with unsettled payment → blocked from booking
-- Worker at cash debt limit → cannot accept
-- Worker booking own neighborhood repeatedly → flagged (self-dealing detection)
+- Technician at cash debt limit → cannot accept
+- Technician booking own neighborhood repeatedly → flagged (self-dealing detection)
 
 ---
 
@@ -66,35 +66,35 @@ End-to-end journey for a single job, with fraud locks at each phase.
 ### The Arrival Handshake (Keystone #1)
 
 ```
-Worker reaches location
+Technician reaches location
   → Tap "Arrived" (GPS validated)
-  → Customer scans worker's QR
-    OR enters 4-digit code worker shows
+  → Customer scans technician's QR
+    OR enters 4-digit code technician shows
   → Visit fee LOCKED
 ```
 
 **Without this handshake:**
-- Worker can't claim visit fee
+- Technician can't claim visit fee
 - Customer can't dispute "no one came"
 - Platform has tamper-proof presence proof
 
 ### Diagnosis Step
-- Worker takes **2 mandatory photos**:
+- Technician takes **2 mandatory photos**:
   - Appliance overview
   - Close-up of fault
 - Selects diagnosed issue from **structured dropdown** (no free text)
 - System auto-suggests parts cart from catalog
-- Worker can add/remove items (changes logged)
+- Technician can add/remove items (changes logged)
 
 ### Customer Decision
 - Sees: diagnosis + parts list + total estimate + visit fee credit applied
 - ✅ Approve → flow continues
-- ❌ Decline → visit fee charged, worker paid out, job ends cleanly
+- ❌ Decline → visit fee charged, technician paid out, job ends cleanly
 
 ### 🔒 Fraud Locks at This Phase
 - Photos mandatory + geotagged + timestamped
 - Diagnosis-to-parts mismatch flagged (e.g., "fan issue" + "AC capacitor")
-- Customer sees catalog prices — worker cannot pad
+- Customer sees catalog prices — technician cannot pad
 - Free-text diagnosis is impossible (dropdown only)
 
 ---
@@ -108,7 +108,7 @@ System routes parts cart to nearest preferred merchant
 with stock_confidence > 70%
   → Merchant gets push: "Confirm stock in 90 sec"
   → Tap response:
-    ✅ All available → worker picks up
+    ✅ All available → technician picks up
     ⚠ Partial → routes to next merchant
     ❌ Not available → routes to next merchant
 ```
@@ -119,16 +119,16 @@ Triggers when:
 - 2 merchant rejections, OR
 - 5 minutes elapsed
 
-Worker buys from any local shop:
+Technician buys from any local shop:
 - Uploads photo of bill
 - Uploads photo of parts (in original sealed packaging)
 - Customer confirms in-app: "Yes, I saw these parts"
 - **Price capped at catalog × 1.15** (15% sourcing premium)
 
 ### 🔒 Fraud Locks at This Phase
-- Open market usage **capped at 20% of worker's monthly jobs**
+- Open market usage **capped at 20% of technician's monthly jobs**
 - Bill photo required (manual sampling for fakes initially, OCR later)
-- Customer sees actual bill, not worker-entered amount
+- Customer sees actual bill, not technician-entered amount
 - Excessive open-market = collusion alert
 
 ---
@@ -147,7 +147,7 @@ Worker buys from any local shop:
 
 ### Old Part Handling
 - Customer can keep old part if they want
-- Default: worker takes it (some have scrap value — V3 feature)
+- Default: technician takes it (some have scrap value — V3 feature)
 
 ### 🔒 Fraud Locks at This Phase
 - Phantom parts (charging without replacing) → blocked by photo #1
@@ -164,13 +164,13 @@ Worker buys from any local shop:
 Customer reviews final bill
   → Taps "Confirm work completed satisfactorily"
   → 4-digit OTP sent to customer phone
-  → Customer reads OTP to worker
-  → Worker enters OTP in worker app
+  → Customer reads OTP to technician
+  → Technician enters OTP in technician app
   → ONLY THEN job marked complete + payment unlocked
 ```
 
 **Why this is critical:**
-- Worker can't unilaterally close jobs
+- Technician can't unilaterally close jobs
 - Customer can't claim "bad work" later without cause (they confirmed)
 - Disputes drop dramatically
 
@@ -179,19 +179,19 @@ Customer reviews final bill
 **UPI (default, encouraged):**
 - Customer pays via UPI Intent
 - Money → platform escrow
-- Splits queued: merchant T+1, worker T+2, platform commission booked
-- Worker sees "✅ Payment received" instantly
+- Splits queued: merchant T+1, technician T+2, platform commission booked
+- Technician sees "✅ Payment received" instantly
 - ₹20 discount nudges digital adoption
 
 **Cash (secondary, friction-added):**
 - Customer confirms exact amount in-app
 - Customer digitally signs (taps confirm)
-- Worker confirms receipt via separate OTP
-- Worker's cash debt to platform increases
-- Worker sees running balance
+- Technician confirms receipt via separate OTP
+- Technician's cash debt to platform increases
+- Technician sees running balance
 
 ### 🔒 Fraud Locks at This Phase
-- Cash discrepancy (worker says ₹600, customer confirms ₹500) → auto-dispute
+- Cash discrepancy (technician says ₹600, customer confirms ₹500) → auto-dispute
 - Cash collection **capped at ₹3000 / 24h** regardless of debt limit
 - UPI discount makes digital cheaper for customer
 
@@ -204,13 +204,13 @@ Customer reviews final bill
 - **7-day rework warranty** — same issue = free return visit
 - 30-day complaint window for new issues
 
-### Worker Side
+### Technician Side
 - Earnings credited to wallet at T+2 (after 48-hour dispute window)
 - Withdraw to bank instantly after that
 
 ### Merchant Side
 - Daily settlements consolidated → paid 10 AM T+1
-- Returns processed via QR scan (worker scans merchant's QR within return window)
+- Returns processed via QR scan (technician scans merchant's QR within return window)
 
 ### Return Windows
 - Jobs before 6 PM → return parts before shop closing
@@ -221,7 +221,7 @@ Customer reviews final bill
 
 ## The Two Keystones (If You Remember Nothing Else)
 
-1. **QR/OTP Arrival Handshake** — Proves worker showed up
+1. **QR/OTP Arrival Handshake** — Proves technician showed up
 2. **Customer OTP Completion Handshake** — Proves work was done
 
 Plus **3 photo checkpoints** in Phase D.
@@ -242,7 +242,7 @@ CREATED → DISPATCHED → ACCEPTED → EN_ROUTE → ARRIVED
 
 Branches:
   → CANCELLED_BY_CUSTOMER (anywhere before ARRIVED)
-  → CANCELLED_BY_WORKER (anywhere before ARRIVED)
+  → CANCELLED_BY_TECHNICIAN (anywhere before ARRIVED)
   → DECLINED_BY_CUSTOMER (after DIAGNOSED) → visit fee only
   → DISPUTED (from CUSTOMER_CONFIRMED → resolved → CLOSED)
 ```

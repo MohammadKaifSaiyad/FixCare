@@ -20,7 +20,7 @@ Following the Uber/Swiggy/Zomato three-app pattern:
 | App | Audience | Name |
 |---|---|---|
 | Customer app | Homeowners | **FixCare** |
-| Worker app | Technicians | **FixCare Pro** |
+| Technician app | Technicians | **FixCare Pro** |
 | Merchant flow | Hardware shops | **FixCare Partner** (web/WhatsApp in V1) |
 
 ---

@@ -27,7 +27,7 @@ Repair services have inherently subjective quality. A 10% dispute rate is normal
 
 ### Logic
 - Photo evidence reviewed against rules
-- If photos complete + customer OTP exists → favor worker
+- If photos complete + customer OTP exists → favor technician
 - If photos incomplete OR no customer OTP → favor customer
 - If ambiguous → refund customer (cheap insurance)
 
@@ -57,7 +57,7 @@ Repair services have inherently subjective quality. A 10% dispute rate is normal
 - Chat logs (if any) reviewed?
 
 ### Outcomes
-- Worker fully at fault → refund customer, deduct from worker payout
+- Technician fully at fault → refund customer, deduct from technician payout
 - Partial fault → split refund proportionally
 - Customer fully at fault → no refund, warn customer
 - No clear fault → refund customer (favor customer when unclear)
@@ -69,14 +69,14 @@ Repair services have inherently subjective quality. A 10% dispute rate is normal
 ### Process
 1. Senior reviewer assigned
 2. Phone call to customer (10-15 min, recorded)
-3. Phone call to worker (10-15 min, recorded)
+3. Phone call to technician (10-15 min, recorded)
 4. Photos + evidence re-examined
 5. Decision within 72 hours
 6. Both parties notified with detailed reasoning
 
 ### Special Cases
 - High-value parts dispute: merchant brought into review
-- Damage claims (worker broke something): photos + estimate required
+- Damage claims (technician broke something): photos + estimate required
 - Safety incident: escalated to legal/insurance review
 
 ---
@@ -84,7 +84,7 @@ Repair services have inherently subjective quality. A 10% dispute rate is normal
 ## Payout Hold During Dispute
 
 While dispute is open:
-- Worker payout for this job: HELD
+- Technician payout for this job: HELD
 - Merchant payout for this job: HELD (if part-related)
 - Customer's wallet credit: HELD pending resolution
 - Platform commission: HELD
@@ -100,39 +100,39 @@ Once resolved:
 ### Scenario 1: "Work was bad"
 - **Customer claim:** AC still not cooling after repair
 - **Resolution:** Free rework within 7 days (covered by warranty)
-- **No refund** unless worker refuses to return
+- **No refund** unless technician refuses to return
 - **If recurring issue:** Same-issue rework guarantee triggers automatically
 
-### Scenario 2: "Worker overcharged"
+### Scenario 2: "Technician overcharged"
 - **Customer claim:** Bill higher than expected
 - **Reviewer checks:** Bill itemization matches catalog
 - **If catalog matches:** Customer educated, no refund
-- **If padding detected:** Refund + worker warning + audit
+- **If padding detected:** Refund + technician warning + audit
 
 ### Scenario 3: "Part is defective"
 - **Customer claim:** New part stopped working in 2 days
 - **Resolution:** Free replacement under 30-day part warranty
 - **Merchant flagged:** Track defect rate; merchant penalty if high
 
-### Scenario 4: "Worker didn't show up"
-- **Customer claim:** No worker arrived
+### Scenario 4: "Technician didn't show up"
+- **Customer claim:** No technician arrived
 - **Reviewer checks:** Was arrival OTP entered? GPS trail?
-- **If no OTP + no GPS at location:** Refund + worker penalty
-- **If OTP entered:** Worker present; customer disputes false → warning
+- **If no OTP + no GPS at location:** Refund + technician penalty
+- **If OTP entered:** Technician present; customer disputes false → warning
 
-### Scenario 5: "Worker damaged appliance"
+### Scenario 5: "Technician damaged appliance"
 - **Customer claim:** TV scratched, appliance broken during repair
 - **Tier 3 escalation always**
 - **Photo evidence (before repair) checked**
-- **Worker liability up to ₹5,000 (deductible from earnings + deposit)**
+- **Technician liability up to ₹5,000 (deductible from earnings + deposit)**
 - **Beyond ₹5,000: insurance claim (when we get coverage in V2)**
 
 ### Scenario 6: "Cash amount disagreement"
-- **Worker says:** ₹600 collected
+- **Technician says:** ₹600 collected
 - **Customer says:** ₹500 paid
 - **Auto-resolved:** Lower of two amounts is treated as paid
-- **Worker debt adjusts accordingly**
-- **If pattern detected:** Worker audit
+- **Technician debt adjusts accordingly**
+- **If pattern detected:** Technician audit
 
 ---
 
@@ -140,7 +140,7 @@ Once resolved:
 
 Per-account stats tracked for trust scores:
 
-### Worker Side
+### Technician Side
 - Disputes filed against them
 - Disputes resolved in their favor
 - Average dispute amount
@@ -160,17 +160,17 @@ A customer is flagged if:
 - >2 disputes in 30 days
 - >5 disputes in 90 days
 - Disputes always after work completion
-- Disputes always with different workers
+- Disputes always with different technicians
 - High refund-receive rate
 
 ### Action Tiers
-1. **First flag:** Soft warning, dispute review prioritizes worker evidence
+1. **First flag:** Soft warning, dispute review prioritizes technician evidence
 2. **Second flag:** Account review, possible suspension
 3. **Third flag:** Suspended; deposit any unused credits frozen
 
 ---
 
-## Worker Discipline Tiers
+## Technician Discipline Tiers
 
 | Disputes per 30 days | Action |
 |---|---|
@@ -198,7 +198,7 @@ The admin dashboard shows:
 - Open disputes (by tier, SLA status)
 - Resolved disputes (last 30 days)
 - Top dispute reasons (categorized)
-- Worker dispute rates (sorted, color-coded)
+- Technician dispute rates (sorted, color-coded)
 - Customer dispute rates (sorted, color-coded)
 - Dispute resolution time trends
 - Refund amount totals
@@ -222,7 +222,7 @@ Realistic expectations:
 ## Building This (Implementation Notes)
 
 For solo dev, V1 is:
-- Disputes filed in customer/worker app via simple form
+- Disputes filed in customer/technician app via simple form
 - All disputes land in admin dashboard
 - You personally review each one for first 6 months
 - Track patterns manually

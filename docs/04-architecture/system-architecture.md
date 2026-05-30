@@ -35,7 +35,7 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 │                                                            │
 │  ┌────────────┐  ┌──────────────┐  ┌─────────────────┐  │
 │  │  Fastify   │  │  Fastify     │  │  BullMQ         │  │
-│  │  API       │  │  WebSocket   │  │  Workers        │  │
+│  │  API       │  │  WebSocket   │  │  Technicians        │  │
 │  │  :3000     │  │  :3001       │  │  (background)   │  │
 │  └─────┬──────┘  └──────┬───────┘  └────────┬────────┘  │
 │        │                 │                    │          │
@@ -73,7 +73,7 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 ### 2. Separation of Concerns
 - API server: handles HTTP requests
 - WebSocket server: handles real-time
-- Workers: handle async/background work
+- Technicians: handle async/background work
 - All share the same code, different entry points
 
 ### 3. Stateless API
@@ -85,13 +85,13 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 ### 4. Event-Driven Background
 - HTTP requests do minimum work, queue the rest
 - E.g., booking endpoint creates record, queues notification dispatch
-- Workers handle slow/external calls async
+- Technicians handle slow/external calls async
 
 ### 5. Two-Sided Confirmations
 - No financial state changes without dual confirmation
-- Worker arrives → both worker (GPS) + customer (QR/OTP) confirm
-- Job completes → both worker (photos) + customer (OTP) confirm
-- Payment received → both customer (in-app) + worker (confirmation) confirm
+- Technician arrives → both technician (GPS) + customer (QR/OTP) confirm
+- Job completes → both technician (photos) + customer (OTP) confirm
+- Payment received → both customer (in-app) + technician (confirmation) confirm
 
 ---
 
@@ -107,30 +107,30 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 6. API creates booking in Postgres (transaction)
 7. API queues dispatch job in BullMQ
 8. API returns 201 Created (<100ms)
-9. [Async] Dispatch worker picks job
-10. [Async] Worker matches worker via algorithm
-11. [Async] Worker creates assignment in DB
-12. [Async] Worker queues push notification
-13. [Async] Notification worker sends push to worker via OneSignal
-14. [Async] Notification worker pushes WebSocket event to customer app
+9. [Async] Dispatch technician picks job
+10. [Async] Technician matches technician via algorithm
+11. [Async] Technician creates assignment in DB
+12. [Async] Technician queues push notification
+13. [Async] Notification technician sends push to technician via OneSignal
+14. [Async] Notification technician pushes WebSocket event to customer app
 15. Customer app updates UI in real-time
 ```
 
 ### Example 2: Job Completion
 ```
 1. Customer enters OTP in app → POST /v1/jobs/{id}/complete
-2. API validates JWT (worker's token)
+2. API validates JWT (technician's token)
 3. API verifies OTP matches Redis
 4. API validates all photos uploaded
 5. API begins transaction:
    - Update job status → COMPLETED
-   - Create ledger entries (worker earning, platform commission, merchant share)
-   - Update worker cash debt (if cash)
-   - Update worker trust score
+   - Create ledger entries (technician earning, platform commission, merchant share)
+   - Update technician cash debt (if cash)
+   - Update technician trust score
 6. API commits transaction
 7. API queues:
    - Settlement job (T+1 to merchant)
-   - Worker payout job (T+2)
+   - Technician payout job (T+2)
    - Receipt SMS to customer
    - Push notification to all parties
 8. API returns 200 OK
@@ -157,8 +157,8 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 - Address book
 - Booking history view
 
-### Workers Module
-- Worker-specific fields
+### Technicians Module
+- Technician-specific fields
 - KYC status
 - Skill assignments
 - Location tracking
@@ -188,7 +188,7 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 - Status transitions
 
 ### Dispatch Module
-- Worker matching algorithm
+- Technician matching algorithm
 - Geofence calculations
 - Priority scoring
 
@@ -199,7 +199,7 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 - Refund handling
 
 ### Wallet Module
-- Worker earnings
+- Technician earnings
 - Cash debt ledger
 - Settlement calculations
 - Withdrawal processing
@@ -233,10 +233,10 @@ Modular monolith. Single deployable. Scales to V2 without rewrite.
 ### Pattern: Service Calls
 ```ts
 // Bad: direct DB query across modules
-const worker = await prisma.worker.findUnique({ ... });
+const technician = await prisma.technician.findUnique({ ... });
 
 // Good: call the module's service
-const worker = await workersService.getById(workerId);
+const technician = await techniciansService.getById(technicianId);
 ```
 
 ### Pattern: Events
@@ -270,7 +270,7 @@ All services on one Hetzner VPS via Docker Compose.
 
 ### Stage 2: Service Split
 When CPU/memory pressure builds:
-1. Move workers to separate VPS (most likely first to need scaling)
+1. Move technicians to separate VPS (most likely first to need scaling)
 2. Move WebSocket to separate VPS (if real-time traffic grows)
 3. Keep API + DB on original VPS
 

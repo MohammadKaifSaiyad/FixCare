@@ -38,28 +38,28 @@ Solo dev + vibe coding (with Claude Code + Superpowers) can ship V1 in 10-14 mon
 
 ---
 
-## 🔴 Background Location Tracking on Android (Worker App)
+## 🔴 Background Location Tracking on Android (Technician App)
 
 ### What I Said
-"Background location tracking when worker is online, battery-optimized."
+"Background location tracking when technician is online, battery-optimized."
 
 ### Hidden Complexity
 Android 12+ has notoriously hostile background location restrictions:
 - **OEM aggression:** Xiaomi (MIUI), Realme (Realme UI), OPPO (ColorOS), Vivo (FunTouchOS) all aggressively kill background services to save battery — even Google's own guidelines don't help
 - **Doze mode + App Standby Buckets:** Even pure Android kills inactive apps
-- **Foreground service notification required:** Persistent notification = workers may dismiss/disable
+- **Foreground service notification required:** Persistent notification = technicians may dismiss/disable
 - **Battery optimization permission:** Each user must manually whitelist your app per OEM-specific UI
 
 ### Real-World Impact
-- Worker comes back from lunch, location stale → can't accept jobs → angry worker
-- Worker app killed mid-job → customer tracking screen freezes → angry customer
+- Technician comes back from lunch, location stale → can't accept jobs → angry technician
+- Technician app killed mid-job → customer tracking screen freezes → angry customer
 - Different bug per OEM = hard to reproduce
 
 ### What to Do
 - Test extensively on **at least these devices:** Xiaomi (Redmi), Realme, Samsung, Motorola, Vivo
 - Use `flutter_background_geolocation` (paid for production: ~$199, but worth it) over free alternatives
-- Build OEM-specific onboarding screens guiding workers to enable background permissions
-- Add server-side stale-location detection: if worker hasn't pinged in 5 min, auto-mark offline
+- Build OEM-specific onboarding screens guiding technicians to enable background permissions
+- Add server-side stale-location detection: if technician hasn't pinged in 5 min, auto-mark offline
 - Accept that some jobs will be missed; SLA can't be 100%
 - **Budget extra month for this alone** if doing it right
 
@@ -68,7 +68,7 @@ Android 12+ has notoriously hostile background location restrictions:
 ## 🔴 Razorpay Route (Split Payments) Approval
 
 ### What I Said
-"Use Razorpay Route to split payments to merchant + worker + platform."
+"Use Razorpay Route to split payments to merchant + technician + platform."
 
 ### Hidden Complexity
 Razorpay Route requires:
@@ -80,7 +80,7 @@ Razorpay Route requires:
 ### Real-World Impact
 - Plan assumes you can start splitting payments by Month 3
 - Realistic: not before Month 4-5
-- Until then: payments go to platform account, manual settlements to merchants/workers
+- Until then: payments go to platform account, manual settlements to merchants/technicians
 
 ### What to Do
 - Apply for Razorpay Route **on Day 1** (parallel with regular KYC)
@@ -141,23 +141,23 @@ Razorpay Route requires:
 ## 🔴 Cash-Handling May Have Regulatory Implications
 
 ### What I Said
-"Worker collects cash. Cash creates debt to platform. T+1 settlement."
+"Technician collects cash. Cash creates debt to platform. T+1 settlement."
 
 ### Hidden Risk
 This model resembles deposit-taking or money-handling in ways that **could trigger RBI scrutiny**:
-- Are you holding worker funds? (Their unsettled earnings)
-- Are you collecting on behalf of merchants? (Yes, when cash collected by worker is owed to merchant)
+- Are you holding technician funds? (Their unsettled earnings)
+- Are you collecting on behalf of merchants? (Yes, when cash collected by technician is owed to merchant)
 - Does this require Payment Aggregator license?
 - GST implications on the cash flow chain
 
 ### Real-World Risk
 - If treated as PA without license: regulatory action, fines
 - If misclassified for GST: tax penalties
-- If worker absconds with cash: bad debt, potentially significant
+- If technician absconds with cash: bad debt, potentially significant
 
 ### What to Do
 - **Mandatory:** Consult a CA + payment-aggregation-aware lawyer before Month 6 (₹25-50k for proper review)
-- Structure cash collection as: customer pays worker directly, worker has independent contract with platform to remit fees — this changes legal characterization
+- Structure cash collection as: customer pays technician directly, technician has independent contract with platform to remit fees — this changes legal characterization
 - Add Terms of Service that make this clear
 - Consider eliminating cash entirely in V2 if regulatory risk too high
 - File startup with DPIIT (Department for Promotion of Industry and Internal Trade) for clarity
@@ -177,7 +177,7 @@ Mentioned GST briefly. Said B2B customers may want invoices.
 - **GST registration threshold:** ₹20 lakh turnover annually (₹10L in some states)
 - **E-invoicing required** at ₹5 crore+ turnover (B2B)
 - **GSTR-1, GSTR-3B filings monthly** — accounting overhead
-- **TDS deduction on worker payouts** if >₹50k/year per worker (Section 194C)
+- **TDS deduction on technician payouts** if >₹50k/year per technician (Section 194C)
 - **GST on cash transactions:** even cash flows must be GST-reported
 
 ### What to Do
@@ -198,7 +198,7 @@ Mentioned GST briefly. Said B2B customers may want invoices.
 - VPS dies = entire platform down
 - Hetzner outages (rare but happen) = you're down
 - Disk failure = data loss if backup is older than incident
-- A 4-hour outage during evening peak = lost revenue + lost trust + workers idle
+- A 4-hour outage during evening peak = lost revenue + lost trust + technicians idle
 
 ### What I Underplayed
 - For a platform handling payments, downtime has real cost beyond inconvenience
@@ -226,7 +226,7 @@ How does a customer reach you when things break?
 
 ### Reality
 - Customers will call/message at all hours
-- Workers will too (especially when they can't get paid)
+- Technicians will too (especially when they can't get paid)
 - Merchants too (settlement queries)
 - Support is the #1 operational job at launch
 
@@ -242,13 +242,13 @@ How does a customer reach you when things break?
 
 ---
 
-## 🟠 Worker App Availability States Underspecified
+## 🟠 Technician App Availability States Underspecified
 
 ### What I Said
-Worker is "online" or "offline."
+Technician is "online" or "offline."
 
 ### Reality
-A worker's day looks like:
+A technician's day looks like:
 - Online (available for jobs)
 - En route to current job
 - At customer location (diagnosing)
@@ -266,33 +266,33 @@ A worker's day looks like:
 - End-of-day flow (last job declination criteria)
 
 ### What to Do
-Add explicit states to worker app:
+Add explicit states to technician app:
 - Available
 - On Job (with current phase)
-- On Break (worker-triggered, max 60 min)
-- Stuck (worker-triggered, e.g., bike issue, requires support response)
+- On Break (technician-triggered, max 60 min)
+- Stuck (technician-triggered, e.g., bike issue, requires support response)
 - Offline (end of shift)
 
-Build break detection (don't dispatch to worker on lunch).
+Build break detection (don't dispatch to technician on lunch).
 
 ---
 
 ## 🟠 Returns Logistics Are A Real Operational Hole
 
 ### What I Said
-"Worker returns parts via QR scan at merchant within return window."
+"Technician returns parts via QR scan at merchant within return window."
 
 ### What I Didn't Address
-- **Who pays for transportation back to merchant?** Worker's bike fuel?
-- **Time cost:** Worker drives 5 km to return a ₹50 part. Worth it?
-- **Worker incentive to return:** Currently zero, since debt only clears when scanned
+- **Who pays for transportation back to merchant?** Technician's bike fuel?
+- **Time cost:** Technician drives 5 km to return a ₹50 part. Worth it?
+- **Technician incentive to return:** Currently zero, since debt only clears when scanned
 - **Merchant inconvenience:** Walk-in returns disrupt their day
 - **Damaged returns:** Who's at fault when merchant says damaged?
 
 ### What to Do
-- Build incentive: worker gets bonus per successful return scan (₹10-20)
+- Build incentive: technician gets bonus per successful return scan (₹10-20)
 - Or: returns happen weekly batched, not per-job
-- Or: merchant comes to worker (for high-value returns)
+- Or: merchant comes to technician (for high-value returns)
 - Test this flow with first 50 jobs; iterate based on reality
 - Be prepared to redesign by Month 12
 
@@ -309,14 +309,14 @@ Build break detection (don't dispatch to worker on lunch).
 - 3 photos × ~1 MB compressed = 3 MB upload per job
 - On 3G: ~30-60 seconds per photo
 - Network failures mid-upload = retry needed
-- Worker's data costs accumulate
+- Technician's data costs accumulate
 
 ### What to Do
 - Aggressive client-side compression (target <500KB per photo)
 - Upload queue with retry logic + offline persistence
-- Show worker upload progress + retry buttons
+- Show technician upload progress + retry buttons
 - Allow job state to advance with "upload pending" indicator
-- Don't block worker from moving to next phase due to upload
+- Don't block technician from moving to next phase due to upload
 - Eventually upload from device-side database when connection returns
 
 ---
@@ -328,7 +328,7 @@ Build break detection (don't dispatch to worker on lunch).
 
 ### Reality
 - Many tier-2 customers have 3-5 year old phones with 2-3 GB RAM
-- Many tier-2 workers have entry-level phones (₹6-10k range)
+- Many tier-2 technicians have entry-level phones (₹6-10k range)
 - Flutter apps with maps + WebSocket + background services = heavy
 - App may crash, freeze, or feel sluggish on these devices
 - Customers churn fast if app feels broken
@@ -362,7 +362,7 @@ Build break detection (don't dispatch to worker on lunch).
 - Define deliverables clearly: 
   - Logo + brand guidelines
   - Design system (colors, typography, spacing, components)
-  - Figma file with all customer + worker screens
+  - Figma file with all customer + technician screens
   - Design tokens exportable to Flutter
   - 2-3 rounds of revisions included
 - Consider Topmate.io, Dribbble (Indian designers), or Behance for finding talent
@@ -398,12 +398,12 @@ Build break detection (don't dispatch to worker on lunch).
 ### Reality
 - You have no ops team — you ARE the ops team
 - ITI partnerships take months to set up
-- For first 50 workers, who verifies?
+- For first 50 technicians, who verifies?
 
 ### What to Do
-- **Founder personally verifies first 50 workers** (you, in person)
+- **Founder personally verifies first 50 technicians** (you, in person)
 - Use recorded video skill verification as supplement
-- Visit workers at their existing job sites or have them demo at your home
+- Visit technicians at their existing job sites or have them demo at your home
 - This is necessary slow work, not a bug — it builds judgment
 - Document each verification (notes, photos) for audit trail
 - Partner with one local ITI by Month 9 for scaling
@@ -416,7 +416,7 @@ Build break detection (don't dispatch to worker on lunch).
 The first ₹100 of real money flowing through is genuinely terrifying. What if:
 - Payment succeeds at Razorpay but fails to record in your DB?
 - Webhook arrives twice (duplicate processing)?
-- Worker payout calculation is off by ₹1 (audit nightmare)?
+- Technician payout calculation is off by ₹1 (audit nightmare)?
 - Customer disputes via Razorpay (chargeback) before your dispute flow catches it?
 
 ### What to Do
@@ -439,7 +439,7 @@ The first ₹100 of real money flowing through is genuinely terrifying. What if:
 In practice, switching vendors mid-flight is painful:
 - Each vendor has different API shapes, error codes, retry semantics
 - Historical data is in vendor's format
-- Customer/worker has saved Razorpay-saved card → switching means re-collection
+- Customer/technician has saved Razorpay-saved card → switching means re-collection
 - Switching SMS provider mid-DLT-registration = restart approval
 
 ### What to Do
@@ -451,15 +451,15 @@ In practice, switching vendors mid-flight is painful:
 
 ---
 
-## 🔴 Worker Disintermediation Risk Higher Than I Painted
+## 🔴 Technician Disintermediation Risk Higher Than I Painted
 
 ### What I Said
 "Masked calls + warranty + bonuses prevent disintermediation."
 
 ### Reality
 - Indian customers are price-sensitive; 20% off direct vs platform is huge
-- Workers have decades of word-of-mouth networks already
-- Trust transfers fast once a customer-worker relationship is established
+- Technicians have decades of word-of-mouth networks already
+- Trust transfers fast once a customer-technician relationship is established
 - Warranty and bonuses only matter for first 1-2 jobs; after that, trust is direct
 - Platform commission is a forever-tax customers will try to avoid
 
@@ -503,7 +503,7 @@ In practice, switching vendors mid-flight is painful:
 - 20 customers × 2 jobs/month = 40 jobs/month
 - 40 jobs × 30 min ops time each (issues, support, manual review) = 20 hours/month of ops
 - You're already coding 6 hours/day
-- Now also: support, marketing, talking to workers, talking to merchants, fixing bugs
+- Now also: support, marketing, talking to technicians, talking to merchants, fixing bugs
 
 ### What to Do
 - Accept that **launch slows development to a crawl** for 1-2 months

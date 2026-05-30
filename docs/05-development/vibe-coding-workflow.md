@@ -149,7 +149,7 @@ Manages PRs, issues, repo state from Claude Code.
 
 ### 6. Playwright MCP (For Future E2E)
 
-Useful when you start testing customer/worker app flows end-to-end. Install later, not Day 1.
+Useful when you start testing customer/technician app flows end-to-end. Install later, not Day 1.
 
 ### Optional Plugins to Consider Later
 
@@ -391,11 +391,11 @@ Claude implements, you decide. Use `brainstorming` for these:
 - Currency rounding rules
 
 ### Business Edge Cases
-- Worker offline mid-job
+- Technician offline mid-job
 - Customer pays then cancels
 - Payment partial failure
 - KYC vendor down
-- Race conditions (two workers accept same job)
+- Race conditions (two technicians accept same job)
 
 For all of these, Superpowers' `verification-before-completion` skill is the safety net. Use it.
 

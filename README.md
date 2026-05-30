@@ -27,7 +27,7 @@ methodology, current phase. Keep it updated.
 - `naming-and-branding.md` — why "FixCare", app naming
 
 ### 📁 02-product
-- `core-flow.md` — end-to-end customer/worker/merchant journey + fraud locks
+- `core-flow.md` — end-to-end customer/technician/merchant journey + fraud locks
 - `pricing-model.md` — visit fee, labor, parts, revenue splits
 - `trust-system.md` — two-score model, graduated cash limits
 - `fraud-defenses.md` — every fraud vector and its block

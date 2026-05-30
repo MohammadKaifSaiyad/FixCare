@@ -173,7 +173,7 @@ When traffic warrants:
 - Session/refresh token storage
 - BullMQ queues
 - Rate limiting counters
-- Frequently-accessed data caching (worker availability)
+- Frequently-accessed data caching (technician availability)
 
 ### Configuration
 - AOF persistence enabled
