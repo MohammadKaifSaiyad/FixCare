@@ -560,29 +560,32 @@ Signs Superpowers should help (not always):
 
 ## Documenting Decisions in Real-Time
 
-Use this folder structure:
+Use this folder structure (the **canonical** convention — `CLAUDE.md`'s
+Documentation Map is the single source of truth; this mirrors it):
 
 ```
+CLAUDE.md                      # repo ROOT — main context, auto-read by Claude Code
+STATUS.md                      # repo ROOT — live phase/task/blockers
+CHANGELOG.md                   # repo ROOT — last 30 days
 docs/
-├── CLAUDE.md                  # Main context for Claude Code
-├── PROJECT.md                 # Deeper project overview
-├── CHANGELOG.md               # Last 30 days
-├── adrs/                      # Architecture Decision Records
-│   ├── 001-modular-monolith.md
-│   ├── 002-self-hosted-not-supabase.md
-│   └── 003-fastify-not-nestjs.md
-├── designs/                   # Brainstorming outputs
-│   ├── booking-flow.md
-│   ├── dispatch-algorithm.md
-│   └── payment-escrow.md
-├── plans/                     # Implementation plans
-│   ├── 2026-06-01-otp-auth.md
-│   └── 2026-06-08-booking-api.md
-└── decisions/                 # Smaller decisions
-    └── why-onesignal-over-fcm.md
+├── adrs/                      # Architecture Decision Records (expensive-to-reverse)
+│   ├── ADR-0001-monorepo.md
+│   ├── ADR-0002-trunk-based-branching.md
+│   └── ADR-0003-worker-to-technician.md
+├── designs/                   # Brainstorming specs (Superpowers writes HERE)
+│   └── YYYY-MM-DD-<feature>-design.md
+├── plans/                     # Implementation plans (Superpowers)
+│   └── YYYY-MM-DD-<feature>.md
+├── decisions/                 # Smaller decisions
+│   └── why-onesignal-over-fcm.md
+└── progress/weekly-notes/     # Weekly retros (YYYY-MM-DD.md)
 ```
 
-When you start a feature, Superpowers' brainstorming output goes to `designs/`. Implementation plans go to `plans/`. Quick decisions go to `decisions/`. Major architectural choices get ADRs.
+When you start a feature, Superpowers' brainstorming spec goes to `docs/designs/`
+(**not** the plugin default `docs/superpowers/specs/` — redirect it). Implementation
+plans go to `docs/plans/`. Quick decisions go to `docs/decisions/`. Major
+architectural choices get ADRs. `CLAUDE.md`, `STATUS.md`, and `CHANGELOG.md` live
+at the **repo root**, not under `docs/`.
 
 ---
 

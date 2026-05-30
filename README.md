@@ -54,9 +54,19 @@ methodology, current phase. Keep it updated.
 - `decision-summary.md` — one-page lookup of all decisions
 - `next-steps.md` — prioritized action list
 
-> Note: an `06-operations/` and `adrs/`, `designs/`, `plans/`, `CHANGELOG.md` will be
-> added as you build. Operational detail currently lives inside `infrastructure.md`
-> (security, monitoring, backups, costs) and `vibe-coding-workflow.md` (sustainability).
+### 📁 06-operations
+Runbooks, monitoring, security checklist, backups. Currently stubs — operational
+detail still lives inside `infrastructure.md` until these files grow.
+
+### 📁 adrs / designs / plans / decisions / progress
+- `adrs/` — Architecture Decision Records (expensive-to-reverse decisions)
+- `designs/` — Superpowers brainstorming specs
+- `plans/` — Superpowers implementation plans
+- `decisions/` — lightweight decisions (smaller than an ADR)
+- `progress/weekly-notes/` — weekly retros
+
+> `CLAUDE.md`, `STATUS.md`, and `CHANGELOG.md` live at the **repo root** (not under
+> `docs/`), because Claude Code auto-reads the root `CLAUDE.md` on session start.
 
 ---
 
@@ -78,11 +88,17 @@ methodology, current phase. Keep it updated.
 
 ## Using This With Claude Code
 
-1. Copy this whole folder into your repo as `docs/`.
-2. Move `CLAUDE.md` to the **repo root** (Claude Code auto-reads root CLAUDE.md).
-3. Install Superpowers + code-review plugins (see vibe-coding-workflow.md).
-4. Start each session: state your goal, let the methodology run, update CLAUDE.md's
-   "Current Phase" + CHANGELOG.md at the end.
+This repo **is** the monorepo (single git repo, trunk = `main`). `CLAUDE.md` is
+already at the repo root and auto-read every session.
+
+1. Install Superpowers + code-review + typescript-lsp plugins (see vibe-coding-workflow.md).
+2. Start each session: read `STATUS.md`, state your goal, cut a `feature/*` branch,
+   let the methodology run.
+3. End each session: update `STATUS.md` + `CHANGELOG.md` (weekly: a `progress/weekly-notes/` retro).
+4. Run `/code-review` before merging any branch to `main`.
+
+Component apps live under `apps/` (`backend`, `admin`, `customer`, `technician`);
+shared TS contracts under `packages/`. See `CLAUDE.md` → "Repository Layout".
 
 ---
 

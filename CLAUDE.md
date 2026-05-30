@@ -147,6 +147,28 @@ Plus **3 mandatory repair photos**: old part removed, new part packaging, new pa
 
 ---
 
+## Repository Layout (Monorepo)
+
+FixCare is a **single monorepo** (trunk = `main`). Rationale and the
+escape-hatch for splitting later: `docs/adrs/ADR-0001-monorepo.md`.
+
+```
+fixcare/
+├── CLAUDE.md            this file (auto-read every session)
+├── STATUS.md            LIVE source of truth: current phase, active task, blockers
+├── CHANGELOG.md         last 30 days of significant changes
+├── apps/
+│   ├── backend/         Node/Fastify/Prisma API        (built Months 1-2)
+│   ├── admin/           Next.js dashboard              (Month 4)
+│   ├── customer/        Flutter customer app           (Months 5-6)
+│   └── technician/      Flutter technician app         (Months 7-9)
+├── packages/
+│   └── shared-types/    API contract types (backend + admin)
+├── docs/                see Documentation Map below
+├── docker-compose.yml   local dev stack (Postgres+PostGIS, Redis)
+└── pnpm-workspace.yaml  TS workspace (backend + admin + packages; NOT Flutter)
+```
+
 ## Documentation Map
 
 ```
@@ -159,21 +181,43 @@ docs/
 ├── 04-architecture/    system-architecture, module-structure
 ├── 05-development/     build-sequence, vibe-coding-workflow,
 │                       coding-conventions, assumptions-and-doubts
-├── 06-operations/      security-checklist (see README for status)
+├── 06-operations/      security-checklist, monitoring, runbooks (see README)
 ├── 07-reference/       decision-summary, next-steps
-├── adrs/               architecture decision records (create as needed)
-├── designs/            brainstorming outputs (Superpowers)
+├── adrs/               architecture decision records (expensive-to-reverse decisions)
+├── designs/            brainstorming specs (Superpowers) — see path convention below
 ├── plans/              implementation plans (Superpowers)
-└── CHANGELOG.md        last 30 days of significant changes
+├── decisions/          lightweight decisions (smaller than an ADR)
+└── progress/
+    └── weekly-notes/   weekly retros (YYYY-MM-DD.md)
 ```
+
+### Superpowers artifact paths (project convention — do not deviate)
+
+The Superpowers skills must write to **these** locations, not their defaults:
+
+| Skill output | Writes to | (Default was) |
+|---|---|---|
+| `brainstorming` design/spec | `docs/designs/YYYY-MM-DD-<feature>-design.md` | ~~`docs/superpowers/specs/`~~ |
+| `writing-plans` plan | `docs/plans/YYYY-MM-DD-<feature>.md` | — |
+
+When `brainstorming` proposes a spec path, redirect it to `docs/designs/`.
 
 ---
 
 ## When Starting a Session
 
-1. Read this file (auto) + `CHANGELOG.md`.
+1. Read this file (auto) + `STATUS.md` + recent `CHANGELOG.md`.
 2. State the goal: "Today: build X."
-3. If new feature → let `brainstorming` run. If continuing → `executing-plans`.
-4. Build via subagents, review chunks, TDD throughout.
-5. Run `/code-review` before merge.
-6. Update "Current Phase" above + `CHANGELOG.md` at end of session.
+3. Cut a `feature/<scope>-<desc>` branch off `main` (never work on `main` directly).
+4. If new feature → let `brainstorming` run (spec → `docs/designs/`). If continuing → `executing-plans`.
+5. Build via subagents, review chunks, TDD throughout.
+6. Run `/code-review` before merging the branch back to `main`.
+
+## When Ending a Session (ritual — do not skip)
+
+1. Update `STATUS.md` (current phase, active task, last shipped, blockers, next 3).
+2. Add a `CHANGELOG.md` entry for what changed.
+3. **Weekly (Saturday):** write a retro in `docs/progress/weekly-notes/YYYY-MM-DD.md`.
+
+> This ritual is currently **manual discipline** — there is no Stop hook enforcing
+> it. If it starts slipping, add one to `.claude/settings.json`.
