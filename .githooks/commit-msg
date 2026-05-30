@@ -1,0 +1,29 @@
+#!/bin/sh
+# FixCare commit-msg hook — enforces commit hygiene.
+# Committed to the repo and activated via:  git config core.hooksPath .githooks
+# Covers ALL commits (manual, Claude, any tool) and travels to fresh clones.
+#
+# Rejects a commit if:
+#   1. The message contains a "Co-Authored-By: Claude ..." trailer.
+#   2. The commit author email is not saiyedkgn6@gmail.com.
+
+msg_file="$1"
+expected_email="saiyedkgn6@gmail.com"
+
+# 1. No Claude co-author trailer.
+if grep -qiE '^[[:space:]]*Co-Authored-By:[[:space:]]*Claude' "$msg_file"; then
+  echo "✖ commit rejected: remove the 'Co-Authored-By: Claude' trailer from the message." >&2
+  echo "  (FixCare commits are authored solely by MohammadKaifSaiyad.)" >&2
+  exit 1
+fi
+
+# 2. Author email must be the expected one.
+#    GIT_AUTHOR_EMAIL is set during commit; fall back to configured user.email.
+author_email="${GIT_AUTHOR_EMAIL:-$(git config user.email)}"
+if [ "$author_email" != "$expected_email" ]; then
+  echo "✖ commit rejected: author email is '$author_email', expected '$expected_email'." >&2
+  echo "  Fix with:  git config user.email $expected_email" >&2
+  exit 1
+fi
+
+exit 0
