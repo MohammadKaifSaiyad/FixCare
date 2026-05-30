@@ -1,0 +1,55 @@
+# ── OS / editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── Secrets ──────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Node / TypeScript (apps/backend, apps/admin, packages/*) ──
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ── Prisma ───────────────────────────────────────────────────
+# keep schema + migrations; ignore generated client
+**/prisma/generated/
+
+# ── Flutter / Dart (apps/customer, apps/technician) ──────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/build/
+**/android/.gradle/
+**/android/local.properties
+**/android/key.properties
+**/ios/Pods/
+*.iml
+*.lock.diff
+
+# ── Docker ───────────────────────────────────────────────────
+**/postgres-data/
+**/redis-data/
+
+# ── Misc ─────────────────────────────────────────────────────
+*.log
+tmp/
+.cache/
