@@ -99,14 +99,10 @@ Workflow detail: `docs/05-development/vibe-coding-workflow.md`.
 
 ## Current Phase
 
-> Update this section as the project progresses. Claude Code reads it to know where we are.
-
-**Phase:** Month 0 — Foundation / pre-development
-**Active task:** [set this each session, e.g. "Building OTP auth endpoint"]
-**Last shipped:** [nothing yet]
-**Blocked on:** [vendor approvals: Razorpay, MSG91 DLT, KYC — all applied for]
-
-Recent changes: see `CHANGELOG.md`.
+> The live phase / active task / last shipped / blockers live in **[`STATUS.md`](STATUS.md)**
+> (single source of truth — read it at session start, update it at session end).
+> Recent change history: [`CHANGELOG.md`](CHANGELOG.md). Do not duplicate phase
+> state here; this pointer is intentionally the only copy.
 
 ---
 
