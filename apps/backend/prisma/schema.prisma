@@ -1,0 +1,187 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// PostGIS is enabled for future geo work (addresses/dispatch); no geo columns in this slice.
+
+// =============================================================================
+// AUTH
+// =============================================================================
+
+model User {
+  id            String     @id @default(uuid())
+  phone         String     @unique
+  role          UserRole
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  customer      Customer?
+  technician    Technician?
+  merchant      Merchant?
+  admin         Admin?
+
+  refreshTokens RefreshToken[]
+}
+
+enum UserRole {
+  CUSTOMER
+  TECHNICIAN
+  MERCHANT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model RefreshToken {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  tokenHash    String        @unique
+  expiresAt    DateTime
+  createdAt    DateTime      @default(now())
+  revokedAt    DateTime?
+  replacedById String?       @unique
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  previous     RefreshToken? @relation("TokenRotation")
+  userAgent    String?
+  ipHash       String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// =============================================================================
+// USERS & ROLES
+// =============================================================================
+
+model Customer {
+  id        String         @id @default(uuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id])
+  name      String
+  status    CustomerStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+}
+
+model Technician {
+  id        String           @id @default(uuid())
+  userId    String           @unique
+  user      User             @relation(fields: [userId], references: [id])
+  name      String
+  skills    ServiceSkill[]
+  status    TechnicianStatus @default(PENDING)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  deletedAt DateTime?
+}
+
+model Merchant {
+  id        String         @id @default(uuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id])
+  shopName  String
+  status    MerchantStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+}
+
+model Admin {
+  id           String      @id @default(uuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id])
+  name         String
+  email        String      @unique
+  passwordHash String
+  adminLevel   AdminLevel  @default(SUPPORT)
+  status       AdminStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum TechnicianStatus {
+  PENDING
+  KYC_SUBMITTED
+  VERIFIED
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum MerchantStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+}
+
+enum AdminLevel {
+  SUPER_ADMIN
+  MANAGER
+  SUPPORT
+}
+
+enum AdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ServiceSkill {
+  AC
+  FAN
+  ELECTRICAL
+  WIRING
+  APPLIANCE
+}
+
+// =============================================================================
+// AUDIT
+// =============================================================================
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  action    AuditAction
+  actorType ActorType
+  actorId   String?
+  subjectId String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([subjectId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+enum AuditAction {
+  USER_REGISTERED
+  USER_LOGGED_IN
+  USER_SUSPENDED
+  USER_REACTIVATED
+  ADMIN_LEVEL_CHANGED
+  REFRESH_TOKEN_REUSE_DETECTED
+}

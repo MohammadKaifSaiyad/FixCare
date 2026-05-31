@@ -8,6 +8,19 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-05-31
+
+- **Backend auth + users schema slice (first real code).** Scaffolded `apps/backend`
+  (Fastify 5 + TypeScript strict + Prisma 6 + Vitest, Node 22 / pnpm 9.15.2) and
+  implemented the auth+users Prisma schema test-first: `User` (one-role-per-phone),
+  `RefreshToken` (hashed, rotation chain, sliding-expiry field), `Customer`/`Technician`/
+  `Merchant`/`Admin` 1:1 profiles, append-only `AuditLog`. 11 TDD invariant tests green;
+  first migration `20260531052019_auth_users_slice` applied to `fixcare_dev`. Built via
+  subagent-driven development with per-task spec+quality review; migration passed the
+  migration-safety review (no blocking issues). On `feature/auth-users-schema` — pending merge.
+  Design: `docs/designs/2026-05-30-auth-users-schema-design.md`; plan:
+  `docs/plans/2026-05-30-auth-users-schema.md`.
+
 ## 2026-05-30
 
 - **Build order changed (ADR-0004).** New order: Backend → Customer app → Technician

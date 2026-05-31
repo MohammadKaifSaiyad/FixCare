@@ -15,4 +15,21 @@ Deploys to `api.fixcare.in`.
 Part of the root **pnpm workspace** (see `/pnpm-workspace.yaml`). Shares API
 contract types with `apps/admin` via `packages/shared-types`.
 
-> Empty scaffold. Actual code lands in the Months 1-2 build phase.
+## Local development
+Requires the Docker data stack running from the repo root (`docker compose up -d`
+→ Postgres+PostGIS + Redis) and Node 22 (`nvm use` honours the repo `.nvmrc`).
+
+```bash
+nvm use                 # Node 22 (per .nvmrc)
+pnpm install            # from repo root or here
+pnpm db:migrate         # apply migrations to fixcare_dev
+pnpm test               # Vitest schema tests (run against fixcare_test)
+```
+
+Env: copy `.env.example` → `.env`. Tests require `TEST_DATABASE_URL` (the
+`fixcare_test` DB) and fail fast if it's unset.
+
+## Status
+Scaffolded; **auth + users schema slice** implemented (`User`, `RefreshToken`,
+`Customer`/`Technician`/`Merchant`/`Admin`, `AuditLog`) with passing tests and an
+initial migration. Auth module (OTP/JWT/refresh service + routes) is next.
