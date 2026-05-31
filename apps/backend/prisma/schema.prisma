@@ -15,7 +15,34 @@ datasource db {
 // AUTH
 // =============================================================================
 
-// (models added in later tasks)
+model User {
+  id            String     @id @default(uuid())
+  phone         String     @unique
+  role          UserRole
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  // relations added in later tasks:
+  // customer      Customer?
+  // technician    Technician?
+  // merchant      Merchant?
+  // admin         Admin?
+  // refreshTokens RefreshToken[]
+}
+
+enum UserRole {
+  CUSTOMER
+  TECHNICIAN
+  MERCHANT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
 
 // =============================================================================
 // USERS & ROLES
