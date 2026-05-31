@@ -24,11 +24,12 @@ model User {
   updatedAt     DateTime   @updatedAt
   deletedAt     DateTime?
 
+  customer      Customer?
+  technician    Technician?
+  merchant      Merchant?
+  admin         Admin?
+
   // relations added in later tasks:
-  // customer      Customer?
-  // technician    Technician?
-  // merchant      Merchant?
-  // admin         Admin?
   // refreshTokens RefreshToken[]
 }
 
@@ -47,6 +48,92 @@ enum UserStatus {
 // =============================================================================
 // USERS & ROLES
 // =============================================================================
+
+model Customer {
+  id        String         @id @default(uuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id])
+  name      String
+  status    CustomerStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+}
+
+model Technician {
+  id        String           @id @default(uuid())
+  userId    String           @unique
+  user      User             @relation(fields: [userId], references: [id])
+  name      String
+  skills    ServiceSkill[]
+  status    TechnicianStatus @default(PENDING)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  deletedAt DateTime?
+}
+
+model Merchant {
+  id        String         @id @default(uuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id])
+  shopName  String
+  status    MerchantStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+}
+
+model Admin {
+  id           String      @id @default(uuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id])
+  name         String
+  email        String      @unique
+  passwordHash String
+  adminLevel   AdminLevel  @default(SUPPORT)
+  status       AdminStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum TechnicianStatus {
+  PENDING
+  KYC_SUBMITTED
+  VERIFIED
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum MerchantStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+}
+
+enum AdminLevel {
+  SUPER_ADMIN
+  MANAGER
+  SUPPORT
+}
+
+enum AdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ServiceSkill {
+  AC
+  FAN
+  ELECTRICAL
+  WIRING
+  APPLIANCE
+}
 
 // =============================================================================
 // AUDIT
