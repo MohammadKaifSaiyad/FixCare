@@ -20,4 +20,15 @@ describe('User model', () => {
       prisma.user.create({ data: { phone: '+919800000002', role: 'TECHNICIAN' } })
     ).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
   });
+
+  it('soft-deletes a user (deletedAt set, row still present)', async () => {
+    const u = await prisma.user.create({ data: { phone: '+919800000030', role: 'CUSTOMER' } });
+    await prisma.user.update({ where: { id: u.id }, data: { deletedAt: new Date() } });
+
+    const active = await prisma.user.findMany({ where: { deletedAt: null } });
+    expect(active.find((x) => x.id === u.id)).toBeUndefined();
+
+    const all = await prisma.user.findMany();
+    expect(all.find((x) => x.id === u.id)).toBeTruthy();
+  });
 });
