@@ -155,3 +155,33 @@ enum ServiceSkill {
 // =============================================================================
 // AUDIT
 // =============================================================================
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  action    AuditAction
+  actorType ActorType
+  actorId   String?
+  subjectId String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([subjectId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+enum AuditAction {
+  USER_REGISTERED
+  USER_LOGGED_IN
+  USER_SUSPENDED
+  USER_REACTIVATED
+  ADMIN_LEVEL_CHANGED
+  REFRESH_TOKEN_REUSE_DETECTED
+}
