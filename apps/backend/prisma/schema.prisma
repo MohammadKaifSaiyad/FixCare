@@ -29,8 +29,7 @@ model User {
   merchant      Merchant?
   admin         Admin?
 
-  // relations added in later tasks:
-  // refreshTokens RefreshToken[]
+  refreshTokens RefreshToken[]
 }
 
 enum UserRole {
@@ -43,6 +42,24 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+}
+
+model RefreshToken {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  tokenHash    String        @unique
+  expiresAt    DateTime
+  createdAt    DateTime      @default(now())
+  revokedAt    DateTime?
+  replacedById String?       @unique
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  previous     RefreshToken? @relation("TokenRotation")
+  userAgent    String?
+  ipHash       String?
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // =============================================================================
