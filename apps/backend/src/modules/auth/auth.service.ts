@@ -77,7 +77,7 @@ export async function verifyOtp({ phone, otp }: VerifyOtpBody): Promise<AuthToke
       data: { action: isNew ? 'USER_REGISTERED' : 'USER_LOGGED_IN', actorType: 'USER', actorId: user!.id },
     });
     const accessToken = signAccessToken(user!.id, user!.role);
-    const refreshToken = await issueRefreshToken(tx, user!.id);
+    const { raw: refreshToken } = await issueRefreshToken(tx, user!.id);
     return { accessToken, refreshToken, user: toUserDto(user!) };
   });
 }
