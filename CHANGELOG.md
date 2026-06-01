@@ -8,6 +8,19 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-01 (sub-slice B)
+
+- **Auth sub-slice B (JWT + refresh rotation + requireAuth).** `requireAuth` Fastify
+  preHandler (verify HS256 access JWT → load user from DB per request → reject
+  suspended (403) / deleted (401) → typed `request.user`) + `assertOwnership`.
+  `POST /auth/refresh` rotates the refresh token (old `revokedAt` + `replacedById`
+  linked to new; sliding 30d) with **reuse-detection** — a revoked token replayed
+  revokes ALL the user's active tokens + writes `AuditLog REFRESH_TOKEN_REUSE_DETECTED`
+  (SYSTEM) and returns 401 (the theft response commits before the 401). `/auth/logout`
+  (revoke one) + `/auth/logout-all` (auth-gated, revoke all). Composite
+  `RefreshToken(userId, expiresAt)` index. 37 tests; security-reviewed; register→refresh→reuse
+  smoke passes. Known accepted edge: concurrent refresh double-fire (no grace window in V1).
+
 ## 2026-06-01 (later)
 
 - **Auth sub-slice A (OTP + registration).** `POST /auth/otp/send` (per-phone
