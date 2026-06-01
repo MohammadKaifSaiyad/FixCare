@@ -5,9 +5,9 @@ import { TooManyRequestsError, UnauthorizedError, ForbiddenError } from '../../s
 import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
 import { prisma } from '../../shared/database/prisma.js';
 import type { Prisma, UserRole } from '@prisma/client';
-import { signAccessToken, issueRefreshToken } from '../../shared/auth/tokens.js';
+import { signAccessToken, issueRefreshToken, hashRefreshToken } from '../../shared/auth/tokens.js';
 import { toUserDto, type AuthTokens } from './auth.types.js';
-import type { SendOtpBody, VerifyOtpBody } from './auth.schemas.js';
+import type { SendOtpBody, VerifyOtpBody, RefreshBody } from './auth.schemas.js';
 
 const otpSender = makeOtpSender();
 
@@ -79,5 +79,41 @@ export async function verifyOtp({ phone, otp }: VerifyOtpBody): Promise<AuthToke
     const accessToken = signAccessToken(user!.id, user!.role);
     const { raw: refreshToken } = await issueRefreshToken(tx, user!.id);
     return { accessToken, refreshToken, user: toUserDto(user!) };
+  });
+}
+
+export async function refreshTokens({ refreshToken }: RefreshBody): Promise<{ accessToken: string; refreshToken: string }> {
+  const tokenHash = hashRefreshToken(refreshToken);
+
+  const existing = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+  if (!existing) throw new UnauthorizedError('Invalid refresh token');
+
+  // Reuse-detection: a revoked token presented again = theft signal. These side
+  // effects must persist (not roll back with the 401), so they commit in their own
+  // transaction before we throw.
+  if (existing.revokedAt) {
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.updateMany({
+        where: { userId: existing.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: { action: 'REFRESH_TOKEN_REUSE_DETECTED', actorType: 'SYSTEM', subjectId: existing.userId },
+      });
+    });
+    throw new UnauthorizedError('Invalid refresh token');
+  }
+
+  if (existing.expiresAt < new Date()) throw new UnauthorizedError('Invalid refresh token');
+
+  // Rotate: issue new, revoke + link old.
+  // NOTE: a legitimate near-simultaneous double-fire could present the same token
+  // twice; we accept the rare re-login rather than add a grace window in V1.
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUniqueOrThrow({ where: { id: existing.userId } });
+    const { raw, id: newId } = await issueRefreshToken(tx, existing.userId);
+    await tx.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date(), replacedById: newId } });
+    const accessToken = signAccessToken(user.id, user.role);
+    return { accessToken, refreshToken: raw };
   });
 }

@@ -17,3 +17,6 @@ export const verifyOtpBody = z.object({
   otp: z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
 });
 export type VerifyOtpBody = z.infer<typeof verifyOtpBody>;
+
+export const refreshBody = z.object({ refreshToken: z.string().min(1) });
+export type RefreshBody = z.infer<typeof refreshBody>;
