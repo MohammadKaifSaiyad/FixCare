@@ -9,21 +9,25 @@ _Last updated: 2026-05-30_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Schema slice merged to `main`. Auth module
-underway, built as sub-slices 0→A→B→C on `feature/auth-module`.
+**Month 1-2 — Backend foundation.** Schema + bootstrap merged to `main`. Auth
+module underway (sub-slices 0→A→B→C). Sub-slice A on `feature/auth-otp-registration`.
 
 ## Active task
-Auth **sub-slice 0 (bootstrap)** complete on `feature/auth-module` (Fastify app +
-config + Redis + error handler + /health; 17 tests green; server boots, /health
-ok/up/up). Next: **sub-slice A — OTP + registration** (OtpSender stub, send/verify,
-createUserWithProfile invariant guard, first token issue). Design:
-[`docs/designs/2026-05-31-auth-module-design.md`].
+Auth **sub-slice A (OTP + registration)** complete on `feature/auth-otp-registration`
+(send/verify, invariant guard, token issue; 25 tests green; real send→verify smoke
+returns tokens). Next: **sub-slice B — JWT + refresh rotation + `requireAuth`**
+(`/auth/refresh` with rotation + reuse-detection, logout/logout-all, `requireAuth`
+middleware + ownership, composite `RefreshToken(userId,expiresAt)` index migration).
+Design: [`docs/designs/2026-05-31-auth-module-design.md`].
 
 ## Last shipped
-- **Auth bootstrap (sub-slice 0)** (`apps/backend`): Fastify `buildApp()`/`server.ts`,
-  Zod fail-fast `config.ts`, ioredis singleton, typed errors + global error handler
-  (no internal-detail leak), helmet/cors/rate-limit, `/health` (DB+Redis readiness).
-  17 tests green; boots + health-checks. On `feature/auth-module`.
+- **Auth sub-slice A (OTP + registration)** (`apps/backend`): `POST /auth/otp/send`
+  (per-phone rate-limit → 429, dev OTP in non-prod) + `POST /auth/otp/verify`
+  (single-use, 5-attempt cap, find-or-create via `createUserWithProfile` invariant
+  guard, AuditLog, issues access JWT + hashed RefreshToken). OtpSender interface
+  (dev stub + inert MSG91). 25 tests green; reviewed (no blocking issues). On branch.
+- **Auth bootstrap (sub-slice 0)** — merged to `main` (Fastify app, config, Redis,
+  error handler, /health; 17 tests).
 - **Auth + users schema slice** — merged to `main` (`User`, `RefreshToken`,
   Customer/Technician/Merchant/Admin, `AuditLog`; 11 tests; migration applied).
 - Monorepo structure + git initialized (`apps/`, `packages/`, docs folders).
@@ -36,11 +40,11 @@ createUserWithProfile invariant guard, first token issue). Design:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. Sub-slice A — OTP send/verify (Redis) + OtpSender stub + `createUserWithProfile`
-   invariant guard + first token issue (C/T registration).
-2. Sub-slice B — JWT + `requireAuth` + refresh rotation + reuse-detection + logout-all
-   + composite `RefreshToken(userId,expiresAt)` index migration.
-3. Sub-slice C — admin email/password (argon2id) login + seed script.
+1. Sub-slice B — `requireAuth` middleware + ownership; `/auth/refresh` rotation +
+   reuse-detection; logout/logout-all; composite `RefreshToken(userId,expiresAt)` index.
+2. Sub-slice C — admin email/password (argon2id) login + `/admin/auth/login` + seed script.
+3. After auth: profile-detail updates (name/skills) and the first protected resource
+   using `requireAuth` — then on to the next backend module (bookings/catalog).
 
 ## Deferred follow-ups (from review, pick up in the auth-module slice)
 - Composite index `RefreshToken(userId, expiresAt)` (replaces the two single-column

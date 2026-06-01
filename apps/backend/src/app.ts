@@ -3,12 +3,15 @@ import { registerSecurity } from './plugins/security.js';
 import { registerErrorHandler } from './shared/middleware/errorHandler.js';
 import { prisma } from './shared/database/prisma.js';
 import { redis } from './shared/redis/client.js';
+import { registerAuthRoutes } from './modules/auth/auth.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
   await registerSecurity(app);
   registerErrorHandler(app);
+
+  await registerAuthRoutes(app);
 
   app.get('/health', async () => {
     let db = 'down';
