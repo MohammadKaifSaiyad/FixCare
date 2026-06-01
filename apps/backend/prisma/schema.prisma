@@ -60,6 +60,7 @@ model RefreshToken {
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([userId, expiresAt])
 }
 
 // =============================================================================
