@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { ValidationError } from '../../shared/errors.js';
-import { sendOtpBody, verifyOtpBody, refreshBody } from './auth.schemas.js';
-import { sendOtp, verifyOtp, refreshTokens } from './auth.service.js';
+import { sendOtpBody, verifyOtpBody, refreshBody, logoutBody } from './auth.schemas.js';
+import { sendOtp, verifyOtp, refreshTokens, logout, logoutAll } from './auth.service.js';
+import { requireAuth } from '../../shared/middleware/auth.js';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.post('/auth/otp/send', async (request, reply) => {
@@ -23,5 +24,17 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     const result = await refreshTokens(parsed.data);
     return reply.code(200).send(result);
+  });
+
+  app.post('/auth/logout', async (request, reply) => {
+    const parsed = logoutBody.safeParse(request.body);
+    if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
+    await logout(parsed.data);
+    return reply.code(200).send({ ok: true });
+  });
+
+  app.post('/auth/logout-all', { preHandler: [requireAuth] }, async (request, reply) => {
+    await logoutAll(request.user!.id);
+    return reply.code(200).send({ ok: true });
   });
 }

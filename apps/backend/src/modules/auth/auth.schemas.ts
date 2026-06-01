@@ -20,3 +20,6 @@ export type VerifyOtpBody = z.infer<typeof verifyOtpBody>;
 
 export const refreshBody = z.object({ refreshToken: z.string().min(1) });
 export type RefreshBody = z.infer<typeof refreshBody>;
+
+export const logoutBody = z.object({ refreshToken: z.string().min(1) });
+export type LogoutBody = z.infer<typeof logoutBody>;

@@ -7,7 +7,7 @@ import { prisma } from '../../shared/database/prisma.js';
 import type { Prisma, UserRole } from '@prisma/client';
 import { signAccessToken, issueRefreshToken, hashRefreshToken } from '../../shared/auth/tokens.js';
 import { toUserDto, type AuthTokens } from './auth.types.js';
-import type { SendOtpBody, VerifyOtpBody, RefreshBody } from './auth.schemas.js';
+import type { SendOtpBody, VerifyOtpBody, RefreshBody, LogoutBody } from './auth.schemas.js';
 
 const otpSender = makeOtpSender();
 
@@ -116,4 +116,15 @@ export async function refreshTokens({ refreshToken }: RefreshBody): Promise<{ ac
     const accessToken = signAccessToken(user.id, user.role);
     return { accessToken, refreshToken: raw };
   });
+}
+
+/** Revoke a single refresh token (idempotent — no error if already gone/revoked). */
+export async function logout({ refreshToken }: LogoutBody): Promise<void> {
+  const tokenHash = hashRefreshToken(refreshToken);
+  await prisma.refreshToken.updateMany({ where: { tokenHash, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
+/** Revoke all of a user's active refresh tokens ("log out all devices"). */
+export async function logoutAll(userId: string): Promise<void> {
+  await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
 }
