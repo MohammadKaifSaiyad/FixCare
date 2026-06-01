@@ -9,21 +9,23 @@ _Last updated: 2026-05-30_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Monorepo/docs done. First backend slice
-(auth + users schema) implemented on branch `feature/auth-users-schema` — pending
-PR/merge to `main`.
+**Month 1-2 — Backend foundation.** Schema slice merged to `main`. Auth module
+underway, built as sub-slices 0→A→B→C on `feature/auth-module`.
 
 ## Active task
-Auth + users **schema slice** complete on `feature/auth-users-schema` (11 tests
-green, migration applied to `fixcare_dev`). Next: open the PR / merge, then the
-**auth module** (OTP→JWT→refresh service + routes) — the schema's service-layer
-counterpart. Design: [`docs/designs/2026-05-30-auth-users-schema-design.md`].
+Auth **sub-slice 0 (bootstrap)** complete on `feature/auth-module` (Fastify app +
+config + Redis + error handler + /health; 17 tests green; server boots, /health
+ok/up/up). Next: **sub-slice A — OTP + registration** (OtpSender stub, send/verify,
+createUserWithProfile invariant guard, first token issue). Design:
+[`docs/designs/2026-05-31-auth-module-design.md`].
 
 ## Last shipped
-- **Auth + users schema slice** (`apps/backend`): scaffolded Fastify 5 + TS strict
-  + Prisma 6 + Vitest; User, RefreshToken, Customer/Technician/Merchant/Admin,
-  AuditLog; 11 TDD invariant tests green; first migration `20260531052019_auth_users_slice`
-  applied to `fixcare_dev` (migration-reviewed, no blocking issues). On branch, not yet merged.
+- **Auth bootstrap (sub-slice 0)** (`apps/backend`): Fastify `buildApp()`/`server.ts`,
+  Zod fail-fast `config.ts`, ioredis singleton, typed errors + global error handler
+  (no internal-detail leak), helmet/cors/rate-limit, `/health` (DB+Redis readiness).
+  17 tests green; boots + health-checks. On `feature/auth-module`.
+- **Auth + users schema slice** — merged to `main` (`User`, `RefreshToken`,
+  Customer/Technician/Merchant/Admin, `AuditLog`; 11 tests; migration applied).
 - Monorepo structure + git initialized (`apps/`, `packages/`, docs folders).
 - Doc paths reconciled; Superpowers specs pinned to `docs/designs/`.
 - "Worker" → "Technician" rename across all docs.
@@ -34,10 +36,11 @@ counterpart. Design: [`docs/designs/2026-05-30-auth-users-schema-design.md`].
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. PR + merge `feature/auth-users-schema` to `main` (`/code-review` first).
-2. Auth module: OTP (Redis) send/verify → JWT issue → refresh-token rotation
-   (service + Zod routes), using the RefreshToken + AuditLog models.
-3. User-creation service enforcing the role↔profile invariant (the app-layer guard).
+1. Sub-slice A — OTP send/verify (Redis) + OtpSender stub + `createUserWithProfile`
+   invariant guard + first token issue (C/T registration).
+2. Sub-slice B — JWT + `requireAuth` + refresh rotation + reuse-detection + logout-all
+   + composite `RefreshToken(userId,expiresAt)` index migration.
+3. Sub-slice C — admin email/password (argon2id) login + seed script.
 
 ## Deferred follow-ups (from review, pick up in the auth-module slice)
 - Composite index `RefreshToken(userId, expiresAt)` (replaces the two single-column
