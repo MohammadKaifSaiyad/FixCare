@@ -8,6 +8,17 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-01
+
+- **Auth bootstrap (sub-slice 0).** Fastify app skeleton for `apps/backend`:
+  `buildApp()`/`server.ts`, Zod-validated fail-fast `config.ts`, ioredis singleton,
+  typed error classes + global error handler (unexpected errors → generic 500, no
+  internal-detail/stack leak), helmet/cors/rate-limit plugins, and `GET /health`
+  (DB + Redis readiness). Added zod/ioredis/@fastify plugins + dotenv devDep +
+  dev/build/start scripts + bootstrap env keys. 17 tests green (TDD via `app.inject()`);
+  server boots and `/health` returns ok/up/up. Built subagent-driven on
+  `feature/auth-module`. Auth-users **schema slice merged to `main`**.
+
 ## 2026-05-31
 
 - **Backend auth + users schema slice (first real code).** Scaffolded `apps/backend`
