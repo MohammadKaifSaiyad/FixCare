@@ -8,6 +8,18 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-01 (later)
+
+- **Auth sub-slice A (OTP + registration).** `POST /auth/otp/send` (per-phone
+  rate-limit → 429; dev OTP returned in non-prod, prod-gated) and `POST /auth/otp/verify`
+  (single-use OTP, 5-attempt cap, find-or-create via `createUserWithProfile` — the
+  atomic role↔profile invariant guard; existing users log in as their stored role,
+  not the request hint; writes AuditLog USER_REGISTERED/USER_LOGGED_IN; issues an
+  HS256 access JWT + a hashed RefreshToken row). Added `OtpSender` interface (dev stub
+  + inert MSG91 stub), OTP/token crypto helpers, jsonwebtoken. 25 tests green; reviewed,
+  no blocking issues; real send→verify smoke returns tokens. Token rotation/reuse-detection
+  + `requireAuth` are seamed to sub-slice B.
+
 ## 2026-06-01
 
 - **Auth bootstrap (sub-slice 0).** Fastify app skeleton for `apps/backend`:
