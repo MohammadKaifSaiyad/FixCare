@@ -9,25 +9,28 @@ _Last updated: 2026-05-30_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Schema + bootstrap merged to `main`. Auth
-module underway (sub-slices 0→A→B→C). Sub-slice A on `feature/auth-otp-registration`.
+**Month 1-2 — Backend foundation.** Schema + bootstrap + OTP (sub-slice A) merged
+to `main`. Auth module nearly complete (0,A done; B done on branch; C next).
 
 ## Active task
-Auth **sub-slice A (OTP + registration)** complete on `feature/auth-otp-registration`
-(send/verify, invariant guard, token issue; 25 tests green; real send→verify smoke
-returns tokens). Next: **sub-slice B — JWT + refresh rotation + `requireAuth`**
-(`/auth/refresh` with rotation + reuse-detection, logout/logout-all, `requireAuth`
-middleware + ownership, composite `RefreshToken(userId,expiresAt)` index migration).
-Design: [`docs/designs/2026-05-31-auth-module-design.md`].
+Auth **sub-slice B (JWT + refresh rotation + requireAuth)** complete on
+`feature/auth-jwt-refresh` (requireAuth, /auth/refresh rotation + reuse-detection,
+logout/logout-all, composite index; 37 tests green; register→refresh→reuse smoke
+passes). Next: **sub-slice C — admin email/password login** (`/admin/auth/login`,
+argon2id, seed script — the last auth sub-slice). Design:
+[`docs/designs/2026-05-31-auth-module-design.md`].
 
 ## Last shipped
-- **Auth sub-slice A (OTP + registration)** (`apps/backend`): `POST /auth/otp/send`
-  (per-phone rate-limit → 429, dev OTP in non-prod) + `POST /auth/otp/verify`
-  (single-use, 5-attempt cap, find-or-create via `createUserWithProfile` invariant
-  guard, AuditLog, issues access JWT + hashed RefreshToken). OtpSender interface
-  (dev stub + inert MSG91). 25 tests green; reviewed (no blocking issues). On branch.
+- **Auth sub-slice B (JWT + refresh + requireAuth)** (`apps/backend`): `requireAuth`
+  middleware (verify JWT → per-request user load → reject suspended/deleted → typed
+  `request.user`) + `assertOwnership`; `POST /auth/refresh` (rotation: old revoked+linked,
+  sliding 30d; reuse-detection → revoke all user tokens + `REFRESH_TOKEN_REUSE_DETECTED`
+  audit → 401); `/auth/logout` + `/auth/logout-all`; composite `RefreshToken(userId,expiresAt)`
+  index. 37 tests green; security-reviewed (no blocking issues). On branch.
+- **Auth sub-slice A (OTP + registration)** — merged to `main` (`/auth/otp/send` + `/verify`,
+  invariant guard, token issue, OtpSender stub).
 - **Auth bootstrap (sub-slice 0)** — merged to `main` (Fastify app, config, Redis,
-  error handler, /health; 17 tests).
+  error handler, /health).
 - **Auth + users schema slice** — merged to `main` (`User`, `RefreshToken`,
   Customer/Technician/Merchant/Admin, `AuditLog`; 11 tests; migration applied).
 - Monorepo structure + git initialized (`apps/`, `packages/`, docs folders).
@@ -40,19 +43,21 @@ Design: [`docs/designs/2026-05-31-auth-module-design.md`].
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. Sub-slice B — `requireAuth` middleware + ownership; `/auth/refresh` rotation +
-   reuse-detection; logout/logout-all; composite `RefreshToken(userId,expiresAt)` index.
-2. Sub-slice C — admin email/password (argon2id) login + `/admin/auth/login` + seed script.
-3. After auth: profile-detail updates (name/skills) and the first protected resource
-   using `requireAuth` — then on to the next backend module (bookings/catalog).
+1. Sub-slice C — admin email/password (argon2id) login + `/admin/auth/login` + seed
+   script (the last auth sub-slice; admins reuse the requireAuth built in B).
+2. After auth: first protected resource route using `requireAuth` + profile-detail
+   updates (technician name/skills), then the next backend module (bookings/catalog).
+3. Hardening backlog: rate-limit `/auth/refresh`; MSG91 wiring once DLT approved.
 
-## Deferred follow-ups (from review, pick up in the auth-module slice)
-- Composite index `RefreshToken(userId, expiresAt)` (replaces the two single-column
-  indexes) — confirm against real query patterns when the auth service exists.
+## Deferred follow-ups (carry forward)
+- **Rate-limit `/auth/refresh`** (review note from sub-slice B — brute-force needs a
+  valid token first, so low urgency; do with the broader rate-limit hardening pass).
 - Add a `Merchant` smoke test (the one profile without a dedicated test).
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
-- Deferred env keys (JWT_SECRET, REDIS_URL, PORT, R2_*, RAZORPAY_*) added to
-  `.env.example` when their features land; `dev`/`build`/`start` scripts when the server entry exists.
+- Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
+  their features land.
+- _(Done in B: composite RefreshToken index; reuse-detection behavioral test; dev/build/start
+  scripts; JWT/Redis env keys.)_
 
 ## Blocked on
 - Vendor approvals (parallel, applied for): Razorpay + **Razorpay Route** (2-4 wks),
