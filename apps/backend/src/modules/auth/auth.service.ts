@@ -1,13 +1,14 @@
 import { redis } from '../../shared/redis/client.js';
 import { config } from '../../shared/config.js';
 import { generateOtp, hashOtp } from '../../shared/auth/otp.js';
+import { verifyPassword } from '../../shared/auth/argon2.js';
 import { TooManyRequestsError, UnauthorizedError, ForbiddenError } from '../../shared/errors.js';
 import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
 import { prisma } from '../../shared/database/prisma.js';
 import type { Prisma, UserRole } from '@prisma/client';
 import { signAccessToken, issueRefreshToken, hashRefreshToken } from '../../shared/auth/tokens.js';
-import { toUserDto, type AuthTokens } from './auth.types.js';
-import type { SendOtpBody, VerifyOtpBody, RefreshBody, LogoutBody } from './auth.schemas.js';
+import { toUserDto, toAdminDto, type AuthTokens, type AdminAuthTokens } from './auth.types.js';
+import type { SendOtpBody, VerifyOtpBody, RefreshBody, LogoutBody, AdminLoginBody } from './auth.schemas.js';
 
 const otpSender = makeOtpSender();
 
@@ -127,4 +128,24 @@ export async function logout({ refreshToken }: LogoutBody): Promise<void> {
 /** Revoke all of a user's active refresh tokens ("log out all devices"). */
 export async function logoutAll(userId: string): Promise<void> {
   await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
+export async function adminLogin({ email, password }: AdminLoginBody): Promise<AdminAuthTokens> {
+  const admin = await prisma.admin.findUnique({ where: { email }, include: { user: true } });
+
+  // Generic 401 for BOTH unknown email and wrong password (no account enumeration).
+  const ok = admin ? await verifyPassword(admin.passwordHash, password) : false;
+  if (!admin || !ok) throw new UnauthorizedError('Invalid email or password');
+
+  // Only revealed AFTER a correct password (so the 403 doesn't leak account existence).
+  if (admin.status !== 'ACTIVE' || admin.deletedAt || admin.user.status !== 'ACTIVE' || admin.user.deletedAt) {
+    throw new ForbiddenError('Account is not active');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.auditLog.create({ data: { action: 'USER_LOGGED_IN', actorType: 'ADMIN', actorId: admin.user.id } });
+    const accessToken = signAccessToken(admin.user.id, admin.user.role);
+    const { raw: refreshToken } = await issueRefreshToken(tx, admin.user.id);
+    return { accessToken, refreshToken, admin: toAdminDto(admin) };
+  });
 }

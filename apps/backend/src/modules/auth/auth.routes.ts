@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ValidationError } from '../../shared/errors.js';
-import { sendOtpBody, verifyOtpBody, refreshBody, logoutBody } from './auth.schemas.js';
-import { sendOtp, verifyOtp, refreshTokens, logout, logoutAll } from './auth.service.js';
+import { sendOtpBody, verifyOtpBody, refreshBody, logoutBody, adminLoginBody } from './auth.schemas.js';
+import { sendOtp, verifyOtp, refreshTokens, logout, logoutAll, adminLogin } from './auth.service.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
@@ -36,5 +36,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.post('/auth/logout-all', { preHandler: [requireAuth] }, async (request, reply) => {
     await logoutAll(request.user!.id);
     return reply.code(200).send({ ok: true });
+  });
+
+  app.post('/admin/auth/login', async (request, reply) => {
+    const parsed = adminLoginBody.safeParse(request.body);
+    if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
+    const result = await adminLogin(parsed.data);
+    return reply.code(200).send(result);
   });
 }
