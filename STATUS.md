@@ -9,30 +9,31 @@ _Last updated: 2026-05-30_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Schema + bootstrap + OTP (sub-slice A) merged
-to `main`. Auth module nearly complete (0,A done; B done on branch; C next).
+**Month 1-2 — Backend foundation.** Schema + bootstrap + OTP + JWT/refresh merged
+to `main`. **Auth module COMPLETE** (sub-slice C done on branch). Next: first
+protected feature / next backend module.
 
 ## Active task
-Auth **sub-slice B (JWT + refresh rotation + requireAuth)** complete on
-`feature/auth-jwt-refresh` (requireAuth, /auth/refresh rotation + reuse-detection,
-logout/logout-all, composite index; 37 tests green; register→refresh→reuse smoke
-passes). Next: **sub-slice C — admin email/password login** (`/admin/auth/login`,
-argon2id, seed script — the last auth sub-slice). Design:
-[`docs/designs/2026-05-31-auth-module-design.md`].
+Auth **sub-slice C (admin login)** complete on `feature/auth-admin-login`
+(`/admin/auth/login` argon2id, generic 401 no-enumeration, suspended/deleted → 403,
+reuses requireAuth + token machinery; idempotent SUPER_ADMIN seed; 45 tests green;
+seeded `fixcare_dev` + admin-login smoke 200/401/401). **The auth module is now
+complete** (customer/technician OTP + admin password + full session lifecycle).
+Next: a first `requireAuth`-protected resource (e.g. technician profile-detail
+updates: name/skills), then the next backend module (bookings or catalog) — start
+that with `brainstorming`.
 
 ## Last shipped
-- **Auth sub-slice B (JWT + refresh + requireAuth)** (`apps/backend`): `requireAuth`
-  middleware (verify JWT → per-request user load → reject suspended/deleted → typed
-  `request.user`) + `assertOwnership`; `POST /auth/refresh` (rotation: old revoked+linked,
-  sliding 30d; reuse-detection → revoke all user tokens + `REFRESH_TOKEN_REUSE_DETECTED`
-  audit → 401); `/auth/logout` + `/auth/logout-all`; composite `RefreshToken(userId,expiresAt)`
-  index. 37 tests green; security-reviewed (no blocking issues). On branch.
-- **Auth sub-slice A (OTP + registration)** — merged to `main` (`/auth/otp/send` + `/verify`,
-  invariant guard, token issue, OtpSender stub).
-- **Auth bootstrap (sub-slice 0)** — merged to `main` (Fastify app, config, Redis,
-  error handler, /health).
+- **Auth sub-slice C (admin login)** (`apps/backend`): `POST /admin/auth/login`
+  (argon2id verify; identical generic 401 for unknown-email AND wrong-password — no
+  enumeration; suspended/deleted → 403; reuses access JWT + hashed RefreshToken +
+  requireAuth; AuditLog USER_LOGGED_IN/ADMIN; DTO never exposes passwordHash) +
+  idempotent `prisma/seed.ts` + `db:seed`. 45 tests green; security-reviewed. On branch.
+- **Auth sub-slices 0/A/B** — merged to `main`: bootstrap (Fastify app, config, Redis,
+  error handler, /health); OTP send/verify + registration + invariant guard; JWT +
+  refresh rotation + reuse-detection + requireAuth + logout/logout-all.
 - **Auth + users schema slice** — merged to `main` (`User`, `RefreshToken`,
-  Customer/Technician/Merchant/Admin, `AuditLog`; 11 tests; migration applied).
+  Customer/Technician/Merchant/Admin, `AuditLog`; migration applied).
 - Monorepo structure + git initialized (`apps/`, `packages/`, docs folders).
 - Doc paths reconciled; Superpowers specs pinned to `docs/designs/`.
 - "Worker" → "Technician" rename across all docs.
@@ -43,15 +44,19 @@ argon2id, seed script — the last auth sub-slice). Design:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. Sub-slice C — admin email/password (argon2id) login + `/admin/auth/login` + seed
-   script (the last auth sub-slice; admins reuse the requireAuth built in B).
-2. After auth: first protected resource route using `requireAuth` + profile-detail
-   updates (technician name/skills), then the next backend module (bookings/catalog).
-3. Hardening backlog: rate-limit `/auth/refresh`; MSG91 wiring once DLT approved.
+1. First `requireAuth`-protected resource: technician/customer profile-detail updates
+   (name, technician skills) — brainstorm → design → plan → build.
+2. Next backend module — bookings lifecycle or service catalog (per build-sequence).
+3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
+   admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved.
 
 ## Deferred follow-ups (carry forward)
-- **Rate-limit `/auth/refresh`** (review note from sub-slice B — brute-force needs a
-  valid token first, so low urgency; do with the broader rate-limit hardening pass).
+- **Auth rate-limiting hardening pass:** tighter per-IP/email limit + lockout on
+  `/admin/auth/login`; rate-limit `/auth/refresh` (review notes from B + C — both
+  need a valid token/account first, so low urgency).
+- **Admin-login timing oracle** (review note from C): unknown-email skips argon2 →
+  faster response can reveal whether an email is registered. Fix = dummy-hash verify
+  on the unknown path. Minor / V1-acceptable at single-digit admin scale.
 - Add a `Merchant` smoke test (the one profile without a dedicated test).
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
