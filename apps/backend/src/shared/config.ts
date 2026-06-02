@@ -12,6 +12,8 @@ const ConfigSchema = z.object({
   OTP_MAX_SENDS_PER_WINDOW: z.coerce.number().int().positive().default(3),
   OTP_SEND_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
   OTP_MAX_VERIFY_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  SEED_ADMIN_EMAIL: z.email().optional(),
+  SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

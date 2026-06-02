@@ -8,6 +8,21 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-02 — Auth module complete (sub-slice C)
+
+- **Auth sub-slice C (admin email/password login).** `POST /admin/auth/login`:
+  argon2id verify; **identical generic 401** for unknown-email AND wrong-password
+  (no account enumeration); suspended/soft-deleted (admin or parent user) → 403 only
+  after a correct password; reuses the access JWT + hashed RefreshToken + `requireAuth`
+  from earlier sub-slices (admin JWT carries `role: ADMIN`); `AuditLog USER_LOGGED_IN`
+  (actorType ADMIN); admin DTO never exposes `passwordHash`. Idempotent `prisma/seed.ts`
+  + `db:seed` create the first SUPER_ADMIN from env. 45 tests; security-reviewed
+  (one minor V1-acceptable timing-oracle note deferred); seeded `fixcare_dev` and
+  admin-login smoke verified (200 / 401 / 401).
+- **The auth module is now COMPLETE**: phone-OTP login + registration for
+  customer/technician, admin email/password login, and the full session lifecycle
+  (access JWT + refresh rotation with reuse-detection + logout/logout-all + requireAuth).
+
 ## 2026-06-01 (sub-slice B)
 
 - **Auth sub-slice B (JWT + refresh rotation + requireAuth).** `requireAuth` Fastify
