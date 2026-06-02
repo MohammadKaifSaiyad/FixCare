@@ -23,6 +23,7 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "^6",
+    "argon2": "^0.44.0",
     "fastify": "^5",
     "ioredis": "^5.11.0",
     "jsonwebtoken": "^9.0.3",
