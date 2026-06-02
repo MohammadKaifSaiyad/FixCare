@@ -23,3 +23,9 @@ export type RefreshBody = z.infer<typeof refreshBody>;
 
 export const logoutBody = z.object({ refreshToken: z.string().min(1) });
 export type LogoutBody = z.infer<typeof logoutBody>;
+
+export const adminLoginBody = z.object({
+  email: z.email('Invalid email'),
+  password: z.string().min(1, 'Password required'),
+});
+export type AdminLoginBody = z.infer<typeof adminLoginBody>;
