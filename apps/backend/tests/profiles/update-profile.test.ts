@@ -3,6 +3,7 @@ import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
 import { registerAndToken } from './helpers.js';
+import { signAccessToken } from '../../src/shared/auth/tokens.js';
 
 const app = await buildApp();
 afterAll(() => app.close());
@@ -59,5 +60,27 @@ describe('PATCH /me/profile', () => {
     const meta = audit!.metadata as { fields: string[] };
     expect(meta.fields).toContain('name');
     expect(JSON.stringify(meta)).not.toContain('Secret Name');
+  });
+
+  it('rejects an ADMIN caller (403) and writes nothing', async () => {
+    const user = await prisma.user.create({ data: { phone: '9800000086', role: 'ADMIN' } });
+    const token = signAccessToken(user.id, 'ADMIN');
+    const res = await app.inject({ method: 'PATCH', url: '/me/profile', headers: auth(token), payload: { name: 'x' } });
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.auditLog.count({ where: { action: 'PROFILE_UPDATED' } })).toBe(0);
+  });
+
+  it('rejects a MERCHANT caller (403)', async () => {
+    const user = await prisma.user.create({ data: { phone: '9800000087', role: 'MERCHANT' } });
+    const token = signAccessToken(user.id, 'MERCHANT');
+    const res = await app.inject({ method: 'PATCH', url: '/me/profile', headers: auth(token), payload: { name: 'x' } });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 404 when the profile is soft-deleted', async () => {
+    const { token, userId } = await registerAndToken(app, '9800000088', 'CUSTOMER');
+    await prisma.customer.update({ where: { userId }, data: { deletedAt: new Date() } });
+    const res = await app.inject({ method: 'PATCH', url: '/me/profile', headers: auth(token), payload: { name: 'Nope' } });
+    expect(res.statusCode).toBe(404);
   });
 });

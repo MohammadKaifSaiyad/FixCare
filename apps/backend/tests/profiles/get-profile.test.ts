@@ -41,6 +41,13 @@ describe('GET /me/profile', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it('rejects a MERCHANT caller (403)', async () => {
+    const user = await prisma.user.create({ data: { phone: '9800000074', role: 'MERCHANT' } });
+    const token = signAccessToken(user.id, 'MERCHANT');
+    const res = await app.inject({ method: 'GET', url: '/me/profile', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(403);
+  });
+
   it('returns 404 when the profile is soft-deleted', async () => {
     const { token, userId } = await registerAndToken(app, '9800000073', 'CUSTOMER');
     await prisma.customer.update({ where: { userId }, data: { deletedAt: new Date() } });
