@@ -4,6 +4,7 @@ import { registerErrorHandler } from './shared/middleware/errorHandler.js';
 import { prisma } from './shared/database/prisma.js';
 import { redis } from './shared/redis/client.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
+import { registerProfileRoutes } from './modules/profiles/profiles.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -12,6 +13,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerErrorHandler(app);
 
   await registerAuthRoutes(app);
+  await registerProfileRoutes(app);
 
   app.get('/health', async () => {
     let db = 'down';
