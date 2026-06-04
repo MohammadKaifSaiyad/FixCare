@@ -8,6 +8,17 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-03 — Profile-update slice (first protected feature)
+
+- **Profile-update slice.** `GET /me/profile` + `PATCH /me/profile`, both `requireAuth`-gated
+  — the first protected resource (proves the auth backbone on a real feature). Role-routed
+  from the JWT: customer edits `name`; technician edits `name` + `skills` (full-replace).
+  **Implicit ownership** (own row by `userId`, no id in the URL → no IDOR). Empty body /
+  unknown field → 400 (strict Zod, no mass-assignment); MERCHANT/ADMIN → 403; soft-deleted
+  → 404. `PROFILE_UPDATED` audit records changed field **names only** (no values / no PII).
+  New `profiles/` module; `PROFILE_UPDATED` added to the AuditAction enum (migration). 60
+  tests; security-reviewed (no code defects; added MERCHANT/ADMIN + soft-delete-PATCH coverage).
+
 ## 2026-06-02 — Auth module complete (sub-slice C)
 
 - **Auth sub-slice C (admin email/password login).** `POST /admin/auth/login`:

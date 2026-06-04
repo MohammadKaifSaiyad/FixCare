@@ -9,29 +9,26 @@ _Last updated: 2026-05-30_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Schema + bootstrap + OTP + JWT/refresh merged
-to `main`. **Auth module COMPLETE** (sub-slice C done on branch). Next: first
-protected feature / next backend module.
+**Month 1-2 — Backend foundation.** Full auth module merged to `main`. First
+protected feature (profile-update) done on branch. Next: the next backend module
+(bookings or service catalog).
 
 ## Active task
-Auth **sub-slice C (admin login)** complete on `feature/auth-admin-login`
-(`/admin/auth/login` argon2id, generic 401 no-enumeration, suspended/deleted → 403,
-reuses requireAuth + token machinery; idempotent SUPER_ADMIN seed; 45 tests green;
-seeded `fixcare_dev` + admin-login smoke 200/401/401). **The auth module is now
-complete** (customer/technician OTP + admin password + full session lifecycle).
-Next: a first `requireAuth`-protected resource (e.g. technician profile-detail
-updates: name/skills), then the next backend module (bookings or catalog) — start
-that with `brainstorming`.
+**Profile-update slice** complete on `feature/profile-update` (GET/PATCH /me/profile
+— first requireAuth-protected feature; 60 tests green; live smoke GET→PATCH works).
+Next: brainstorm the **next backend module** — likely the booking lifecycle or the
+service catalog (per `docs/05-development/build-sequence.md`). Start with `brainstorming`.
 
 ## Last shipped
-- **Auth sub-slice C (admin login)** (`apps/backend`): `POST /admin/auth/login`
-  (argon2id verify; identical generic 401 for unknown-email AND wrong-password — no
-  enumeration; suspended/deleted → 403; reuses access JWT + hashed RefreshToken +
-  requireAuth; AuditLog USER_LOGGED_IN/ADMIN; DTO never exposes passwordHash) +
-  idempotent `prisma/seed.ts` + `db:seed`. 45 tests green; security-reviewed. On branch.
-- **Auth sub-slices 0/A/B** — merged to `main`: bootstrap (Fastify app, config, Redis,
-  error handler, /health); OTP send/verify + registration + invariant guard; JWT +
-  refresh rotation + reuse-detection + requireAuth + logout/logout-all.
+- **Profile-update slice** (`apps/backend`, first protected feature): `GET /me/profile`
+  + `PATCH /me/profile`, both `requireAuth`-gated; role-routed (customer name; technician
+  name + skills full-replace); implicit ownership (own row by userId — no IDOR); empty
+  body / unknown field → 400; MERCHANT/ADMIN → 403; soft-deleted → 404; `PROFILE_UPDATED`
+  audit (field names, no values). New `profiles/` module. 60 tests; security-reviewed
+  (no code defects; added MERCHANT/ADMIN + soft-delete-PATCH coverage). On branch.
+- **Auth module COMPLETE** — merged to `main`: schema slice; bootstrap; OTP login +
+  registration; JWT + refresh rotation + reuse-detection + requireAuth + logout/logout-all;
+  admin email/password login + SUPER_ADMIN seed.
 - **Auth + users schema slice** — merged to `main` (`User`, `RefreshToken`,
   Customer/Technician/Merchant/Admin, `AuditLog`; migration applied).
 - Monorepo structure + git initialized (`apps/`, `packages/`, docs folders).
@@ -44,9 +41,10 @@ that with `brainstorming`.
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. First `requireAuth`-protected resource: technician/customer profile-detail updates
-   (name, technician skills) — brainstorm → design → plan → build.
-2. Next backend module — bookings lifecycle or service catalog (per build-sequence).
+1. Next backend module — **service catalog** (service categories + geofenced labor
+   pricing + parts master) OR **booking lifecycle** (state machine). Decide + brainstorm.
+   Per build-sequence Months 1-3.
+2. Customer addresses module (needed by booking/dispatch) + geofence zones (PostGIS).
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved.
 
