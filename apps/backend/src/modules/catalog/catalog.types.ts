@@ -1,0 +1,19 @@
+import type { Zone, ServiceCategory, Service } from '@prisma/client';
+
+export interface ZoneDto { id: string; name: string; visitFeePaise: number; status: Zone['status']; }
+export interface CategoryDto { id: string; name: string; status: ServiceCategory['status']; }
+export interface ServicePriceDto {
+  id: string;
+  name: string;
+  tier: Service['tier'];
+  categoryId: string;
+  laborPaise: number | null;   // null until a price is set for the requested zone
+  visitFeePaise: number;       // the zone's visit fee
+}
+
+export function toZoneDto(z: Zone): ZoneDto {
+  return { id: z.id, name: z.name, visitFeePaise: z.visitFeePaise, status: z.status };
+}
+export function toCategoryDto(c: ServiceCategory): CategoryDto {
+  return { id: c.id, name: c.name, status: c.status };
+}
