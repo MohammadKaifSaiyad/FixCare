@@ -186,4 +186,68 @@ enum AuditAction {
   ADMIN_LEVEL_CHANGED
   REFRESH_TOKEN_REUSE_DETECTED
   PROFILE_UPDATED
+  PRICE_CHANGED
+  CATALOG_UPDATED
+}
+
+// =============================================================================
+// CATALOG
+// =============================================================================
+model Zone {
+  id            String        @id @default(uuid())
+  name          String        @unique
+  visitFeePaise Int
+  status        CatalogStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  servicePrices ServicePrice[]
+}
+
+model ServiceCategory {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  status    CatalogStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+  services  Service[]
+}
+
+model Service {
+  id         String          @id @default(uuid())
+  categoryId String
+  category   ServiceCategory @relation(fields: [categoryId], references: [id])
+  name       String
+  tier       LaborTier
+  status     CatalogStatus   @default(ACTIVE)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime?
+  prices     ServicePrice[]
+  @@unique([categoryId, name])
+}
+
+model ServicePrice {
+  id         String   @id @default(uuid())
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id])
+  zoneId     String
+  zone       Zone     @relation(fields: [zoneId], references: [id])
+  laborPaise Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@unique([serviceId, zoneId])
+  @@index([zoneId])
+}
+
+enum CatalogStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LaborTier {
+  T1
+  T2
+  T3
 }

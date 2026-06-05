@@ -9,23 +9,25 @@ _Last updated: 2026-05-30_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Full auth module merged to `main`. First
-protected feature (profile-update) done on branch. Next: the next backend module
-(bookings or service catalog).
+**Month 1-2 — Backend foundation.** Auth + profile-update merged to `main`. Service
+catalog underway (sub-slice A done on branch; B = parts + seed next).
 
 ## Active task
-**Profile-update slice** complete on `feature/profile-update` (GET/PATCH /me/profile
-— first requireAuth-protected feature; 60 tests green; live smoke GET→PATCH works).
-Next: brainstorm the **next backend module** — likely the booking lifecycle or the
-service catalog (per `docs/05-development/build-sequence.md`). Start with `brainstorming`.
+**Service catalog sub-slice A** complete on `feature/service-catalog` (zones + categories
++ services + geofenced labor pricing; currency util; `requireAdminLevel(MANAGER)`;
+PRICE_CHANGED/CATALOG_UPDATED audit; 84 tests green; security-reviewed incl. fixing a
+dup-rename 500→409 bug). Next: **sub-slice B — parts master (`PartsCatalog`) + the catalog
+seed** (zones/services/parts). Design: [`docs/designs/2026-06-04-service-catalog-design.md`].
 
 ## Last shipped
-- **Profile-update slice** (`apps/backend`, first protected feature): `GET /me/profile`
-  + `PATCH /me/profile`, both `requireAuth`-gated; role-routed (customer name; technician
-  name + skills full-replace); implicit ownership (own row by userId — no IDOR); empty
-  body / unknown field → 400; MERCHANT/ADMIN → 403; soft-deleted → 404; `PROFILE_UPDATED`
-  audit (field names, no values). New `profiles/` module. 60 tests; security-reviewed
-  (no code defects; added MERCHANT/ADMIN + soft-delete-PATCH coverage). On branch.
+- **Service catalog sub-slice A** (`apps/backend`, first money module): `Zone` (geofenced
+  visit fee) + `ServiceCategory` + `Service` (tier) + per-zone `ServicePrice`; new
+  `shared/utils/currency.ts` (integer paise) + `requireAdminLevel(MANAGER)` RBAC (first
+  piece of rbac.ts) + `ConflictError`(409). Reads = any authed user; writes = MANAGER+;
+  price changes audited (PRICE_CHANGED from→to), catalog changes (CATALOG_UPDATED).
+  84 tests; security-reviewed (fixed updateZone 409 + audit completeness + inactive-zone
+  guard). On branch. Smoke equivalent covered by the integration suite.
+- **Profile-update slice** — merged to `main` (GET/PATCH /me/profile, first protected feature).
 - **Auth module COMPLETE** — merged to `main`: schema slice; bootstrap; OTP login +
   registration; JWT + refresh rotation + reuse-detection + requireAuth + logout/logout-all;
   admin email/password login + SUPER_ADMIN seed.
@@ -41,10 +43,10 @@ service catalog (per `docs/05-development/build-sequence.md`). Start with `brain
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. Next backend module — **service catalog** (service categories + geofenced labor
-   pricing + parts master) OR **booking lifecycle** (state machine). Decide + brainstorm.
-   Per build-sequence Months 1-3.
-2. Customer addresses module (needed by booking/dispatch) + geofence zones (PostGIS).
+1. Service catalog **sub-slice B** — `PartsCatalog` (ceiling price) + read/write endpoints
+   + idempotent catalog **seed** (zones/services/parts). Plan it next.
+2. Then: **booking lifecycle** (state machine) — references catalog services/prices; or the
+   **addresses module** (customer addresses + PostGIS address→zone resolution, needed by booking/dispatch).
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved.
 
