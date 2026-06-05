@@ -5,6 +5,7 @@ import { prisma } from './shared/database/prisma.js';
 import { redis } from './shared/redis/client.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
 import { registerProfileRoutes } from './modules/profiles/profiles.routes.js';
+import { registerCatalogRoutes } from './modules/catalog/catalog.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -14,6 +15,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await registerAuthRoutes(app);
   await registerProfileRoutes(app);
+  await registerCatalogRoutes(app);
 
   app.get('/health', async () => {
     let db = 'down';

@@ -3,7 +3,7 @@ import { signAccessToken } from '../../src/shared/auth/tokens.js';
 import type { AdminLevel } from '@prisma/client';
 
 let seq = 0;
-function uniquePhone(): string { return '93' + String(100000000 + seq++).slice(0, 8); }
+function uniquePhone(): string { return '9' + String(100000000 + seq++); }
 
 /** Create an ADMIN user + Admin profile at the given level; return a Bearer token. */
 export async function makeAdminToken(level: AdminLevel): Promise<string> {
