@@ -52,6 +52,30 @@ describe('zones + categories', () => {
     expect(list.json().find((z: { id: string }) => z.id === id)).toBeUndefined();
   });
 
+  it('renaming a zone to an existing name → 409', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'Vadodara', visitFeePaise: 14900 } });
+    const padra = (await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'Padra', visitFeePaise: 9900 } })).json();
+    const res = await app.inject({ method: 'PATCH', url: `/catalog/zones/${padra.id}`, headers: auth(mgr), payload: { name: 'Vadodara' } });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('PATCH changing both name and visitFee writes BOTH a PRICE_CHANGED and a CATALOG_UPDATED audit', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const z = (await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'Z1', visitFeePaise: 10000 } })).json();
+    await app.inject({ method: 'PATCH', url: `/catalog/zones/${z.id}`, headers: auth(mgr), payload: { name: 'Z1b', visitFeePaise: 12000 } });
+    const priceAudit = await prisma.auditLog.findFirst({ where: { action: 'PRICE_CHANGED', metadata: { path: ['entityId'], equals: z.id } } });
+    const catAudit = await prisma.auditLog.findFirst({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: z.id } } });
+    expect(priceAudit).toBeTruthy();
+    expect(catAudit).toBeTruthy();
+  });
+
+  it('rejects non-integer (float) visitFeePaise → 400', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const res = await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'Floaty', visitFeePaise: 99.5 } });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('categories: MANAGER creates, user reads', async () => {
     const mgr = await makeAdminToken('MANAGER');
     expect((await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'AC' } })).statusCode).toBe(201);

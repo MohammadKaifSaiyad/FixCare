@@ -28,15 +28,19 @@ export async function createZone(actorId: string, body: CreateZoneBody): Promise
 export async function updateZone(actorId: string, id: string, body: UpdateZoneBody): Promise<ZoneDto> {
   const existing = await prisma.zone.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError('Zone not found');
-  return prisma.$transaction(async (tx) => {
-    const zone = await tx.zone.update({ where: { id }, data: body });
-    if (body.visitFeePaise !== undefined && body.visitFeePaise !== existing.visitFeePaise) {
-      await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, field: 'visitFeePaise', fromPaise: existing.visitFeePaise, toPaise: body.visitFeePaise } } });
-    } else {
-      await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, fields: Object.keys(body) } } });
-    }
-    return toZoneDto(zone);
-  });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const zone = await tx.zone.update({ where: { id }, data: body });
+      if (body.visitFeePaise !== undefined && body.visitFeePaise !== existing.visitFeePaise) {
+        await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, field: 'visitFeePaise', fromPaise: existing.visitFeePaise, toPaise: body.visitFeePaise } } });
+      }
+      const nonPriceFields = Object.keys(body).filter((f) => f !== 'visitFeePaise');
+      if (nonPriceFields.length > 0) {
+        await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, fields: nonPriceFields } } });
+      }
+      return toZoneDto(zone);
+    });
+  } catch (e) { asConflict(e, 'A zone with that name already exists'); }
 }
 
 export async function listCategories(): Promise<CategoryDto[]> {
@@ -68,7 +72,7 @@ export async function createService(actorId: string, body: CreateServiceBody) {
 
 /** Active services for a zone: each carries its laborPaise for that zone (null if unpriced) + the zone visit fee. */
 export async function listServicesByZone(zoneId: string, categoryId?: string): Promise<ServicePriceDto[]> {
-  const zone = await prisma.zone.findFirst({ where: { id: zoneId, deletedAt: null } });
+  const zone = await prisma.zone.findFirst({ where: { id: zoneId, deletedAt: null, status: 'ACTIVE' } });
   if (!zone) throw new NotFoundError('Zone not found');
   const services = await prisma.service.findMany({
     where: { deletedAt: null, status: 'ACTIVE', ...(categoryId ? { categoryId } : {}) },

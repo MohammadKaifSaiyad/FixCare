@@ -56,6 +56,15 @@ describe('services + geofenced pricing', () => {
     expect((await app.inject({ method: 'PUT', url: `/catalog/services/${svc.id}/prices/${vad.id}`, headers: auth(sup), payload: { laborPaise: 1 } })).statusCode).toBe(403);
   });
 
+  it('GET /catalog/services for an INACTIVE/soft-deleted zone → 404', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const { vad } = await seedBase(mgr);
+    await prisma.zone.update({ where: { id: vad.id }, data: { deletedAt: new Date() } });
+    const cust = await makeCustomerToken();
+    const res = await app.inject({ method: 'GET', url: `/catalog/services?zoneId=${vad.id}`, headers: auth(cust) });
+    expect(res.statusCode).toBe(404);
+  });
+
   it('unpriced-in-zone service has laborPaise null', async () => {
     const mgr = await makeAdminToken('MANAGER');
     const { vad, svc } = await seedBase(mgr);
