@@ -8,6 +8,20 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-05 — Service catalog sub-slice A (first money module)
+
+- **Service catalog sub-slice A.** Admin-managed `Zone` (geofenced visit fee) + `ServiceCategory`
+  + `Service` (tier T1/T2/T3) + per-zone `ServicePrice` (geofenced labor). New
+  `shared/utils/currency.ts` (integer-paise helpers — the first real money module) and
+  `requireAdminLevel(MANAGER)` RBAC (the first piece of `rbac.ts`) + `ConflictError`(409).
+  Reads = any authed user; writes = MANAGER+ (SUPPORT → 403). Price changes write
+  `PRICE_CHANGED` (from→to paise) and catalog changes `CATALOG_UPDATED`, in the same
+  transaction as the mutation; geofencing proven (same service, different price per zone +
+  the zone's visit fee; unpriced-in-zone → laborPaise null). Duplicate name → 409;
+  non-integer/negative paise → 400; soft-deleted/INACTIVE hidden from reads. 84 tests;
+  security-reviewed (fixed a `updateZone` dup-rename 500→409, audit-completeness on combined
+  edits, and an inactive-zone read guard). Parts master + catalog seed = sub-slice B.
+
 ## 2026-06-03 — Profile-update slice (first protected feature)
 
 - **Profile-update slice.** `GET /me/profile` + `PATCH /me/profile`, both `requireAuth`-gated
