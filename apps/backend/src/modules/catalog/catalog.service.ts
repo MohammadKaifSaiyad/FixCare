@@ -160,12 +160,12 @@ export async function updatePart(actorId: string, id: string, body: UpdatePartBo
 }
 
 export async function listPincodes(): Promise<PincodeZoneDto[]> {
-  const rows = await prisma.pincodeZone.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, orderBy: { pincode: 'asc' } });
+  const rows = await prisma.pincodeZone.findMany({ where: { deletedAt: null }, orderBy: { pincode: 'asc' } });
   return rows.map(toPincodeZoneDto);
 }
 
 export async function createPincode(actorId: string, body: CreatePincodeBody): Promise<PincodeZoneDto> {
-  const zone = await prisma.zone.findFirst({ where: { id: body.zoneId, deletedAt: null } });
+  const zone = await prisma.zone.findFirst({ where: { id: body.zoneId, deletedAt: null, status: 'ACTIVE' } });
   if (!zone) throw new NotFoundError('Zone not found');
   try {
     return await prisma.$transaction(async (tx) => {
@@ -180,7 +180,7 @@ export async function updatePincode(actorId: string, id: string, body: UpdatePin
   const existing = await prisma.pincodeZone.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError('Pincode mapping not found');
   if (body.zoneId) {
-    const zone = await prisma.zone.findFirst({ where: { id: body.zoneId, deletedAt: null } });
+    const zone = await prisma.zone.findFirst({ where: { id: body.zoneId, deletedAt: null, status: 'ACTIVE' } });
     if (!zone) throw new NotFoundError('Zone not found');
   }
   const changedFields = (Object.keys(body) as (keyof typeof body)[])

@@ -75,14 +75,44 @@ describe('admin pincode map', () => {
     expect(patchAudit!.metadata).toMatchObject({ fromZoneId: v.id, toZoneId: p2.id });
   });
 
-  it('listPincodes excludes INACTIVE mappings (consistent with the resolver)', async () => {
+  it('listPincodes SHOWS INACTIVE mappings (admins manage them); resolver still excludes them', async () => {
     const v = await makeZone('Vadodara', 14900);
     const mgr = await makeAdminToken('MANAGER');
     const pin = (await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '391444', zoneId: v.id } })).json();
     await app.inject({ method: 'PATCH', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    // admin list still shows it (so it can be found + reactivated)
+    const list = (await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(mgr) })).json();
+    expect(list.find((p: { id: string }) => p.id === pin.id)).toBeTruthy();
+    // but it is NOT serviceable (resolver excludes INACTIVE)
     const cust = await makeCustomerToken();
-    const list = (await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(cust) })).json();
-    expect(list.find((p: { id: string }) => p.id === pin.id)).toBeUndefined();
+    const svc = await app.inject({ method: 'GET', url: '/serviceability?pincode=391444', headers: auth(cust) });
+    expect(svc.json().serviceable).toBe(false);
+  });
+
+  it('POST pincode with a trailing newline → 400', async () => {
+    const zone = await makeZone('Vadodara', 14900);
+    const mgr = await makeAdminToken('MANAGER');
+    const res = await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '390001\n', zoneId: zone.id } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('POST mapping to an INACTIVE zone → 404 (not a dead-on-arrival 201)', async () => {
+    const zone = await makeZone('Vadodara', 14900);
+    const mgr = await makeAdminToken('MANAGER');
+    // make the zone INACTIVE via the zone PATCH endpoint
+    await app.inject({ method: 'PATCH', url: `/catalog/zones/${zone.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    const res = await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '390009', zoneId: zone.id } });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('PATCH re-point to an INACTIVE zone → 404', async () => {
+    const v = await makeZone('Vadodara', 14900);
+    const dead = await makeZone('Dead', 100);
+    const mgr = await makeAdminToken('MANAGER');
+    await app.inject({ method: 'PATCH', url: `/catalog/zones/${dead.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    const pin = (await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '390010', zoneId: v.id } })).json();
+    const res = await app.inject({ method: 'PATCH', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr), payload: { zoneId: dead.id } });
+    expect(res.statusCode).toBe(404);
   });
 
   it('PATCH with no real change writes NO new audit (changed-only)', async () => {

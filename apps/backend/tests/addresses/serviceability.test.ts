@@ -79,4 +79,10 @@ describe('GET /serviceability', () => {
   it('no token → 401', async () => {
     expect((await app.inject({ method: 'GET', url: '/serviceability?pincode=390001' })).statusCode).toBe(401);
   });
+
+  it('pincode with a trailing newline → 400 (not silently unserviceable)', async () => {
+    const tok = await makeCustomerToken();
+    const res = await app.inject({ method: 'GET', url: '/serviceability?pincode=' + encodeURIComponent('390001\n'), headers: auth(tok) });
+    expect(res.statusCode).toBe(400);
+  });
 });
