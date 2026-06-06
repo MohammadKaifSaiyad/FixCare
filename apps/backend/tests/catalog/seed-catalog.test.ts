@@ -40,4 +40,15 @@ describe('seedCatalog', () => {
     await seedCatalog(prisma);
     expect(await prisma.auditLog.count()).toBe(0);
   });
+
+  it('refuses to run in production (unaudited price writes must never hit prod)', async () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await expect(seedCatalog(prisma)).rejects.toThrow(/production/);
+      expect(await prisma.zone.count()).toBe(0);
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  });
 });
