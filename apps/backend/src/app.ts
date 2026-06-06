@@ -6,6 +6,7 @@ import { redis } from './shared/redis/client.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
 import { registerProfileRoutes } from './modules/profiles/profiles.routes.js';
 import { registerCatalogRoutes } from './modules/catalog/catalog.routes.js';
+import { registerAddressesRoutes } from './modules/addresses/addresses.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -16,6 +17,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerProfileRoutes(app);
   await registerCatalogRoutes(app);
+  await registerAddressesRoutes(app);
 
   app.get('/health', async () => {
     let db = 'down';
