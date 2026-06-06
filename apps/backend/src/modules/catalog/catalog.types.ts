@@ -1,4 +1,4 @@
-import type { Zone, ServiceCategory, Service } from '@prisma/client';
+import type { Zone, ServiceCategory, Service, PartsCatalog } from '@prisma/client';
 
 export interface ZoneDto { id: string; name: string; visitFeePaise: number; status: Zone['status']; }
 export interface CategoryDto { id: string; name: string; status: ServiceCategory['status']; }
@@ -16,4 +16,17 @@ export function toZoneDto(z: Zone): ZoneDto {
 }
 export function toCategoryDto(c: ServiceCategory): CategoryDto {
   return { id: c.id, name: c.name, status: c.status };
+}
+
+export interface PartDto {
+  id: string;
+  sku: string;
+  name: string;
+  categoryId: string | null;
+  ceilingPricePaise: number;
+  status: PartsCatalog['status'];
+}
+
+export function toPartDto(p: PartsCatalog): PartDto {
+  return { id: p.id, sku: p.sku, name: p.name, categoryId: p.categoryId, ceilingPricePaise: p.ceilingPricePaise, status: p.status };
 }
