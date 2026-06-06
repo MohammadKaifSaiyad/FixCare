@@ -121,4 +121,19 @@ describe('parts catalog', () => {
     const list = (await app.inject({ method: 'GET', url: '/catalog/parts', headers: auth(cust) })).json();
     expect(list.find((p: { id: string }) => p.id === part.id)).toBeUndefined();
   });
+
+  it('GET /catalog/parts?categoryId= (empty string) → 400', async () => {
+    const cust = await makeCustomerToken();
+    const res = await app.inject({ method: 'GET', url: '/catalog/parts?categoryId=', headers: auth(cust) });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('PATCH categoryId:null detaches the part from its category', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const cat = (await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'AC' } })).json();
+    const part = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'DET', name: 'Det', categoryId: cat.id, ceilingPricePaise: 100 } })).json();
+    const res = await app.inject({ method: 'PATCH', url: `/catalog/parts/${part.id}`, headers: auth(mgr), payload: { categoryId: null } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().categoryId).toBeNull();
+  });
 });

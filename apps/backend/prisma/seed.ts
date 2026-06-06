@@ -24,10 +24,11 @@ export async function seedSuperAdmin(prisma: PrismaClient, email: string, passwo
  *  SECURITY (Golden Rule 5): because this bypasses createPart/updatePart, its price upserts are
  *  unaudited. It must NEVER be used to apply production price changes — every production price
  *  mutation must go through the catalog service so PRICE_CHANGED fires. The guard below makes that
- *  machine-enforced: seeding refuses to run when NODE_ENV is 'production'. */
+ *  machine-enforced: seeding refuses to run unless NODE_ENV is development or test. */
 export async function seedCatalog(prisma: PrismaClient): Promise<void> {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('seedCatalog must not run in production — production price changes must go through the audited catalog service (PRICE_CHANGED), not the seed.');
+  const env = process.env.NODE_ENV;
+  if (env !== 'development' && env !== 'test') {
+    throw new Error(`seedCatalog must only run in development or test (NODE_ENV=${env ?? 'unset'}) — production/staging price changes must go through the audited catalog service (PRICE_CHANGED), not the seed.`);
   }
   const vadodara = await prisma.zone.upsert({
     where: { name: 'Vadodara' }, update: { visitFeePaise: 14900 },

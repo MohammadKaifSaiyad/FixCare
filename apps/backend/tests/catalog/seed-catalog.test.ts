@@ -51,4 +51,17 @@ describe('seedCatalog', () => {
       process.env.NODE_ENV = prev;
     }
   });
+
+  it('refuses to run when NODE_ENV is not development/test (e.g. unset or staging)', async () => {
+    const prev = process.env.NODE_ENV;
+    for (const val of [undefined, 'staging', 'prod']) {
+      if (val === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = val;
+      try {
+        await expect(seedCatalog(prisma)).rejects.toThrow();
+        expect(await prisma.zone.count()).toBe(0);
+      } finally {
+        if (prev === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prev;
+      }
+    }
+  });
 });

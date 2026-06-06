@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ValidationError } from '../../shared/errors.js';
-import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, createPartBody, updatePartBody } from './catalog.schemas.js';
+import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, partsQuery, createPartBody, updatePartBody } from './catalog.schemas.js';
 import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice, listParts, createPart, updatePart } from './catalog.service.js';
 
 export async function registerCatalogRoutes(app: FastifyInstance) {
@@ -48,8 +48,9 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
   });
 
   app.get('/catalog/parts', { preHandler: [requireAuth] }, async (req, reply) => {
-    const q = req.query as { categoryId?: string };
-    return reply.send(await listParts(q.categoryId));
+    const q = partsQuery.safeParse(req.query);
+    if (!q.success) throw new ValidationError(q.error.issues[0]?.message ?? 'Invalid query');
+    return reply.send(await listParts(q.data.categoryId));
   });
 
   app.post('/catalog/parts', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
