@@ -58,7 +58,7 @@ describe('admin pincode map', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('PATCH re-points zone; returns new zoneId', async () => {
+  it('PATCH re-points zone; returns new zoneId and writes a CATALOG_UPDATED audit', async () => {
     const v = await makeZone('Vadodara', 14900);
     const p2 = await makeZone('Padra', 9900);
     const mgr = await makeAdminToken('MANAGER');
@@ -66,6 +66,20 @@ describe('admin pincode map', () => {
     const res = await app.inject({ method: 'PATCH', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr), payload: { zoneId: p2.id } });
     expect(res.statusCode).toBe(200);
     expect(res.json().zoneId).toBe(p2.id);
+    // PATCH must write its own CATALOG_UPDATED audit (in-transaction) — not just the create's.
+    const audits = await prisma.auditLog.findMany({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: pin.id } } });
+    expect(audits.length).toBe(2); // one from create, one from this PATCH
+    const patchAudit = audits.find((a) => (a.metadata as { fields?: string[] }).fields?.includes('zoneId') && !(a.metadata as { fields?: string[] }).fields?.includes('pincode'));
+    expect(patchAudit).toBeTruthy();
+  });
+
+  it('PATCH with no real change writes NO new audit (changed-only)', async () => {
+    const v = await makeZone('Vadodara', 14900);
+    const mgr = await makeAdminToken('MANAGER');
+    const pin = (await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '391443', zoneId: v.id } })).json();
+    await app.inject({ method: 'PATCH', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr), payload: { zoneId: v.id, status: 'ACTIVE' } });
+    const count = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: pin.id } } });
+    expect(count).toBe(1); // only the create audit; the no-op PATCH added none
   });
 
   it('PATCH a non-existent mapping → 404; PATCH with unknown zoneId → 404', async () => {
