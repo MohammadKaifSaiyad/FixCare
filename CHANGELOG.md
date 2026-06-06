@@ -26,10 +26,18 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   `NODE_ENV=production`** — closes the fraud vector of using the unaudited seed to apply prod price
   changes (those must go through the audited catalog service).
 - **The service-catalog module is now COMPLETE** (sub-slice A zones/labor + sub-slice B parts/seed).
-- 101 backend tests green (TDD, real Postgres + Redis). Reviewed per-task by the
-  `prisma-migration-reviewer`, `golden-rules-auditor`, and `fraud-vector-checker` agents — no
-  blocking issues. Module-wide hardening (TOCTOU pre-checks, shared paise validator, query-param
-  Zod, `ServicePrice.deletedAt`, 2-admin category approval) deferred to a future slice (see STATUS).
+- **Post-review fix pass** (`/code-review` on the branch surfaced 6 findings; all fixed subagent-driven
+  + re-audited by `golden-rules-auditor`): audit only fields/prices that **actually changed** — no more
+  phantom `CATALOG_UPDATED` on no-op edits, and no DB-write-without-audit when an unchanged price is
+  PATCHed (applied consistently to `updateZone` **and** `updatePart`); `GET /catalog/parts` `categoryId`
+  now Zod-validated (empty string → 400 instead of silently returning all parts); seed env guard
+  hardened from a `=== 'production'` blacklist to a `development|test` **whitelist** (blocks staging/unset);
+  `updatePartBody.categoryId` nullable so a part can be detached from its category; `asConflict` catch
+  paths made explicit (`return asConflict(...)`) to remove a `never`-typed fall-through risk.
+- **108 backend tests green** (TDD, real Postgres + Redis; 101 for the feature + 7 for the fixes).
+  Reviewed per-task by the `prisma-migration-reviewer`, `golden-rules-auditor`, and `fraud-vector-checker`
+  agents — no blocking issues. Remaining module-wide hardening (TOCTOU pre-checks, shared paise validator,
+  `ServicePrice.deletedAt`, 2-admin category approval) deferred to a future slice (see STATUS).
   Built subagent-driven on `feature/catalog-parts` (pending PR/merge).
 
 ## 2026-06-05 — Service catalog sub-slice A (first money module)

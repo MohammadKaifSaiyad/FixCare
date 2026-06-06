@@ -61,7 +61,7 @@ module (PostGIS address→zone resolution). Design: [`docs/designs/2026-06-04-se
    address→zone resolution, needed by booking/dispatch).
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
-   module-wide hardening** (TOCTOU pre-checks, shared paise validator, query-param Zod).
+   module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`).
 
 ## Deferred follow-ups (carry forward)
 - **Auth rate-limiting hardening pass:** tighter per-IP/email limit + lockout on
@@ -70,14 +70,17 @@ module (PostGIS address→zone resolution). Design: [`docs/designs/2026-06-04-se
 - **Admin-login timing oracle** (review note from C): unknown-email skips argon2 →
   faster response can reveal whether an email is registered. Fix = dummy-hash verify
   on the unknown path. Minor / V1-acceptable at single-digit admin scale.
-- **Catalog module-wide hardening** (raised on sub-slice B, applies to ALL catalog entities incl.
-  the already-merged A — fix all-at-once or not at all for V1): (a) existence checks + `existing`
-  reads run outside `$transaction` (TOCTOU; stale `fromPaise` risk under concurrency — V1-acceptable
-  at single-admin scale); (b) money paise validated by a local Zod schema, not `shared/utils/currency.ts`
-  — route through a shared `paiseSchema`; (c) `GET /catalog/{services,parts}` query params cast, not
-  Zod-validated. Plus **`ServicePrice` missing `deletedAt`** (financial record without soft-delete —
-  add before financial mutations write against it). Plus **2-admin approval on category create**
-  (fraud-defenses §15 — pre-existing, deferred).
+- **Catalog module-wide hardening** (still outstanding, applies to ALL catalog entities incl. the
+  already-merged A — fix all-at-once or not at all for V1): (a) existence checks + `existing` reads
+  run outside `$transaction` (TOCTOU; stale `fromPaise` under concurrency — V1-acceptable at
+  single-admin scale); (b) money paise validated by a local Zod schema, not `shared/utils/currency.ts`
+  — route through a shared `paiseSchema`. Plus **`ServicePrice` missing `deletedAt`** (financial
+  record without soft-delete — add before financial mutations write against it). Plus **2-admin
+  approval on category create** (fraud-defenses §15 — pre-existing, deferred).
+  _(Fixed in the post-review pass on sub-slice B: phantom-CATALOG_UPDATED on no-op edits + DB-write-
+  without-audit on unchanged price — now audit only real changes, applied to `updateZone` + `updatePart`;
+  `GET /catalog/parts` query Zod-validated; seed env guard → whitelist; nullable `categoryId`;
+  explicit `return asConflict(...)`.)_
 - Add a `Merchant` smoke test (the one profile without a dedicated test).
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
