@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ConflictError, NotFoundError } from '../../shared/errors.js';
-import { toZoneDto, toCategoryDto, type ZoneDto, type CategoryDto, type ServicePriceDto } from './catalog.types.js';
-import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody } from './catalog.schemas.js';
+import { toZoneDto, toCategoryDto, toPartDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto } from './catalog.types.js';
+import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody, CreatePartBody, UpdatePartBody } from './catalog.schemas.js';
 
 /** Map a Prisma unique-violation (P2002) to a 409. */
 function asConflict(err: unknown, message: string): never {
@@ -100,5 +100,49 @@ export async function upsertServicePrice(actorId: string, serviceId: string, zon
     });
     await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'ServicePrice', entityId: row.id, zoneId, field: 'laborPaise', fromPaise: existing?.laborPaise ?? null, toPaise: body.laborPaise } } });
     return { id: row.id, serviceId, zoneId, laborPaise: row.laborPaise };
+  });
+}
+
+export async function listParts(categoryId?: string): Promise<PartDto[]> {
+  const parts = await prisma.partsCatalog.findMany({
+    where: { deletedAt: null, status: 'ACTIVE', ...(categoryId ? { categoryId } : {}) },
+    orderBy: { name: 'asc' },
+  });
+  return parts.map(toPartDto);
+}
+
+export async function createPart(actorId: string, body: CreatePartBody): Promise<PartDto> {
+  if (body.categoryId) {
+    const cat = await prisma.serviceCategory.findFirst({ where: { id: body.categoryId, deletedAt: null } });
+    if (!cat) throw new NotFoundError('Category not found');
+  }
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const part = await tx.partsCatalog.create({
+        data: { sku: body.sku, name: body.name, categoryId: body.categoryId ?? null, ceilingPricePaise: body.ceilingPricePaise },
+      });
+      await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: part.id, fields: Object.keys(body) } } });
+      return toPartDto(part);
+    });
+  } catch (e) { asConflict(e, 'A part with that SKU already exists'); }
+}
+
+export async function updatePart(actorId: string, id: string, body: UpdatePartBody): Promise<PartDto> {
+  const existing = await prisma.partsCatalog.findFirst({ where: { id, deletedAt: null } });
+  if (!existing) throw new NotFoundError('Part not found');
+  if (body.categoryId) {
+    const cat = await prisma.serviceCategory.findFirst({ where: { id: body.categoryId, deletedAt: null } });
+    if (!cat) throw new NotFoundError('Category not found');
+  }
+  return prisma.$transaction(async (tx) => {
+    const part = await tx.partsCatalog.update({ where: { id }, data: body });
+    if (body.ceilingPricePaise !== undefined && body.ceilingPricePaise !== existing.ceilingPricePaise) {
+      await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: id, field: 'ceilingPricePaise', fromPaise: existing.ceilingPricePaise, toPaise: body.ceilingPricePaise } } });
+    }
+    const nonPriceFields = Object.keys(body).filter((f) => f !== 'ceilingPricePaise');
+    if (nonPriceFields.length > 0) {
+      await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: id, fields: nonPriceFields } } });
+    }
+    return toPartDto(part);
   });
 }
