@@ -71,6 +71,18 @@ describe('admin pincode map', () => {
     expect(audits.length).toBe(2); // one from create, one from this PATCH
     const patchAudit = audits.find((a) => (a.metadata as { fields?: string[] }).fields?.includes('zoneId') && !(a.metadata as { fields?: string[] }).fields?.includes('pincode'));
     expect(patchAudit).toBeTruthy();
+    // a zone re-point is price-significant → audit captures from→to zone
+    expect(patchAudit!.metadata).toMatchObject({ fromZoneId: v.id, toZoneId: p2.id });
+  });
+
+  it('listPincodes excludes INACTIVE mappings (consistent with the resolver)', async () => {
+    const v = await makeZone('Vadodara', 14900);
+    const mgr = await makeAdminToken('MANAGER');
+    const pin = (await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '391444', zoneId: v.id } })).json();
+    await app.inject({ method: 'PATCH', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    const cust = await makeCustomerToken();
+    const list = (await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(cust) })).json();
+    expect(list.find((p: { id: string }) => p.id === pin.id)).toBeUndefined();
   });
 
   it('PATCH with no real change writes NO new audit (changed-only)', async () => {

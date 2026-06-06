@@ -160,7 +160,7 @@ export async function updatePart(actorId: string, id: string, body: UpdatePartBo
 }
 
 export async function listPincodes(): Promise<PincodeZoneDto[]> {
-  const rows = await prisma.pincodeZone.findMany({ where: { deletedAt: null }, orderBy: { pincode: 'asc' } });
+  const rows = await prisma.pincodeZone.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, orderBy: { pincode: 'asc' } });
   return rows.map(toPincodeZoneDto);
 }
 
@@ -186,9 +186,14 @@ export async function updatePincode(actorId: string, id: string, body: UpdatePin
   const changedFields = (Object.keys(body) as (keyof typeof body)[])
     .filter((k) => (body as Record<string, unknown>)[k] !== (existing as Record<string, unknown>)[k]);
   if (changedFields.length === 0) return toPincodeZoneDto(existing);
+  // A zoneId re-point is price-significant (moves the pincode between zones' visit fees / labor rates),
+  // so capture the from→to zone in the audit metadata, like updateZone does for visitFeePaise.
+  const zoneChange = changedFields.includes('zoneId')
+    ? { fromZoneId: existing.zoneId, toZoneId: body.zoneId }
+    : {};
   return prisma.$transaction(async (tx) => {
     const row = await tx.pincodeZone.update({ where: { id }, data: body });
-    await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PincodeZone', entityId: id, fields: changedFields } } });
+    await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PincodeZone', entityId: id, fields: changedFields, ...zoneChange } } });
     return toPincodeZoneDto(row);
   });
 }
