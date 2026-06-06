@@ -22,25 +22,30 @@ export async function createZone(actorId: string, body: CreateZoneBody): Promise
       await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: zone.id, fields: Object.keys(body) } } });
       return toZoneDto(zone);
     });
-  } catch (e) { asConflict(e, 'A zone with that name already exists'); }
+  } catch (e) { return asConflict(e, 'A zone with that name already exists'); }
 }
 
 export async function updateZone(actorId: string, id: string, body: UpdateZoneBody): Promise<ZoneDto> {
   const existing = await prisma.zone.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError('Zone not found');
+  const priceChanged = body.visitFeePaise !== undefined && body.visitFeePaise !== existing.visitFeePaise;
+  const changedNonPriceFields = (Object.keys(body) as (keyof typeof body)[])
+    .filter((k) => k !== 'visitFeePaise' && (body as Record<string, unknown>)[k] !== (existing as Record<string, unknown>)[k]);
+  // B2: nothing actually changed — skip DB write and audit entirely
+  if (!priceChanged && changedNonPriceFields.length === 0) return toZoneDto(existing);
   try {
     return await prisma.$transaction(async (tx) => {
       const zone = await tx.zone.update({ where: { id }, data: body });
-      if (body.visitFeePaise !== undefined && body.visitFeePaise !== existing.visitFeePaise) {
+      if (priceChanged) {
         await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, field: 'visitFeePaise', fromPaise: existing.visitFeePaise, toPaise: body.visitFeePaise } } });
       }
-      const nonPriceFields = Object.keys(body).filter((f) => f !== 'visitFeePaise');
-      if (nonPriceFields.length > 0) {
-        await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, fields: nonPriceFields } } });
+      // B1: only log non-price fields that actually differ from existing
+      if (changedNonPriceFields.length > 0) {
+        await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Zone', entityId: id, fields: changedNonPriceFields } } });
       }
       return toZoneDto(zone);
     });
-  } catch (e) { asConflict(e, 'A zone with that name already exists'); }
+  } catch (e) { return asConflict(e, 'A zone with that name already exists'); }
 }
 
 export async function listCategories(): Promise<CategoryDto[]> {
@@ -55,7 +60,7 @@ export async function createCategory(actorId: string, body: CreateCategoryBody):
       await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'ServiceCategory', entityId: cat.id, fields: Object.keys(body) } } });
       return toCategoryDto(cat);
     });
-  } catch (e) { asConflict(e, 'A category with that name already exists'); }
+  } catch (e) { return asConflict(e, 'A category with that name already exists'); }
 }
 
 export async function createService(actorId: string, body: CreateServiceBody) {
@@ -67,7 +72,7 @@ export async function createService(actorId: string, body: CreateServiceBody) {
       await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Service', entityId: svc.id, fields: Object.keys(body) } } });
       return { id: svc.id, categoryId: svc.categoryId, name: svc.name, tier: svc.tier, status: svc.status };
     });
-  } catch (e) { asConflict(e, 'A service with that name already exists in this category'); }
+  } catch (e) { return asConflict(e, 'A service with that name already exists in this category'); }
 }
 
 /** Active services for a zone: each carries its laborPaise for that zone (null if unpriced) + the zone visit fee. */
@@ -124,7 +129,7 @@ export async function createPart(actorId: string, body: CreatePartBody): Promise
       await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: part.id, fields: Object.keys(body) } } });
       return toPartDto(part);
     });
-  } catch (e) { asConflict(e, 'A part with that SKU already exists'); }
+  } catch (e) { return asConflict(e, 'A part with that SKU already exists'); }
 }
 
 export async function updatePart(actorId: string, id: string, body: UpdatePartBody): Promise<PartDto> {
@@ -134,15 +139,22 @@ export async function updatePart(actorId: string, id: string, body: UpdatePartBo
     const cat = await prisma.serviceCategory.findFirst({ where: { id: body.categoryId, deletedAt: null } });
     if (!cat) throw new NotFoundError('Category not found');
   }
-  return prisma.$transaction(async (tx) => {
-    const part = await tx.partsCatalog.update({ where: { id }, data: body });
-    if (body.ceilingPricePaise !== undefined && body.ceilingPricePaise !== existing.ceilingPricePaise) {
-      await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: id, field: 'ceilingPricePaise', fromPaise: existing.ceilingPricePaise, toPaise: body.ceilingPricePaise } } });
-    }
-    const nonPriceFields = Object.keys(body).filter((f) => f !== 'ceilingPricePaise');
-    if (nonPriceFields.length > 0) {
-      await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: id, fields: nonPriceFields } } });
-    }
-    return toPartDto(part);
-  });
+  const priceChanged = body.ceilingPricePaise !== undefined && body.ceilingPricePaise !== existing.ceilingPricePaise;
+  const changedNonPriceFields = (Object.keys(body) as (keyof typeof body)[])
+    .filter((k) => k !== 'ceilingPricePaise' && (body as Record<string, unknown>)[k] !== (existing as Record<string, unknown>)[k]);
+  // B2: nothing actually changed — skip DB write and audit entirely
+  if (!priceChanged && changedNonPriceFields.length === 0) return toPartDto(existing);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const part = await tx.partsCatalog.update({ where: { id }, data: body });
+      if (priceChanged) {
+        await tx.auditLog.create({ data: { action: 'PRICE_CHANGED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: id, field: 'ceilingPricePaise', fromPaise: existing.ceilingPricePaise, toPaise: body.ceilingPricePaise } } });
+      }
+      // B1: only log non-price fields that actually differ from existing
+      if (changedNonPriceFields.length > 0) {
+        await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PartsCatalog', entityId: id, fields: changedNonPriceFields } } });
+      }
+      return toPartDto(part);
+    });
+  } catch (e) { return asConflict(e, 'A part with that SKU already exists'); }
 }

@@ -83,4 +83,18 @@ describe('zones + categories', () => {
     const list = await app.inject({ method: 'GET', url: '/catalog/categories', headers: auth(cust) });
     expect(list.json().some((c: { name: string }) => c.name === 'AC')).toBe(true);
   });
+
+  // B1 (zone): unchanged name must NOT produce a phantom CATALOG_UPDATED
+  it('PATCH with unchanged zone name does not write a new CATALOG_UPDATED audit', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const z = (await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'SameZone', visitFeePaise: 10000 } })).json();
+    // baseline: create wrote 1 CATALOG_UPDATED for this zone
+    const beforeCount = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: z.id } } });
+    expect(beforeCount).toBe(1);
+    // PATCH with the SAME name — nothing really changes
+    const res = await app.inject({ method: 'PATCH', url: `/catalog/zones/${z.id}`, headers: auth(mgr), payload: { name: 'SameZone' } });
+    expect(res.statusCode).toBe(200);
+    const afterCount = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: z.id } } });
+    expect(afterCount).toBe(1); // must NOT increment
+  });
 });

@@ -136,4 +136,44 @@ describe('parts catalog', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().categoryId).toBeNull();
   });
+
+  // B1: unchanged name must NOT produce a phantom CATALOG_UPDATED
+  it('PATCH with unchanged name does not write a new CATALOG_UPDATED audit', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const part = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'B1-NAME', name: 'SameName', ceilingPricePaise: 1000 } })).json();
+    // baseline: create wrote 1 CATALOG_UPDATED
+    const beforeCount = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: part.id } } });
+    expect(beforeCount).toBe(1);
+    // PATCH with the SAME name — nothing really changes
+    const res = await app.inject({ method: 'PATCH', url: `/catalog/parts/${part.id}`, headers: auth(mgr), payload: { name: 'SameName' } });
+    expect(res.statusCode).toBe(200);
+    const afterCount = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: part.id } } });
+    expect(afterCount).toBe(1); // must NOT increment
+  });
+
+  // B2: unchanged ceilingPricePaise must produce NO PRICE_CHANGED and NO new CATALOG_UPDATED
+  it('PATCH with unchanged ceilingPricePaise writes no audit rows', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const part = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'B2-PRICE', name: 'SamePrice', ceilingPricePaise: 5000 } })).json();
+    const priceCountBefore = await prisma.auditLog.count({ where: { action: 'PRICE_CHANGED', metadata: { path: ['entityId'], equals: part.id } } });
+    const catCountBefore = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: part.id } } });
+    // PATCH with the SAME ceilingPricePaise
+    const res = await app.inject({ method: 'PATCH', url: `/catalog/parts/${part.id}`, headers: auth(mgr), payload: { ceilingPricePaise: 5000 } });
+    expect(res.statusCode).toBe(200);
+    const priceCountAfter = await prisma.auditLog.count({ where: { action: 'PRICE_CHANGED', metadata: { path: ['entityId'], equals: part.id } } });
+    const catCountAfter = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: part.id } } });
+    expect(priceCountAfter).toBe(priceCountBefore); // no PRICE_CHANGED
+    expect(catCountAfter).toBe(catCountBefore);     // no CATALOG_UPDATED
+  });
+
+  // Verify genuinely changed name still writes a CATALOG_UPDATED (regression guard for B1)
+  it('PATCH with a genuinely different name writes exactly one new CATALOG_UPDATED', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const part = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'B1-NEWNAME', name: 'OldName', ceilingPricePaise: 1000 } })).json();
+    const beforeCount = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: part.id } } });
+    expect(beforeCount).toBe(1);
+    await app.inject({ method: 'PATCH', url: `/catalog/parts/${part.id}`, headers: auth(mgr), payload: { name: 'NewName' } });
+    const afterCount = await prisma.auditLog.count({ where: { action: 'CATALOG_UPDATED', metadata: { path: ['entityId'], equals: part.id } } });
+    expect(afterCount).toBe(2); // create + this change
+  });
 });
