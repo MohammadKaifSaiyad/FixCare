@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ValidationError } from '../../shared/errors.js';
-import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody } from './catalog.schemas.js';
-import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice } from './catalog.service.js';
+import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, partsQuery, createPartBody, updatePartBody } from './catalog.schemas.js';
+import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice, listParts, createPart, updatePart } from './catalog.service.js';
 
 export async function registerCatalogRoutes(app: FastifyInstance) {
   app.get('/catalog/zones', { preHandler: [requireAuth] }, async (_req, reply) => reply.send(await listZones()));
@@ -45,5 +45,23 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     const params = req.params as { id: string; zoneId: string };
     return reply.send(await upsertServicePrice(req.user!.id, params.id, params.zoneId, p.data));
+  });
+
+  app.get('/catalog/parts', { preHandler: [requireAuth] }, async (req, reply) => {
+    const q = partsQuery.safeParse(req.query);
+    if (!q.success) throw new ValidationError(q.error.issues[0]?.message ?? 'Invalid query');
+    return reply.send(await listParts(q.data.categoryId));
+  });
+
+  app.post('/catalog/parts', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    const p = createPartBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.code(201).send(await createPart(req.user!.id, p.data));
+  });
+
+  app.patch('/catalog/parts/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    const p = updatePartBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await updatePart(req.user!.id, (req.params as { id: string }).id, p.data));
   });
 }

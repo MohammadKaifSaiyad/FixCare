@@ -4,22 +4,34 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-05-30_
+_Last updated: 2026-06-06_
 
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Auth + profile-update merged to `main`. Service
-catalog underway (sub-slice A done on branch; B = parts + seed next).
+**Month 1-2 — Backend foundation.** Auth + profile-update merged to `main`. **Service
+catalog module COMPLETE** (sub-slice A merged; sub-slice B — parts + seed — done on
+`feature/catalog-parts`, pending PR/merge).
 
 ## Active task
-**Service catalog sub-slice A** complete on `feature/service-catalog` (zones + categories
-+ services + geofenced labor pricing; currency util; `requireAdminLevel(MANAGER)`;
-PRICE_CHANGED/CATALOG_UPDATED audit; 84 tests green; security-reviewed incl. fixing a
-dup-rename 500→409 bug). Next: **sub-slice B — parts master (`PartsCatalog`) + the catalog
-seed** (zones/services/parts). Design: [`docs/designs/2026-06-04-service-catalog-design.md`].
+**Service catalog sub-slice B** complete on `feature/catalog-parts` (PartsCatalog model +
+read/write endpoints + idempotent catalog seed; 101 tests green; reviewed by the migration,
+golden-rules, and fraud-vector agents — no blocking issues; added a production guard on the
+seed so unaudited price writes can't reach prod). Pending PR → `/code-review` → `main`.
+**Next:** booking lifecycle (state machine, reads catalog services/prices) or the addresses
+module (PostGIS address→zone resolution). Design: [`docs/designs/2026-06-04-service-catalog-design.md`].
 
 ## Last shipped
+- **Service catalog sub-slice B** (`apps/backend`, completes the catalog module): `PartsCatalog`
+  (platform-set zone-agnostic `ceilingPricePaise` Int, optional category, unique `sku`,
+  soft-delete) + migration; `GET /catalog/parts` (any authed user, ACTIVE-only, categoryId
+  filter) + `POST`/`PATCH /catalog/parts` (MANAGER+; dup-sku 409, neg/float paise 400,
+  PRICE_CHANGED on ceiling change / CATALOG_UPDATED otherwise — in-transaction; soft-delete
+  hides from reads; 404 on missing/soft-deleted part or unknown category). Idempotent
+  `seedCatalog` (Vadodara ₹149 / Padra ₹99 + 2 categories + 2 services + 4 geofenced prices
+  + 2 parts; upsert-keyed; writes no audit; refuses to run in production). 101 tests green.
+  Reviewed by prisma-migration-reviewer / golden-rules-auditor / fraud-vector-checker — no
+  blocking issues; module-wide hardening items deferred (see below). On branch.
 - **Service catalog sub-slice A** (`apps/backend`, first money module): `Zone` (geofenced
   visit fee) + `ServiceCategory` + `Service` (tier) + per-zone `ServicePrice`; new
   `shared/utils/currency.ts` (integer paise) + `requireAdminLevel(MANAGER)` RBAC (first
@@ -43,12 +55,13 @@ seed** (zones/services/parts). Design: [`docs/designs/2026-06-04-service-catalog
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. Service catalog **sub-slice B** — `PartsCatalog` (ceiling price) + read/write endpoints
-   + idempotent catalog **seed** (zones/services/parts). Plan it next.
-2. Then: **booking lifecycle** (state machine) — references catalog services/prices; or the
-   **addresses module** (customer addresses + PostGIS address→zone resolution, needed by booking/dispatch).
+1. **PR + `/code-review` + merge** `feature/catalog-parts` → `main` (sub-slice B).
+2. Then: **booking lifecycle** (state machine) — references catalog services/prices + needs a
+   booking-time price **snapshot**; or the **addresses module** (customer addresses + PostGIS
+   address→zone resolution, needed by booking/dispatch).
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
-   admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved.
+   admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
+   module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`).
 
 ## Deferred follow-ups (carry forward)
 - **Auth rate-limiting hardening pass:** tighter per-IP/email limit + lockout on
@@ -57,6 +70,17 @@ seed** (zones/services/parts). Design: [`docs/designs/2026-06-04-service-catalog
 - **Admin-login timing oracle** (review note from C): unknown-email skips argon2 →
   faster response can reveal whether an email is registered. Fix = dummy-hash verify
   on the unknown path. Minor / V1-acceptable at single-digit admin scale.
+- **Catalog module-wide hardening** (still outstanding, applies to ALL catalog entities incl. the
+  already-merged A — fix all-at-once or not at all for V1): (a) existence checks + `existing` reads
+  run outside `$transaction` (TOCTOU; stale `fromPaise` under concurrency — V1-acceptable at
+  single-admin scale); (b) money paise validated by a local Zod schema, not `shared/utils/currency.ts`
+  — route through a shared `paiseSchema`. Plus **`ServicePrice` missing `deletedAt`** (financial
+  record without soft-delete — add before financial mutations write against it). Plus **2-admin
+  approval on category create** (fraud-defenses §15 — pre-existing, deferred).
+  _(Fixed in the post-review pass on sub-slice B: phantom-CATALOG_UPDATED on no-op edits + DB-write-
+  without-audit on unchanged price — now audit only real changes, applied to `updateZone` + `updatePart`;
+  `GET /catalog/parts` query Zod-validated; seed env guard → whitelist; nullable `categoryId`;
+  explicit `return asConflict(...)`.)_
 - Add a `Merchant` smoke test (the one profile without a dedicated test).
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when

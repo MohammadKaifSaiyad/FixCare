@@ -20,3 +20,28 @@ export type CreateServiceBody = z.infer<typeof createServiceBody>;
 
 export const upsertPriceBody = z.object({ laborPaise: paise }).strict();
 export type UpsertPriceBody = z.infer<typeof upsertPriceBody>;
+
+export const partsQuery = z.object({ categoryId: z.string().min(1).optional() }).strict();
+export type PartsQuery = z.infer<typeof partsQuery>;
+
+export const createPartBody = z
+  .object({
+    sku: z.string().min(1),
+    name: z.string().min(1),
+    categoryId: z.string().min(1).optional(),
+    ceilingPricePaise: paise,
+  })
+  .strict();
+export type CreatePartBody = z.infer<typeof createPartBody>;
+
+export const updatePartBody = z
+  .object({
+    name: z.string().min(1),
+    categoryId: z.string().min(1).nullable(),
+    ceilingPricePaise: paise,
+    status: z.enum(['ACTIVE', 'INACTIVE']),
+  })
+  .partial()
+  .strict()
+  .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
+export type UpdatePartBody = z.infer<typeof updatePartBody>;

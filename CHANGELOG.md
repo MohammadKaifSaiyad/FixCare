@@ -8,6 +8,38 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-06 — Service catalog sub-slice B (parts master + seed) — catalog module COMPLETE
+
+- **Parts master.** `PartsCatalog` model — platform-set, **zone-agnostic** ceiling price
+  (`ceilingPricePaise` Int paise), optional `categoryId` FK (ON DELETE SET NULL), unique `sku`,
+  `status` + soft-delete, `@@index([categoryId])`; additive migration. `GET /catalog/parts[?categoryId=]`
+  (any authed user; ACTIVE + non-deleted only; DTO out, never raw Prisma) and `POST`/`PATCH
+  /catalog/parts` (MANAGER+ via `requireAdminLevel`). Writes audit in the same transaction:
+  `PRICE_CHANGED` (from→to paise) when the ceiling changes, `CATALOG_UPDATED` otherwise. Duplicate
+  `sku` → 409; negative/float paise → 400; missing/soft-deleted part or unknown category → 404;
+  `sku` immutable (absent from the update schema). Golden Rule 4 (catalog-prices-only) enforced
+  structurally — technician/customer tokens categorically rejected at the RBAC gate.
+- **Idempotent catalog seed.** `seedCatalog` (alongside the SUPER_ADMIN seed, wired into `db:seed`):
+  Vadodara (₹149) / Padra (₹99) zones + AC/Fan categories + 2 services + 4 **geofenced** prices
+  (same service, different price per zone) + 2 parts. Upsert-keyed on unique fields → running it
+  N times never duplicates; writes **no** audit logs (system bootstrap). **Refuses to run when
+  `NODE_ENV=production`** — closes the fraud vector of using the unaudited seed to apply prod price
+  changes (those must go through the audited catalog service).
+- **The service-catalog module is now COMPLETE** (sub-slice A zones/labor + sub-slice B parts/seed).
+- **Post-review fix pass** (`/code-review` on the branch surfaced 6 findings; all fixed subagent-driven
+  + re-audited by `golden-rules-auditor`): audit only fields/prices that **actually changed** — no more
+  phantom `CATALOG_UPDATED` on no-op edits, and no DB-write-without-audit when an unchanged price is
+  PATCHed (applied consistently to `updateZone` **and** `updatePart`); `GET /catalog/parts` `categoryId`
+  now Zod-validated (empty string → 400 instead of silently returning all parts); seed env guard
+  hardened from a `=== 'production'` blacklist to a `development|test` **whitelist** (blocks staging/unset);
+  `updatePartBody.categoryId` nullable so a part can be detached from its category; `asConflict` catch
+  paths made explicit (`return asConflict(...)`) to remove a `never`-typed fall-through risk.
+- **108 backend tests green** (TDD, real Postgres + Redis; 101 for the feature + 7 for the fixes).
+  Reviewed per-task by the `prisma-migration-reviewer`, `golden-rules-auditor`, and `fraud-vector-checker`
+  agents — no blocking issues. Remaining module-wide hardening (TOCTOU pre-checks, shared paise validator,
+  `ServicePrice.deletedAt`, 2-admin category approval) deferred to a future slice (see STATUS).
+  Built subagent-driven on `feature/catalog-parts` (pending PR/merge).
+
 ## 2026-06-05 — Service catalog sub-slice A (first money module)
 
 - **Service catalog sub-slice A.** Admin-managed `Zone` (geofenced visit fee) + `ServiceCategory`
