@@ -9,19 +9,28 @@ _Last updated: 2026-06-06_
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Auth + profile-update merged to `main`. **Service
-catalog module COMPLETE** (sub-slice A merged; sub-slice B — parts + seed — done on
-`feature/catalog-parts`, pending PR/merge).
+**Month 1-2 — Backend foundation.** Auth + profile-update + **service catalog module
+(complete)** merged to `main`. **Addresses module underway** — Slice A (pincode→zone map +
+serviceability) done on `feature/addresses-module`; Slice B (customer address CRUD) next.
 
 ## Active task
-**Service catalog sub-slice B** complete on `feature/catalog-parts` (PartsCatalog model +
-read/write endpoints + idempotent catalog seed; 101 tests green; reviewed by the migration,
-golden-rules, and fraud-vector agents — no blocking issues; added a production guard on the
-seed so unaudited price writes can't reach prod). Pending PR → `/code-review` → `main`.
-**Next:** booking lifecycle (state machine, reads catalog services/prices) or the addresses
-module (PostGIS address→zone resolution). Design: [`docs/designs/2026-06-04-service-catalog-design.md`].
+**Addresses Slice A** complete on `feature/addresses-module` (PincodeZone map + `resolvePincode`
++ `GET /serviceability` + admin `/catalog/pincodes` CRUD + seeded Vadodara/Padra pincodes;
+127 tests green; reviewed by the migration / golden-rules / fraud-vector agents — no blocking
+issues, fixed: PATCH audit now captures from→to zone + `listPincodes` excludes INACTIVE).
+Pending PR → `/code-review` → `main`. **Next:** Addresses **Slice B** — customer `/me/addresses`
+CRUD (owner-scoped, default-address, serviceability baked into the DTO), then the booking
+lifecycle. Design: [`docs/designs/2026-06-06-addresses-module-design.md`];
+plan: [`docs/plans/2026-06-06-addresses-slice-a-pincode-zone.md`].
 
 ## Last shipped
+- **Addresses Slice A** (`apps/backend`): `PincodeZone` model + migration (admin-managed
+  pincode→zone map, reuses `CatalogStatus`); `resolvePincode` resolver (live map; INACTIVE/
+  soft-deleted mapping *or* zone → unserviceable); `GET /serviceability?pincode=` (6-digit Zod,
+  any authed user, explicit `{serviceable, zone, message}` for app UX); admin `GET/POST/PATCH/
+  DELETE /catalog/pincodes` (MANAGER+, `CATALOG_UPDATED` audit in-tx, dup→409, unknown-zone→404,
+  changed-only PATCH capturing from→to zone); seeded 3 Vadodara/Padra pincodes (idempotent).
+  127 tests; reviewed by all three agents — no blocking issues. On branch.
 - **Service catalog sub-slice B** (`apps/backend`, completes the catalog module): `PartsCatalog`
   (platform-set zone-agnostic `ceilingPricePaise` Int, optional category, unique `sku`,
   soft-delete) + migration; `GET /catalog/parts` (any authed user, ACTIVE-only, categoryId
@@ -55,13 +64,15 @@ module (PostGIS address→zone resolution). Design: [`docs/designs/2026-06-04-se
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/catalog-parts` → `main` (sub-slice B).
-2. Then: **booking lifecycle** (state machine) — references catalog services/prices + needs a
-   booking-time price **snapshot**; or the **addresses module** (customer addresses + PostGIS
-   address→zone resolution, needed by booking/dispatch).
+1. **PR + `/code-review` + merge** `feature/addresses-module` → `main` (addresses Slice A).
+2. **Addresses Slice B** — customer `/me/addresses` CRUD (owner-scoped, one-default-enforced,
+   resolve-at-save + serviceability in every DTO; CUSTOMER-only). Own plan + PR. Then the
+   **booking lifecycle** (state machine; MUST snapshot zone + catalog prices at booking creation
+   — see [[booking-zone-price-snapshot]]).
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
-   module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`).
+   module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
+   Zone-soft-delete → orphaned PincodeZone guard).
 
 ## Deferred follow-ups (carry forward)
 - **Auth rate-limiting hardening pass:** tighter per-IP/email limit + lockout on
