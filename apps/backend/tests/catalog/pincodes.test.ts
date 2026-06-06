@@ -15,16 +15,18 @@ async function makeZone(name: string, fee: number) {
 }
 
 describe('admin pincode map', () => {
-  it('MANAGER creates a mapping; any authed user lists it', async () => {
+  it('MANAGER creates a mapping and lists it; a customer cannot list (403 — use /serviceability)', async () => {
     const zone = await makeZone('Vadodara', 14900);
     const mgr = await makeAdminToken('MANAGER');
     const create = await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '390001', zoneId: zone.id } });
     expect(create.statusCode).toBe(201);
     expect(create.json()).toMatchObject({ pincode: '390001', zoneId: zone.id, status: 'ACTIVE' });
-    const cust = await makeCustomerToken();
-    const list = await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(cust) });
+    const list = await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(mgr) });
     expect(list.statusCode).toBe(200);
     expect(list.json().some((p: { pincode: string }) => p.pincode === '390001')).toBe(true);
+    // the raw coverage map is admin-only (MANAGER+); customers use GET /serviceability
+    const cust = await makeCustomerToken();
+    expect((await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(cust) })).statusCode).toBe(403);
   });
 
   it('SUPPORT cannot create a mapping → 403; create writes a CATALOG_UPDATED audit', async () => {
@@ -137,8 +139,7 @@ describe('admin pincode map', () => {
     const mgr = await makeAdminToken('MANAGER');
     const pin = (await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '391442', zoneId: v.id } })).json();
     expect((await app.inject({ method: 'DELETE', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr) })).statusCode).toBe(204);
-    const cust = await makeCustomerToken();
-    const list = (await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(cust) })).json();
+    const list = (await app.inject({ method: 'GET', url: '/catalog/pincodes', headers: auth(mgr) })).json();
     expect(list.find((p: { id: string }) => p.id === pin.id)).toBeUndefined();
   });
 });

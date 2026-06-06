@@ -65,7 +65,9 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
     return reply.send(await updatePart(req.user!.id, (req.params as { id: string }).id, p.data));
   });
 
-  app.get('/catalog/pincodes', { preHandler: [requireAuth] }, async (_req, reply) => reply.send(await listPincodes()));
+  // Admin coverage-management view (MANAGER+ per the design) — shows INACTIVE rows too, so they can be
+  // found + reactivated. Customers never list the raw map; they use GET /serviceability instead.
+  app.get('/catalog/pincodes', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (_req, reply) => reply.send(await listPincodes()));
 
   app.post('/catalog/pincodes', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
     const p = createPincodeBody.safeParse(req.body);
