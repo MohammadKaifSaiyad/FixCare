@@ -212,6 +212,7 @@ model ServiceCategory {
   updatedAt DateTime      @updatedAt
   deletedAt DateTime?
   services  Service[]
+  parts     PartsCatalog[]
 }
 
 model Service {
@@ -239,6 +240,20 @@ model ServicePrice {
   updatedAt  DateTime @updatedAt
   @@unique([serviceId, zoneId])
   @@index([zoneId])
+}
+
+model PartsCatalog {
+  id                String           @id @default(uuid())
+  sku               String           @unique
+  name              String
+  categoryId        String?
+  category          ServiceCategory? @relation(fields: [categoryId], references: [id])
+  ceilingPricePaise Int                                 // platform-set catalog price (zone-agnostic)
+  status            CatalogStatus    @default(ACTIVE)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+  @@index([categoryId])
 }
 
 enum CatalogStatus {
