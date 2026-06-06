@@ -17,6 +17,59 @@ export async function seedSuperAdmin(prisma: PrismaClient, email: string, passwo
   console.log(`[seed] created SUPER_ADMIN ${email}`);
 }
 
+/** Idempotently seed the Vadodara/Padra zones + sample categories/services/prices + parts.
+ *  Uses upsert on unique keys so repeated runs do not duplicate. No audit logs (system bootstrap). */
+export async function seedCatalog(prisma: PrismaClient): Promise<void> {
+  const vadodara = await prisma.zone.upsert({
+    where: { name: 'Vadodara' }, update: { visitFeePaise: 14900 },
+    create: { name: 'Vadodara', visitFeePaise: 14900 },
+  });
+  const padra = await prisma.zone.upsert({
+    where: { name: 'Padra' }, update: { visitFeePaise: 9900 },
+    create: { name: 'Padra', visitFeePaise: 9900 },
+  });
+
+  const ac = await prisma.serviceCategory.upsert({ where: { name: 'AC' }, update: {}, create: { name: 'AC' } });
+  const fan = await prisma.serviceCategory.upsert({ where: { name: 'Fan' }, update: {}, create: { name: 'Fan' } });
+
+  const gasRefill = await prisma.service.upsert({
+    where: { categoryId_name: { categoryId: ac.id, name: 'AC gas refill' } },
+    update: {}, create: { categoryId: ac.id, name: 'AC gas refill', tier: 'T2' },
+  });
+  const fanRepair = await prisma.service.upsert({
+    where: { categoryId_name: { categoryId: fan.id, name: 'Ceiling fan repair' } },
+    update: {}, create: { categoryId: fan.id, name: 'Ceiling fan repair', tier: 'T1' },
+  });
+
+  const prices: Array<{ serviceId: string; zoneId: string; laborPaise: number }> = [
+    { serviceId: gasRefill.id, zoneId: vadodara.id, laborPaise: 60000 },
+    { serviceId: gasRefill.id, zoneId: padra.id, laborPaise: 50000 },
+    { serviceId: fanRepair.id, zoneId: vadodara.id, laborPaise: 25000 },
+    { serviceId: fanRepair.id, zoneId: padra.id, laborPaise: 20000 },
+  ];
+  for (const p of prices) {
+    await prisma.servicePrice.upsert({
+      where: { serviceId_zoneId: { serviceId: p.serviceId, zoneId: p.zoneId } },
+      update: { laborPaise: p.laborPaise },
+      create: p,
+    });
+  }
+
+  const parts: Array<{ sku: string; name: string; categoryId: string; ceilingPricePaise: number }> = [
+    { sku: 'AC-GAS-R32-1KG', name: 'R32 refrigerant gas (1kg)', categoryId: ac.id, ceilingPricePaise: 70000 },
+    { sku: 'FAN-CAP-2.5MFD', name: 'Fan capacitor 2.5 MFD', categoryId: fan.id, ceilingPricePaise: 12000 },
+  ];
+  for (const part of parts) {
+    await prisma.partsCatalog.upsert({
+      where: { sku: part.sku },
+      update: { name: part.name, categoryId: part.categoryId, ceilingPricePaise: part.ceilingPricePaise },
+      create: part,
+    });
+  }
+
+  console.log('[seed] catalog: 2 zones, 2 categories, 2 services, 4 prices, 2 parts (idempotent)');
+}
+
 async function run(): Promise<void> {
   if (!config.SEED_ADMIN_EMAIL || !config.SEED_ADMIN_PASSWORD) {
     throw new Error('SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must be set to seed an admin');
@@ -24,6 +77,7 @@ async function run(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     await seedSuperAdmin(prisma, config.SEED_ADMIN_EMAIL, config.SEED_ADMIN_PASSWORD);
+    await seedCatalog(prisma);
   } finally {
     await prisma.$disconnect();
   }
