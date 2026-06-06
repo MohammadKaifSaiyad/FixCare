@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ConflictError, NotFoundError } from '../../shared/errors.js';
-import { toZoneDto, toCategoryDto, toPartDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto } from './catalog.types.js';
-import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody, CreatePartBody, UpdatePartBody } from './catalog.schemas.js';
+import { toZoneDto, toCategoryDto, toPartDto, toPincodeZoneDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto, type PincodeZoneDto } from './catalog.types.js';
+import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody, CreatePartBody, UpdatePartBody, CreatePincodeBody, UpdatePincodeBody } from './catalog.schemas.js';
 
 /** Map a Prisma unique-violation (P2002) to a 409. */
 function asConflict(err: unknown, message: string): never {
@@ -157,4 +157,47 @@ export async function updatePart(actorId: string, id: string, body: UpdatePartBo
       return toPartDto(part);
     });
   } catch (e) { return asConflict(e, 'A part with that SKU already exists'); }
+}
+
+export async function listPincodes(): Promise<PincodeZoneDto[]> {
+  const rows = await prisma.pincodeZone.findMany({ where: { deletedAt: null }, orderBy: { pincode: 'asc' } });
+  return rows.map(toPincodeZoneDto);
+}
+
+export async function createPincode(actorId: string, body: CreatePincodeBody): Promise<PincodeZoneDto> {
+  const zone = await prisma.zone.findFirst({ where: { id: body.zoneId, deletedAt: null } });
+  if (!zone) throw new NotFoundError('Zone not found');
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const row = await tx.pincodeZone.create({ data: { pincode: body.pincode, zoneId: body.zoneId } });
+      await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PincodeZone', entityId: row.id, fields: Object.keys(body) } } });
+      return toPincodeZoneDto(row);
+    });
+  } catch (e) { return asConflict(e, 'A mapping for that pincode already exists'); }
+}
+
+export async function updatePincode(actorId: string, id: string, body: UpdatePincodeBody): Promise<PincodeZoneDto> {
+  const existing = await prisma.pincodeZone.findFirst({ where: { id, deletedAt: null } });
+  if (!existing) throw new NotFoundError('Pincode mapping not found');
+  if (body.zoneId) {
+    const zone = await prisma.zone.findFirst({ where: { id: body.zoneId, deletedAt: null } });
+    if (!zone) throw new NotFoundError('Zone not found');
+  }
+  const changedFields = (Object.keys(body) as (keyof typeof body)[])
+    .filter((k) => (body as Record<string, unknown>)[k] !== (existing as Record<string, unknown>)[k]);
+  if (changedFields.length === 0) return toPincodeZoneDto(existing);
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.pincodeZone.update({ where: { id }, data: body });
+    await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PincodeZone', entityId: id, fields: changedFields } } });
+    return toPincodeZoneDto(row);
+  });
+}
+
+export async function deletePincode(actorId: string, id: string): Promise<void> {
+  const existing = await prisma.pincodeZone.findFirst({ where: { id, deletedAt: null } });
+  if (!existing) throw new NotFoundError('Pincode mapping not found');
+  await prisma.$transaction(async (tx) => {
+    await tx.pincodeZone.update({ where: { id }, data: { deletedAt: new Date() } });
+    await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PincodeZone', entityId: id, fields: ['deletedAt'] } } });
+  });
 }
