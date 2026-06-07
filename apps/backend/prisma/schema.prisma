@@ -76,6 +76,7 @@ model Customer {
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   deletedAt DateTime?
+  addresses Address[]
 }
 
 model Technician {
@@ -203,6 +204,7 @@ model Zone {
   deletedAt     DateTime?
   servicePrices ServicePrice[]
   pincodeZones  PincodeZone[]
+  addresses     Address[]
 }
 
 model ServiceCategory {
@@ -267,6 +269,32 @@ model PincodeZone {
   updatedAt DateTime      @updatedAt
   deletedAt DateTime?
   @@index([zoneId])
+}
+
+model Address {
+  id         String        @id @default(uuid())
+  customerId String
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  label      String
+  line1      String
+  line2      String?
+  landmark   String?
+  pincode    String
+  lat        Float?
+  lng        Float?
+  zoneId     String?
+  zone       Zone?         @relation(fields: [zoneId], references: [id])
+  isDefault  Boolean       @default(false)
+  status     AddressStatus @default(ACTIVE)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+  @@index([customerId])
+}
+
+enum AddressStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum CatalogStatus {
