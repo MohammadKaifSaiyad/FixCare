@@ -45,3 +45,14 @@ export const updatePartBody = z
   .strict()
   .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
 export type UpdatePartBody = z.infer<typeof updatePartBody>;
+
+const pincode6 = z.string().length(6).regex(/^\d{6}$/, 'pincode must be 6 digits');
+
+export const createPincodeBody = z.object({ pincode: pincode6, zoneId: z.string().min(1) }).strict();
+export type CreatePincodeBody = z.infer<typeof createPincodeBody>;
+
+export const updatePincodeBody = z
+  .object({ zoneId: z.string().min(1), status: z.enum(['ACTIVE', 'INACTIVE']) })
+  .partial().strict()
+  .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
+export type UpdatePincodeBody = z.infer<typeof updatePincodeBody>;

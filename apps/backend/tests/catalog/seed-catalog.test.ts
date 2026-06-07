@@ -22,6 +22,12 @@ describe('seedCatalog', () => {
     expect(vPrice!.laborPaise).toBeGreaterThan(0);
     expect(pPrice!.laborPaise).toBeGreaterThan(0);
     expect(vPrice!.laborPaise).not.toBe(pPrice!.laborPaise);
+
+    expect(await prisma.pincodeZone.count()).toBeGreaterThanOrEqual(2);
+    const vadoPin = await prisma.pincodeZone.findUnique({ where: { pincode: '390001' } });
+    expect(vadoPin!.zoneId).toBe(vadodara!.id);
+    const padraPin = await prisma.pincodeZone.findUnique({ where: { pincode: '391440' } });
+    expect(padraPin!.zoneId).toBe(padra!.id);
   });
 
   it('is idempotent — running twice does not duplicate', async () => {
@@ -34,6 +40,7 @@ describe('seedCatalog', () => {
     await seedCatalog(prisma);
     expect(await prisma.service.count()).toBe(svcCount);
     expect(await prisma.partsCatalog.count({ where: { sku: 'AC-GAS-R32-1KG' } })).toBe(1);
+    expect(await prisma.pincodeZone.count({ where: { pincode: '390001' } })).toBe(1);
   });
 
   it('does not write audit logs (seed is system bootstrap, not an admin action)', async () => {

@@ -77,7 +77,20 @@ export async function seedCatalog(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  console.log('[seed] catalog: 2 zones, 2 categories, 2 services, 4 prices, 2 parts (idempotent)');
+  const pincodes: Array<{ pincode: string; zoneId: string }> = [
+    { pincode: '390001', zoneId: vadodara.id },
+    { pincode: '390002', zoneId: vadodara.id },
+    { pincode: '391440', zoneId: padra.id },
+  ];
+  for (const pz of pincodes) {
+    await prisma.pincodeZone.upsert({
+      where: { pincode: pz.pincode },
+      update: { zoneId: pz.zoneId },
+      create: pz,
+    });
+  }
+
+  console.log('[seed] catalog: 2 zones, 2 categories, 2 services, 4 prices, 2 parts, 3 pincodes (idempotent)');
 }
 
 async function run(): Promise<void> {

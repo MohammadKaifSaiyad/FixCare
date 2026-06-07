@@ -8,6 +8,30 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-06 — Addresses slice A (pincode→zone map + serviceability)
+
+- **PincodeZone map.** New `PincodeZone` model + additive migration — an admin-managed map from a
+  6-digit pincode to a `Zone` (coverage config; reuses `CatalogStatus`, soft-delete, FK ON DELETE
+  RESTRICT). This is V1 zone resolution (no PostGIS): a customer's pincode → the zone whose visit
+  fee + geofenced labor prices apply.
+- **`resolvePincode` resolver** (`src/modules/addresses/serviceability.service.ts`) — reads the LIVE
+  map; a pincode is unserviceable if there is no active mapping, or the mapping/zone is INACTIVE or
+  soft-deleted. Returns `{ serviceable, zone:{id,name,visitFeePaise}|null, message? }`.
+- **`GET /serviceability?pincode=`** (any authed user; 6-digit Zod → 400) — explicit serviceability
+  verdict so the app can show "we don't serve this area yet" live during signup, before saving.
+- **Admin `GET/POST/PATCH/DELETE /catalog/pincodes`** (MANAGER+, reads any authed user) — `CATALOG_UPDATED`
+  audit in-transaction on every mutation; dup pincode → 409; unknown zoneId → 404; changed-only PATCH
+  (no phantom audit), and a zone re-point captures `fromZoneId`/`toZoneId` in the audit (price-significant);
+  soft-delete via DELETE → 204; `listPincodes` excludes INACTIVE/soft-deleted (consistent with the resolver).
+- **Seed.** 3 Vadodara/Padra pincodes added to the idempotent `seedCatalog`.
+- 127 backend tests green (TDD, real Postgres + Redis). Reviewed by `prisma-migration-reviewer`
+  (additive, indexed, no PII), `golden-rules-auditor` (audit-in-tx + RBAC sound), and `fraud-vector-checker`
+  (coverage writes gated + audited; visit-fee disclosure is public catalog data; zone resolved server-side,
+  not customer-input) — no blocking issues; the two medium/low findings (from→to-zone audit, INACTIVE-in-list)
+  fixed. Booking-time **zone+price snapshot** requirement recorded for the booking module. Built
+  subagent-driven on `feature/addresses-module` (Slice B = customer address CRUD, pending). Also: reset the
+  local `fixcare_test` migration ledger (had drifted out of sync with the schema; now clean, 6/6 applied).
+
 ## 2026-06-06 — Service catalog sub-slice B (parts master + seed) — catalog module COMPLETE
 
 - **Parts master.** `PartsCatalog` model — platform-set, **zone-agnostic** ceiling price

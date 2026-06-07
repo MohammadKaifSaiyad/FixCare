@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ValidationError } from '../../shared/errors.js';
-import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, partsQuery, createPartBody, updatePartBody } from './catalog.schemas.js';
-import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice, listParts, createPart, updatePart } from './catalog.service.js';
+import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, partsQuery, createPartBody, updatePartBody, createPincodeBody, updatePincodeBody } from './catalog.schemas.js';
+import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice, listParts, createPart, updatePart, listPincodes, createPincode, updatePincode, deletePincode } from './catalog.service.js';
 
 export async function registerCatalogRoutes(app: FastifyInstance) {
   app.get('/catalog/zones', { preHandler: [requireAuth] }, async (_req, reply) => reply.send(await listZones()));
@@ -63,5 +63,26 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
     const p = updatePartBody.safeParse(req.body);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     return reply.send(await updatePart(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  // Admin coverage-management view (MANAGER+ per the design) — shows INACTIVE rows too, so they can be
+  // found + reactivated. Customers never list the raw map; they use GET /serviceability instead.
+  app.get('/catalog/pincodes', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (_req, reply) => reply.send(await listPincodes()));
+
+  app.post('/catalog/pincodes', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    const p = createPincodeBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.code(201).send(await createPincode(req.user!.id, p.data));
+  });
+
+  app.patch('/catalog/pincodes/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    const p = updatePincodeBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await updatePincode(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.delete('/catalog/pincodes/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    await deletePincode(req.user!.id, (req.params as { id: string }).id);
+    return reply.code(204).send();
   });
 }

@@ -202,6 +202,7 @@ model Zone {
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
   servicePrices ServicePrice[]
+  pincodeZones  PincodeZone[]
 }
 
 model ServiceCategory {
@@ -254,6 +255,18 @@ model PartsCatalog {
   updatedAt         DateTime         @updatedAt
   deletedAt         DateTime?
   @@index([categoryId])
+}
+
+model PincodeZone {
+  id        String        @id @default(uuid())
+  pincode   String        @unique          // "390001"
+  zoneId    String
+  zone      Zone          @relation(fields: [zoneId], references: [id])
+  status    CatalogStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+  @@index([zoneId])
 }
 
 enum CatalogStatus {
