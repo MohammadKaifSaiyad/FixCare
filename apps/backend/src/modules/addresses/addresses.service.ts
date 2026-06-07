@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ForbiddenError, NotFoundError } from '../../shared/errors.js';
 import { resolvePincode } from './serviceability.service.js';
@@ -66,10 +67,20 @@ export async function updateAddress(userId: string, id: string, body: UpdateAddr
   const row = await prisma.$transaction(async (tx) => {
     const existing = await tx.address.findFirst({ where: { id, customerId, deletedAt: null } });
     if (!existing) throw new NotFoundError('Address not found');
-    const data: Record<string, unknown> = { ...body };
+    // Build the update payload field-by-field from the whitelisted body — never a blind spread,
+    // so a future field added to UpdateAddressBody can't become a silent client-controlled write.
+    const data: Prisma.AddressUpdateInput = {};
+    if (body.label !== undefined) data.label = body.label;
+    if (body.line1 !== undefined) data.line1 = body.line1;
+    if (body.line2 !== undefined) data.line2 = body.line2;
+    if (body.landmark !== undefined) data.landmark = body.landmark;
+    if (body.lat !== undefined) data.lat = body.lat;
+    if (body.lng !== undefined) data.lng = body.lng;
+    if (body.isDefault !== undefined) data.isDefault = body.isDefault;
     if (body.pincode !== undefined) {
+      data.pincode = body.pincode;
       const svc = await resolvePincode(body.pincode);
-      data.zoneId = svc.zone?.id ?? null;
+      data.zone = svc.zone ? { connect: { id: svc.zone.id } } : { disconnect: true };
     }
     if (body.isDefault === true) {
       await tx.address.updateMany({ where: { customerId, deletedAt: null, isDefault: true, NOT: { id } }, data: { isDefault: false } });
