@@ -131,6 +131,19 @@ describe('GET/PATCH/DELETE /me/addresses/:id + default rule', () => {
     expect((await app.inject({ method: 'DELETE', url: `/me/addresses/${addr.id}`, headers: auth(b) })).statusCode).toBe(404);
   });
 
+  it('deleting the default clears isDefault on the soft-deleted row (no lingering default) and leaves no default', async () => {
+    const a = await makeCustomerToken();
+    const addr = (await app.inject({ method: 'POST', url: '/me/addresses', headers: auth(a), payload: base })).json();
+    expect(addr.isDefault).toBe(true);
+    await app.inject({ method: 'DELETE', url: `/me/addresses/${addr.id}`, headers: auth(a) });
+    const row = await prisma.address.findUnique({ where: { id: addr.id } });
+    expect(row!.deletedAt).not.toBeNull();
+    expect(row!.isDefault).toBe(false); // not left dangling as a "default"
+    // creating a NEW address after the default was deleted auto-defaults again (count is ACTIVE-only)
+    const next = (await app.inject({ method: 'POST', url: '/me/addresses', headers: auth(a), payload: { ...base, label: 'New' } })).json();
+    expect(next.isDefault).toBe(true);
+  });
+
   it('no address CRUD writes any AuditLog row (decision 8)', async () => {
     await seedZoneWithPincode('Vadodara', 14900, '390001');
     const a = await makeCustomerToken();

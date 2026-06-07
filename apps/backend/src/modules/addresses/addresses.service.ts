@@ -32,7 +32,8 @@ export async function createAddress(userId: string, body: CreateAddressBody): Pr
   const { id: customerId } = await requireCustomer(userId);
   const svc = await resolvePincode(body.pincode);
   const row = await prisma.$transaction(async (tx) => {
-    const count = await tx.address.count({ where: { customerId, deletedAt: null } });
+    // status:'ACTIVE' to match listAddresses — the "first VISIBLE address auto-defaults" invariant
+    const count = await tx.address.count({ where: { customerId, deletedAt: null, status: 'ACTIVE' } });
     const makeDefault = body.isDefault === true || count === 0;
     if (makeDefault) {
       await tx.address.updateMany({ where: { customerId, deletedAt: null, isDefault: true }, data: { isDefault: false } });
@@ -93,5 +94,6 @@ export async function updateAddress(userId: string, id: string, body: UpdateAddr
 export async function deleteAddress(userId: string, id: string): Promise<void> {
   const { id: customerId } = await requireCustomer(userId);
   await ownAddressOrThrow(customerId, id);
-  await prisma.address.update({ where: { id }, data: { deletedAt: new Date() } });
+  // also clear isDefault so a soft-deleted row never lingers as a "default" (decision 7: no auto-promote)
+  await prisma.address.update({ where: { id }, data: { deletedAt: new Date(), isDefault: false } });
 }
