@@ -101,8 +101,9 @@ describe('admin pincode map', () => {
   it('POST mapping to an INACTIVE zone → 404 (not a dead-on-arrival 201)', async () => {
     const zone = await makeZone('Vadodara', 14900);
     const mgr = await makeAdminToken('MANAGER');
-    // make the zone INACTIVE via the zone PATCH endpoint
-    await app.inject({ method: 'PATCH', url: `/catalog/zones/${zone.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    // make the zone INACTIVE via the zone PATCH endpoint — assert the prerequisite actually took effect
+    const deact = await app.inject({ method: 'PATCH', url: `/catalog/zones/${zone.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    expect(deact.statusCode).toBe(200);
     const res = await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '390009', zoneId: zone.id } });
     expect(res.statusCode).toBe(404);
   });
@@ -111,7 +112,8 @@ describe('admin pincode map', () => {
     const v = await makeZone('Vadodara', 14900);
     const dead = await makeZone('Dead', 100);
     const mgr = await makeAdminToken('MANAGER');
-    await app.inject({ method: 'PATCH', url: `/catalog/zones/${dead.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    const deact = await app.inject({ method: 'PATCH', url: `/catalog/zones/${dead.id}`, headers: auth(mgr), payload: { status: 'INACTIVE' } });
+    expect(deact.statusCode).toBe(200);
     const pin = (await app.inject({ method: 'POST', url: '/catalog/pincodes', headers: auth(mgr), payload: { pincode: '390010', zoneId: v.id } })).json();
     const res = await app.inject({ method: 'PATCH', url: `/catalog/pincodes/${pin.id}`, headers: auth(mgr), payload: { zoneId: dead.id } });
     expect(res.statusCode).toBe(404);
