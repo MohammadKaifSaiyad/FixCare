@@ -4,26 +4,34 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-06-06_
+_Last updated: 2026-06-07_
 
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Auth + profile-update + **service catalog module
-(complete)** merged to `main`. **Addresses module underway** — Slice A (pincode→zone map +
-serviceability) done on `feature/addresses-module`; Slice B (customer address CRUD) next.
+**Month 1-2 — Backend foundation.** Auth + profile-update + **service catalog (complete)** +
+**addresses Slice A** merged to `main`. **Addresses Slice B (customer address CRUD) done** on
+`feature/addresses-crud` — completes the addresses module. Next module: booking lifecycle.
 
 ## Active task
-**Addresses Slice A** complete on `feature/addresses-module` (PincodeZone map + `resolvePincode`
-+ `GET /serviceability` + admin `/catalog/pincodes` CRUD + seeded Vadodara/Padra pincodes;
-127 tests green; reviewed by the migration / golden-rules / fraud-vector agents — no blocking
-issues, fixed: PATCH audit now captures from→to zone + `listPincodes` excludes INACTIVE).
-Pending PR → `/code-review` → `main`. **Next:** Addresses **Slice B** — customer `/me/addresses`
-CRUD (owner-scoped, default-address, serviceability baked into the DTO), then the booking
-lifecycle. Design: [`docs/designs/2026-06-06-addresses-module-design.md`];
-plan: [`docs/plans/2026-06-06-addresses-slice-a-pincode-zone.md`].
+**Addresses Slice B** complete on `feature/addresses-crud` (`Address` model + owner-scoped
+`/me/addresses` CRUD, CUSTOMER-only, one-default-enforced, serviceability re-resolved into every
+DTO; 145 tests green; reviewed by migration / golden-rules / fraud-vector agents — no blocking
+issues, Golden Rule 7 verified (Fastify `logger:false`, no address PII in logs/audit, no audit on
+address CRUD); fixed a blind-spread → typed `AddressUpdateInput`). Pending PR → `/code-review` →
+`main`. **Next:** the **booking lifecycle** (state machine; MUST snapshot zone + catalog prices at
+booking creation — see [[booking-zone-price-snapshot]]). Design:
+[`docs/designs/2026-06-06-addresses-module-design.md`]; plan:
+[`docs/plans/2026-06-07-addresses-slice-b-crud.md`].
 
 ## Last shipped
+- **Addresses Slice B** (`apps/backend`, completes the addresses module): `Address` model + migration
+  (PII fields + optional lat/lng + cached `zoneId` hint + `isDefault` + soft-delete); owner-scoped
+  `GET/POST/GET:id/PATCH/DELETE /me/addresses` — CUSTOMER-only (others 403), another customer's id →
+  404 (no IDOR), one-default-enforced transaction, resolve-at-save + **re-resolve-on-read**
+  serviceability in every DTO, out-of-area saves 201, lat/lng both-or-neither, pincode editable
+  (re-resolves zone). **No audit on address CRUD** (decision 8); **no address PII in logs**
+  (Golden Rule 7, verified). 145 tests; reviewed by all three agents — no blocking issues. On branch.
 - **Addresses Slice A** (`apps/backend`): `PincodeZone` model + migration (admin-managed
   pincode→zone map, reuses `CatalogStatus`); `resolvePincode` resolver (live map; INACTIVE/
   soft-deleted mapping *or* zone → unserviceable); `GET /serviceability?pincode=` (6-digit Zod,
@@ -64,11 +72,11 @@ plan: [`docs/plans/2026-06-06-addresses-slice-a-pincode-zone.md`].
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/addresses-module` → `main` (addresses Slice A).
-2. **Addresses Slice B** — customer `/me/addresses` CRUD (owner-scoped, one-default-enforced,
-   resolve-at-save + serviceability in every DTO; CUSTOMER-only). Own plan + PR. Then the
-   **booking lifecycle** (state machine; MUST snapshot zone + catalog prices at booking creation
-   — see [[booking-zone-price-snapshot]]).
+1. **PR + `/code-review` + merge** `feature/addresses-crud` → `main` (addresses Slice B — completes
+   the addresses module).
+2. **Booking lifecycle** (the next module): booking state machine, references catalog
+   services/prices + a customer address; **MUST snapshot zone + catalog prices at booking creation**,
+   never re-resolve later — see [[booking-zone-price-snapshot]]. Brainstorm → design → plan.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;

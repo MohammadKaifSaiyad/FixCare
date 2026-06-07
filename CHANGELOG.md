@@ -8,6 +8,33 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-07 — Addresses slice B (customer address CRUD) — addresses module COMPLETE
+
+- **Address model + migration.** Customer saved addresses: `label`/`line1`/`line2?`/`landmark?`/`pincode`
+  (PII), optional `lat`/`lng` (for later arrival-GPS), a cached `zoneId` hint (FK ON DELETE SET NULL),
+  `isDefault`, `AddressStatus`, soft-delete, `@@index([customerId])`.
+- **`/me/addresses` CRUD** — `GET` (list own active, default-first) / `POST` / `GET :id` / `PATCH :id` /
+  `DELETE :id`. **CUSTOMER-only** (technician/admin/merchant → 403, both route + service guard).
+  **Owner-scoped:** every `:id` query bound to the caller's `customerId`; another customer's id is
+  indistinguishable from missing → **404, no IDOR**. **One default enforced:** first address
+  auto-defaults; `isDefault:true` clears the prior default in the same transaction (`isDefault:false`
+  doesn't auto-promote). **Serviceability in every DTO:** resolved-at-save (stores the `zoneId` hint)
+  but **re-resolved live on every read** via Slice A's `resolvePincode`, so coverage expansion instantly
+  flips a saved address to serviceable. Out-of-area pincode still **saves (201)** with
+  `serviceable:false` + message. `lat`/`lng` are both-or-neither (400 otherwise); `line2`/`landmark`/geo
+  clearable to null on PATCH; `pincode` editable (re-resolves the zone). Soft-delete → 204.
+- **No audit on address CRUD** (decision 8 — addresses aren't a money/trust event) and **no address PII
+  in logs/audit** (Golden Rule 7 — Fastify `logger:false`, clean DTOs, generic errors; verified).
+  Zone is resolved server-side from the pincode (no customer-controlled `zoneId`), so a customer can't
+  self-assign a cheaper zone.
+- **The addresses module is now COMPLETE** (Slice A pincode map/serviceability + Slice B address CRUD).
+- 145 backend tests green (TDD, real Postgres + Redis). Reviewed by `prisma-migration-reviewer`
+  (additive, indexed, soft-delete), `golden-rules-auditor` (Golden Rule 7 + IDOR + decision-8 audit-free
+  verified), and `fraud-vector-checker` (zone self-assignment blocked; pincode-spoofing is an accepted
+  V1 tradeoff — real defense is the later arrival-GPS handshake) — no blocking issues; one WARN fixed
+  (blind body-spread → typed `AddressUpdateInput`). Booking-time zone+price snapshot tracked for the
+  booking module. Built subagent-driven on `feature/addresses-crud` (pending PR/merge).
+
 ## 2026-06-06 — Addresses slice A (pincode→zone map + serviceability)
 
 - **PincodeZone map.** New `PincodeZone` model + additive migration — an admin-managed map from a
