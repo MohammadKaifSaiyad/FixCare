@@ -28,3 +28,6 @@ export class TooManyRequestsError extends AppError {
 export class ConflictError extends AppError {
   constructor(message = 'Conflict') { super(message, 409, 'CONFLICT'); }
 }
+export class UnprocessableError extends AppError {
+  constructor(message = 'Unprocessable') { super(message, 422, 'UNPROCESSABLE'); }
+}
