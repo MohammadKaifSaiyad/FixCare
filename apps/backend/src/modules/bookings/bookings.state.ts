@@ -44,7 +44,16 @@ export async function transitionBooking(
   if (!isTransitionAllowed(booking.state, to)) {
     throw new ConflictError(`Cannot transition booking from ${booking.state} to ${to}`);
   }
-  const updated = await tx.booking.update({ where: { id: booking.id }, data: { state: to } });
+  // Optimistic lock: the update is conditional on the from-state the legality check ran against
+  // (which was loaded before this tx). If a concurrent transition already moved the row, 0 rows
+  // match and we reject — so two racing transitions can't both commit / double-write the audit.
+  const result = await tx.booking.updateMany({
+    where: { id: booking.id, state: booking.state },
+    data: { state: to },
+  });
+  if (result.count === 0) {
+    throw new ConflictError(`Booking ${booking.id} is no longer in state ${booking.state}`);
+  }
   await tx.auditLog.create({
     data: {
       action: 'BOOKING_STATE_CHANGED',
@@ -53,5 +62,7 @@ export async function transitionBooking(
       metadata: { bookingId: booking.id, from: booking.state, to },
     },
   });
+  // re-read the row so callers get the updated state (updateMany doesn't return the row)
+  const updated = await tx.booking.findUniqueOrThrow({ where: { id: booking.id } });
   return updated;
 }

@@ -48,6 +48,22 @@ describe('GET/list + cancel /me/bookings', () => {
     expect(audits.length).toBe(2); // create (→CREATED) + cancel (→CANCELLED_BY_CUSTOMER)
   });
 
+  it('two concurrent cancels: exactly one wins (200), the other is rejected; only one cancel audit', async () => {
+    const a = await makeCustomer();
+    const f = await seedBookable(a.customerId);
+    const booking = await createBooking(a.token, f.address.id, f.service.id);
+    const [r1, r2] = await Promise.all([
+      app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/cancel`, headers: auth(a.token) }),
+      app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/cancel`, headers: auth(a.token) }),
+    ]);
+    const codes = [r1.statusCode, r2.statusCode].sort();
+    expect(codes).toEqual([200, 409]); // optimistic lock: one wins, one loses
+    const cancelAudits = await prisma.auditLog.findMany({
+      where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'CANCELLED_BY_CUSTOMER' } },
+    });
+    expect(cancelAudits.length).toBe(1); // no double-write
+  });
+
   it('cancel a non-CREATED booking → 409 (illegal transition)', async () => {
     const a = await makeCustomer();
     const f = await seedBookable(a.customerId);
