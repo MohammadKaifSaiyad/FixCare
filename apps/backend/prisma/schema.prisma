@@ -77,6 +77,7 @@ model Customer {
   updatedAt DateTime       @updatedAt
   deletedAt DateTime?
   addresses Address[]
+  bookings  Booking[]
 }
 
 model Technician {
@@ -189,6 +190,7 @@ enum AuditAction {
   PROFILE_UPDATED
   PRICE_CHANGED
   CATALOG_UPDATED
+  BOOKING_STATE_CHANGED
 }
 
 // =============================================================================
@@ -229,6 +231,7 @@ model Service {
   updatedAt  DateTime        @updatedAt
   deletedAt  DateTime?
   prices     ServicePrice[]
+  bookings   Booking[]
   @@unique([categoryId, name])
 }
 
@@ -289,7 +292,55 @@ model Address {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   deletedAt  DateTime?
+  bookings   Booking[]
   @@index([customerId])
+}
+
+model Booking {
+  id            String   @id @default(uuid())
+  bookingNumber String   @unique
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  addressId     String
+  address       Address  @relation(fields: [addressId], references: [id])
+  serviceId     String
+  service       Service  @relation(fields: [serviceId], references: [id])
+
+  zoneId        String
+  zoneName      String
+  serviceName   String
+  visitFeePaise Int
+  laborPaise    Int
+  laborTier     LaborTier
+
+  scheduledSlot DateTime
+  state         BookingState @default(CREATED)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  @@index([customerId])
+  @@index([state])
+}
+
+enum BookingState {
+  CREATED
+  DISPATCHED
+  ACCEPTED
+  EN_ROUTE
+  ARRIVED
+  DIAGNOSED
+  CUSTOMER_APPROVED
+  PARTS_REQUESTED
+  PARTS_ACQUIRED
+  REPAIR_IN_PROGRESS
+  REPAIR_COMPLETE
+  CUSTOMER_CONFIRMED
+  PAYMENT_RECEIVED
+  CLOSED
+  CANCELLED_BY_CUSTOMER
+  CANCELLED_BY_TECHNICIAN
+  DECLINED_BY_CUSTOMER
+  DISPUTED
 }
 
 enum AddressStatus {

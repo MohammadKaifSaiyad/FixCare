@@ -8,6 +8,35 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-08 — Booking slice B1 (creation + price snapshot + state skeleton)
+
+- **Booking module decomposed** into 7 sub-slices (B1 creation+snapshot → B2 dispatch → B3 arrival
+  handshake → B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes). This is **B1**.
+- **Booking model + migration** — full 18-value `BookingState` enum + `BOOKING_STATE_CHANGED` audit
+  action; FKs to Customer/Address/Service (RESTRICT); human `bookingNumber` (FC- + Crockford base32);
+  indexes on customerId + state.
+- **Price snapshot (the core fraud defense).** `POST /me/bookings` resolves the address pincode→zone
+  **live** at creation, looks up the catalog `ServicePrice`, and **denormalizes** zone+visitFee+labor+tier
+  onto the booking row. A test mutates the catalog price + zone visit fee + soft-deletes the pincode
+  mapping after creation and asserts the booking is **unchanged** — later catalog/coverage edits can
+  never reprice a created booking (an admin can't retroactively change what a customer was quoted).
+  Money is integer paise. Unserviceable address / service-unpriced-in-zone → **422** (every CREATED
+  booking has a complete locked price). New `UnprocessableError`(422).
+- **Guarded state machine.** A central `ALLOWED_TRANSITIONS` table (full graph declared; cancel edges
+  only before ARRIVED; handshake states ARRIVED/CUSTOMER_CONFIRMED/PAYMENT_RECEIVED unreachable
+  without their predecessors) + one `transitionBooking` that validates legality and writes
+  `BOOKING_STATE_CHANGED` in the same transaction. B1 wires only create (→CREATED) + customer-cancel
+  (CREATED→CANCELLED_BY_CUSTOMER). Actor-permission enforcement is deferred per-transition to the
+  slices that expose each route.
+- **`/me/bookings`** GET (list own) / GET :id / POST :id/cancel — CUSTOMER-only, owner-scoped
+  (another customer's id → 404, no IDOR); illegal transition → 409. No money moves in B1 (snapshot
+  recorded only). No booking/address PII in audit (metadata = bookingId/from/to only).
+- 164 backend tests green (TDD, real Postgres + Redis). Reviewed by `prisma-migration-reviewer`
+  (additive, Int paise, indexed), `golden-rules-auditor` (snapshot integrity + audit-in-tx + IDOR +
+  no-money-in-B1 verified), `fraud-vector-checker` (all 6 in-scope vectors implemented; Phase-A
+  payment/self-dealing locks correctly deferred to B2/B6) — no blocking issues. Built subagent-driven
+  on `feature/booking-module` (B2 dispatch next; pending PR/merge).
+
 ## 2026-06-07 — Addresses slice B (customer address CRUD) — addresses module COMPLETE
 
 - **Address model + migration.** Customer saved addresses: `label`/`line1`/`line2?`/`landmark?`/`pincode`
