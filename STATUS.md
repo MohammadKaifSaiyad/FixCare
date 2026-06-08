@@ -4,27 +4,36 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-06-07_
+_Last updated: 2026-06-08_
 
 ---
 
 ## Phase
-**Month 1-2 — Backend foundation.** Auth + profile-update + **service catalog (complete)** +
-**addresses Slice A** merged to `main`. **Addresses Slice B (customer address CRUD) done** on
-`feature/addresses-crud` — completes the addresses module. Next module: booking lifecycle.
+**Month 1-2/3 — Backend foundation → core business logic.** Auth + profile-update + **service
+catalog** + **addresses module (complete)** merged to `main`. **Booking module underway** — the
+module is decomposed into 7 sub-slices (B1 creation+snapshot → B2 dispatch → B3 arrival handshake →
+B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); **B1 done** on `feature/booking-module`.
 
 ## Active task
-**Addresses Slice B** complete on `feature/addresses-crud` (`Address` model + owner-scoped
-`/me/addresses` CRUD, CUSTOMER-only, one-default-enforced, serviceability re-resolved into every
-DTO; 145 tests green; reviewed by migration / golden-rules / fraud-vector agents — no blocking
-issues, Golden Rule 7 verified (Fastify `logger:false`, no address PII in logs/audit, no audit on
-address CRUD); fixed a blind-spread → typed `AddressUpdateInput`). Pending PR → `/code-review` →
-`main`. **Next:** the **booking lifecycle** (state machine; MUST snapshot zone + catalog prices at
-booking creation — see [[booking-zone-price-snapshot]]). Design:
-[`docs/designs/2026-06-06-addresses-module-design.md`]; plan:
-[`docs/plans/2026-06-07-addresses-slice-b-crud.md`].
+**Booking Slice B1** complete on `feature/booking-module` (`Booking` model + price **snapshot**
+locked at creation + central guarded state machine; `POST/GET/GET:id/cancel /me/bookings`,
+CUSTOMER-only owner-scoped; 164 tests green; reviewed by migration / golden-rules / fraud-vector
+agents — no blocking issues; **the snapshot-immutability fraud defense is proven** by test).
+Pending PR → `/code-review` → `main`. **Next:** **B2 — dispatch / technician matching** (the algo +
+30s accept timer); each later slice MUST add actor-permission checks to `transitionBooking` before
+exposing its transition route (see [[booking-zone-price-snapshot]]). Design:
+[`docs/designs/2026-06-07-booking-b1-creation-design.md`]; plan:
+[`docs/plans/2026-06-07-booking-b1-creation.md`].
 
 ## Last shipped
+- **Booking Slice B1** (`apps/backend`, first slice of the booking module): `Booking` model + full
+  `BookingState` enum + `BOOKING_STATE_CHANGED` audit; `POST /me/bookings` (CUSTOMER-only) captures a
+  **price snapshot** (zone + visitFee + labor + tier, denormalized) — later catalog/coverage edits
+  never change a created booking (proven by test, the core fraud defense); unserviceable/unpriced →
+  422; central `ALLOWED_TRANSITIONS` + guarded `transitionBooking` (full graph declared; B1 wires
+  create + customer-cancel, audit in-tx); `GET /me/bookings`, `GET :id`, `POST :id/cancel`,
+  owner-scoped (others' ids → 404, no IDOR); human `bookingNumber` (FC-); `UnprocessableError`(422).
+  164 tests; reviewed by all three agents — no blocking issues. On branch.
 - **Addresses Slice B** (`apps/backend`, completes the addresses module): `Address` model + migration
   (PII fields + optional lat/lng + cached `zoneId` hint + `isDefault` + soft-delete); owner-scoped
   `GET/POST/GET:id/PATCH/DELETE /me/addresses` — CUSTOMER-only (others 403), another customer's id →
@@ -72,11 +81,10 @@ booking creation — see [[booking-zone-price-snapshot]]). Design:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/addresses-crud` → `main` (addresses Slice B — completes
-   the addresses module).
-2. **Booking lifecycle** (the next module): booking state machine, references catalog
-   services/prices + a customer address; **MUST snapshot zone + catalog prices at booking creation**,
-   never re-resolve later — see [[booking-zone-price-snapshot]]. Brainstorm → design → plan.
+1. **PR + `/code-review` + merge** `feature/booking-module` → `main` (booking Slice B1).
+2. **Booking Slice B2 — dispatch / technician matching:** `DISPATCHED→ACCEPTED`/reject, the matching
+   algo (`rating × proximity × load × cash_compliance`), 30s accept timer (BullMQ). Adds the first
+   actor-permission entries to `transitionBooking`. Own design → plan → PR.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
