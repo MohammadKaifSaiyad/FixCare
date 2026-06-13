@@ -44,13 +44,17 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   if (booking.state !== 'DISPATCHED' || booking.technicianId) throw new ConflictError('This job is no longer available');
   if (!tech.skills.includes(booking.service.requiredSkill)) throw new ForbiddenError('You are not skilled for this job');
 
-  const updated = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     // transitionBooking does the optimistic-locked DISPATCHED→ACCEPTED + audit; concurrent loser gets count===0 → ConflictError (409)
     await transitionBooking(tx, booking, 'ACCEPTED', { type: 'USER', kind: 'TECHNICIAN', id: userId });
-    return tx.booking.update({ where: { id: bookingId }, data: { technicianId: tech.id } });
+    // Claim defense-in-depth: only set technicianId if still unclaimed. The state lock above already
+    // serializes accepts, but guarding technicianId here keeps the claim provably single even if the
+    // ordering is ever changed — a booking must never end with two technicians.
+    const claim = await tx.booking.updateMany({ where: { id: bookingId, technicianId: null }, data: { technicianId: tech.id } });
+    if (claim.count === 0) throw new ConflictError('This job is no longer available');
   });
   const full = await prisma.booking.findUniqueOrThrow({
-    where: { id: updated.id },
+    where: { id: bookingId },
     include: { address: true, service: true, customer: { include: { user: true } } },
   });
   return toTechnicianJobDto(full, full.address, full.service.requiredSkill, full.customer.user.phone);
