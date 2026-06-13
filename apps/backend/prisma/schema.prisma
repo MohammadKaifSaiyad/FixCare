@@ -90,6 +90,8 @@ model Technician {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   deletedAt DateTime?
+  bookings  Booking[]
+  jobSkips  JobSkip[]
 }
 
 model Merchant {
@@ -221,17 +223,18 @@ model ServiceCategory {
 }
 
 model Service {
-  id         String          @id @default(uuid())
-  categoryId String
-  category   ServiceCategory @relation(fields: [categoryId], references: [id])
-  name       String
-  tier       LaborTier
-  status     CatalogStatus   @default(ACTIVE)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  deletedAt  DateTime?
-  prices     ServicePrice[]
-  bookings   Booking[]
+  id            String          @id @default(uuid())
+  categoryId    String
+  category      ServiceCategory @relation(fields: [categoryId], references: [id])
+  name          String
+  tier          LaborTier
+  requiredSkill ServiceSkill
+  status        CatalogStatus   @default(ACTIVE)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
+  prices        ServicePrice[]
+  bookings      Booking[]
   @@unique([categoryId, name])
 }
 
@@ -305,6 +308,8 @@ model Booking {
   address       Address  @relation(fields: [addressId], references: [id])
   serviceId     String
   service       Service  @relation(fields: [serviceId], references: [id])
+  technicianId  String?
+  technician    Technician?  @relation(fields: [technicianId], references: [id])
 
   zoneId        String
   zoneName      String
@@ -318,8 +323,20 @@ model Booking {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
+  jobSkips      JobSkip[]
   @@index([customerId])
   @@index([state])
+}
+
+model JobSkip {
+  id           String     @id @default(uuid())
+  technicianId String
+  technician   Technician @relation(fields: [technicianId], references: [id])
+  bookingId    String
+  booking      Booking    @relation(fields: [bookingId], references: [id])
+  createdAt    DateTime   @default(now())
+  @@unique([technicianId, bookingId])
+  @@index([technicianId])
 }
 
 enum BookingState {
