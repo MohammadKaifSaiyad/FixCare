@@ -106,6 +106,10 @@ export async function confirmArrival(userId: string, id: string, body: ConfirmAr
   if (!booking) throw new NotFoundError('Booking not found');
   if (booking.state !== 'EN_ROUTE') throw new ConflictError('Booking is not awaiting arrival confirmation');
 
+  // Note: a correct code is consumed (single-use) by verifyArrivalCode BEFORE the $transaction below.
+  // Redis and Postgres can't share a transaction; if the DB tx rolled back, the code would be spent
+  // and the customer would need the technician to re-tap arrive. This fails SAFE (never a false
+  // ARRIVED), and the DB tx here only sets timestamps/state — it does not realistically fail.
   const result = await verifyArrivalCode(id, body.code);
   if (result === 'no-code') {
     // Distinguish between "technician never tapped Arrived" vs "code was minted but exhausted/expired".

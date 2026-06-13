@@ -32,6 +32,7 @@ export async function registerBookingRoutes(app: FastifyInstance) {
   });
 
   app.post('/me/bookings/:id/confirm-arrival', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireCustomerRole(req);
     const p = confirmArrivalBody.safeParse(req.body);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     return reply.send(await confirmArrival(req.user!.id, (req.params as { id: string }).id, p.data));
