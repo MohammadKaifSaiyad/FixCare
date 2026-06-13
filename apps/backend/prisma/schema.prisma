@@ -326,6 +326,7 @@ model Booking {
   jobSkips      JobSkip[]
   @@index([customerId])
   @@index([state])
+  @@index([technicianId])
 }
 
 model JobSkip {

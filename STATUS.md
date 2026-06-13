@@ -4,28 +4,38 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-06-08_
+_Last updated: 2026-06-13_
 
 ---
 
 ## Phase
-**Month 1-2/3 — Backend foundation → core business logic.** Auth + profile-update + **service
-catalog** + **addresses module (complete)** merged to `main`. **Booking module underway** — the
-module is decomposed into 7 sub-slices (B1 creation+snapshot → B2 dispatch → B3 arrival handshake →
-B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); **B1 done** on `feature/booking-module`.
+**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1** merged to
+`main`. **Booking module underway** — decomposed into 7 sub-slices (B1 creation+snapshot → B2 dispatch
+→ B3 arrival handshake → B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes). **B1
+merged; B2 itself further split** into B2a (broadcast dispatch — done) / B2b (accept-timer + BullMQ)
+/ B2c (weighted matching algo). **B2a done** on `feature/booking-dispatch`.
 
 ## Active task
-**Booking Slice B1** complete on `feature/booking-module` (`Booking` model + price **snapshot**
-locked at creation + central guarded state machine; `POST/GET/GET:id/cancel /me/bookings`,
-CUSTOMER-only owner-scoped; 164 tests green; reviewed by migration / golden-rules / fraud-vector
-agents — no blocking issues; **the snapshot-immutability fraud defense is proven** by test).
-Pending PR → `/code-review` → `main`. **Next:** **B2 — dispatch / technician matching** (the algo +
-30s accept timer); each later slice MUST add actor-permission checks to `transitionBooking` before
-exposing its transition route (see [[booking-zone-price-snapshot]]). Design:
-[`docs/designs/2026-06-07-booking-b1-creation-design.md`]; plan:
-[`docs/plans/2026-06-07-booking-b1-creation.md`].
+**Booking Slice B2a** complete on `feature/booking-dispatch` (broadcast dispatch: bookings auto-open
+`CREATED→DISPATCHED`; eligible = VERIFIED + matching `Service.requiredSkill`; first-to-accept wins
+atomically; per-tech skip; the **actor-permission map** (`ALLOWED_ACTORS`) now gates `transitionBooking`
+— completes the deferred B1 item; directional PII masking. 179 tests green; reviewed by all three
+agents — no blocking issues, the snapshot/atomic-claim/masking all verified; hardened the technicianId
+claim with a `technicianId:null` guard + added a `Booking.technicianId` index). **Dispatch model changed
+push→broadcast** (`docs/decisions/2026-06-13-dispatch-broadcast-model.md`; `core-flow.md` updated).
+Pending PR → `/code-review` → `main`. **Next:** **B3 — arrival handshake** (keystone #1: GPS + customer
+QR/code → ARRIVED, lock visit fee) or **B2b** (accept timer + BullMQ). Each adds its actor-permission
+entries + ownership checks. Design: [`docs/designs/2026-06-13-booking-b2a-dispatch-design.md`]; plan:
+[`docs/plans/2026-06-13-booking-b2a-dispatch.md`].
 
 ## Last shipped
+- **Booking Slice B2a** (`apps/backend`): broadcast dispatch — `Booking.technicianId` + `Service.requiredSkill`
+  (backfilled) + `JobSkip`; auto-open `CREATED→DISPATCHED` (SYSTEM) at creation; `GET /technician/jobs/available`
+  (VERIFIED + skill-matched, masked customer view), `/mine`, `POST /accept` (atomic first-to-accept via the
+  optimistic lock + `technicianId:null` claim guard), `/skip` (per-tech, idempotent); the `ALLOWED_ACTORS`
+  role gate added to `transitionBooking` (3rd gate after legality + lock); directional masking (tech sees
+  masked customer phone/no name; customer sees tech name + masked phone). Dispatch model push→broadcast
+  (decision doc + core-flow updated). 179 tests; all three agents — no blocking issues. On branch.
 - **Booking Slice B1** (`apps/backend`, first slice of the booking module): `Booking` model + full
   `BookingState` enum + `BOOKING_STATE_CHANGED` audit; `POST /me/bookings` (CUSTOMER-only) captures a
   **price snapshot** (zone + visitFee + labor + tier, denormalized) — later catalog/coverage edits
@@ -81,10 +91,10 @@ exposing its transition route (see [[booking-zone-price-snapshot]]). Design:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/booking-module` → `main` (booking Slice B1).
-2. **Booking Slice B2 — dispatch / technician matching:** `DISPATCHED→ACCEPTED`/reject, the matching
-   algo (`rating × proximity × load × cash_compliance`), 30s accept timer (BullMQ). Adds the first
-   actor-permission entries to `transitionBooking`. Own design → plan → PR.
+1. **PR + `/code-review` + merge** `feature/booking-dispatch` → `main` (booking Slice B2a).
+2. **Booking Slice B3 — arrival handshake (keystone #1):** GPS-validated "Arrived" + customer QR/code
+   → `ARRIVED`, lock the visit fee. Two-sided, evidence-gated (keystone-handshake skill). OR **B2b** —
+   accept timer + the first BullMQ/queue infra. Each adds its `ALLOWED_ACTORS` entries + ownership checks.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
