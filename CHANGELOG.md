@@ -8,6 +8,35 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-13 — Booking slice B2a (broadcast dispatch + accept + actor-permissions)
+
+- **B2 decomposed** → B2a (this) / B2b (accept-timer + BullMQ, deferred) / B2c (weighted matching algo,
+  deferred — needs trust-score/location/cash models that don't exist). **Dispatch model changed from
+  push → broadcast / first-to-accept** (the documented `rating×proximity×load×cash` algorithm can't be
+  built yet); `core-flow.md` updated + `docs/decisions/2026-06-13-dispatch-broadcast-model.md` records it.
+- **Schema:** `Booking.technicianId` (nullable FK, SET NULL, indexed) + `Service.requiredSkill` (NOT NULL,
+  migrated add-nullable→backfill-by-category→set-not-null) + `JobSkip` (per-tech dismissal, composite-unique).
+- **Auto-open:** `POST /me/bookings` now transitions `CREATED→DISPATCHED` (SYSTEM) in the create flow —
+  the booking opens to the eligible pool immediately. Audit trail `null→CREATED→DISPATCHED`.
+- **Actor-permission gate (completes the deferred B1 item):** `ALLOWED_ACTORS` map + a 3rd gate in
+  `transitionBooking` (after legality, before the optimistic lock) — SYSTEM opens, TECHNICIAN accepts,
+  CUSTOMER cancels; default-deny for mapped to-states. Role-gate in the state machine; identity/ownership
+  in the service.
+- **Technician dispatch — new `/technician/jobs/*` (TECHNICIAN-only):** `GET /available` (eligible =
+  VERIFIED + booking's `requiredSkill` ∈ tech skills, open, not-skipped), `GET /mine`, `POST /:id/accept`
+  (atomic first-to-accept via the optimistic lock + a `technicianId:null` claim guard — concurrent loser
+  409, exactly one ACCEPTED audit), `POST /:id/skip` (idempotent per-tech hide).
+- **Directional PII masking (Golden Rule 7):** the technician job view masks the customer phone + omits
+  the customer name; the customer booking detail shows the technician's name + masked phone. `maskPhone` helper.
+- **Deferred, documented (not dropped):** the weighted matching algorithm (B2c), the 30-sec accept timer +
+  BullMQ infra (B2b), zone-coverage filtering, visit-fee UPI authorization (payment), and the Phase-A fraud
+  locks (customer-unsettled-payment, technician-cash-debt-limit, self-dealing — need the cash/trust subsystems).
+- 179 backend tests green (TDD, real Postgres + Redis). Reviewed by `prisma-migration-reviewer` (backfill
+  safe; added the `technicianId` index it flagged), `golden-rules-auditor` (masking + atomic claim + audit-in-tx +
+  no-money verified; hardened the claim guard), `fraud-vector-checker` (all 6 in-scope vectors implemented;
+  Phase-A locks correctly deferred with a trail) — no blocking issues. Built subagent-driven on
+  `feature/booking-dispatch` (pending PR/merge).
+
 ## 2026-06-08 — Booking slice B1 (creation + price snapshot + state skeleton)
 
 - **Booking module decomposed** into 7 sub-slices (B1 creation+snapshot → B2 dispatch → B3 arrival

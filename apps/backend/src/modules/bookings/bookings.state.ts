@@ -1,5 +1,5 @@
 import type { Prisma, Booking, BookingState, ActorType } from '@prisma/client';
-import { ConflictError } from '../../shared/errors.js';
+import { ConflictError, ForbiddenError } from '../../shared/errors.js';
 
 export const ALLOWED_TRANSITIONS: Record<BookingState, BookingState[]> = {
   CREATED:            ['DISPATCHED', 'CANCELLED_BY_CUSTOMER'],
@@ -26,8 +26,26 @@ export function isTransitionAllowed(from: BookingState, to: BookingState): boole
   return ALLOWED_TRANSITIONS[from].includes(to);
 }
 
+export type ActorKind = 'CUSTOMER' | 'TECHNICIAN' | 'ADMIN' | 'SYSTEM';
+
+/** Which actor kind(s) may drive a transition INTO a given state. DEFAULT-DENY: a to-state NOT
+ *  listed here is rejected for every actor — so each later slice MUST add its entry before its
+ *  transition route works (an omission fails loud with 403, not a silent bypass). This matters most
+ *  for the keystone handshakes (ARRIVED, CUSTOMER_CONFIRMED) where Golden Rule 2 forbids a single
+ *  party driving the transition alone. B2a wires only the three below. */
+const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
+  DISPATCHED:            ['SYSTEM'],
+  ACCEPTED:              ['TECHNICIAN'],
+  CANCELLED_BY_CUSTOMER: ['CUSTOMER'],
+};
+
+export function actorAllowedFor(to: BookingState, kind: ActorKind): boolean {
+  const allowed = ALLOWED_ACTORS[to];
+  return allowed !== undefined && allowed.includes(kind); // default-deny: unmapped to-state → false
+}
+
 /** Who is driving a transition. `id` is the User.id (or a system marker). */
-export interface BookingActor { type: ActorType; id: string; }
+export interface BookingActor { type: ActorType; kind: ActorKind; id: string; }
 
 /**
  * Guarded transition: validates legality, writes state + BOOKING_STATE_CHANGED audit in the
@@ -43,6 +61,9 @@ export async function transitionBooking(
 ): Promise<Booking> {
   if (!isTransitionAllowed(booking.state, to)) {
     throw new ConflictError(`Cannot transition booking from ${booking.state} to ${to}`);
+  }
+  if (!actorAllowedFor(to, actor.kind)) {
+    throw new ForbiddenError(`A ${actor.kind} may not transition a booking to ${to}`);
   }
   // Optimistic lock: the update is conditional on the from-state the legality check ran against
   // (which was loaded before this tx). If a concurrent transition already moved the row, 0 rows

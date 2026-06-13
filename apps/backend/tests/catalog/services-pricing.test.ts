@@ -13,7 +13,7 @@ async function seedBase(mgr: string) {
   const vad = (await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'Vadodara', visitFeePaise: 14900 } })).json();
   const pad = (await app.inject({ method: 'POST', url: '/catalog/zones', headers: auth(mgr), payload: { name: 'Padra', visitFeePaise: 9900 } })).json();
   const cat = (await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'AC' } })).json();
-  const svc = (await app.inject({ method: 'POST', url: '/catalog/services', headers: auth(mgr), payload: { categoryId: cat.id, name: 'AC gas refill', tier: 'T2' } })).json();
+  const svc = (await app.inject({ method: 'POST', url: '/catalog/services', headers: auth(mgr), payload: { categoryId: cat.id, name: 'AC gas refill', tier: 'T2', requiredSkill: 'AC' } })).json();
   return { vad, pad, cat, svc };
 }
 

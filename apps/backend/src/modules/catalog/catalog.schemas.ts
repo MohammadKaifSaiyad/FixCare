@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const paise = z.number().int().min(0, 'must be a non-negative integer (paise)');
 const tier = z.enum(['T1', 'T2', 'T3']);
+const skill = z.enum(['AC', 'FAN', 'ELECTRICAL', 'WIRING', 'APPLIANCE']);
 
 export const createZoneBody = z.object({ name: z.string().min(1), visitFeePaise: paise }).strict();
 export type CreateZoneBody = z.infer<typeof createZoneBody>;
@@ -15,7 +16,7 @@ export type UpdateZoneBody = z.infer<typeof updateZoneBody>;
 export const createCategoryBody = z.object({ name: z.string().min(1) }).strict();
 export type CreateCategoryBody = z.infer<typeof createCategoryBody>;
 
-export const createServiceBody = z.object({ categoryId: z.string().min(1), name: z.string().min(1), tier }).strict();
+export const createServiceBody = z.object({ categoryId: z.string().min(1), name: z.string().min(1), tier, requiredSkill: skill }).strict();
 export type CreateServiceBody = z.infer<typeof createServiceBody>;
 
 export const upsertPriceBody = z.object({ laborPaise: paise }).strict();

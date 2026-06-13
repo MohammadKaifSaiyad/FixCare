@@ -68,7 +68,7 @@ export async function createService(actorId: string, body: CreateServiceBody) {
   if (!cat) throw new NotFoundError('Category not found');
   try {
     return await prisma.$transaction(async (tx) => {
-      const svc = await tx.service.create({ data: { categoryId: body.categoryId, name: body.name, tier: body.tier } });
+      const svc = await tx.service.create({ data: { categoryId: body.categoryId, name: body.name, tier: body.tier, requiredSkill: body.requiredSkill } });
       await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'Service', entityId: svc.id, fields: Object.keys(body) } } });
       return { id: svc.id, categoryId: svc.categoryId, name: svc.name, tier: svc.tier, status: svc.status };
     });

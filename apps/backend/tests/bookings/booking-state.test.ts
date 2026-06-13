@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
-import { makeCustomer, seedBookable } from './helpers.js';
+import { makeCustomer, makeTechnician, seedBookable } from './helpers.js';
 
 const app = await buildApp();
 afterAll(() => app.close());
@@ -37,7 +37,7 @@ describe('GET/list + cancel /me/bookings', () => {
     expect((await app.inject({ method: 'GET', url: '/me/bookings/00000000-0000-0000-0000-000000000000', headers: auth(a.token) })).statusCode).toBe(404);
   });
 
-  it('cancel from CREATED → CANCELLED_BY_CUSTOMER + audit', async () => {
+  it('cancel from DISPATCHED → CANCELLED_BY_CUSTOMER + audit', async () => {
     const a = await makeCustomer();
     const f = await seedBookable(a.customerId);
     const booking = await createBooking(a.token, f.address.id, f.service.id);
@@ -45,7 +45,7 @@ describe('GET/list + cancel /me/bookings', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().state).toBe('CANCELLED_BY_CUSTOMER');
     const audits = await prisma.auditLog.findMany({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['bookingId'], equals: booking.id } } });
-    expect(audits.length).toBe(2); // create (→CREATED) + cancel (→CANCELLED_BY_CUSTOMER)
+    expect(audits.length).toBe(3); // null→CREATED + CREATED→DISPATCHED (auto-open) + DISPATCHED→CANCELLED_BY_CUSTOMER
   });
 
   it('two concurrent cancels: exactly one wins (200), the other is rejected; only one cancel audit', async () => {
@@ -79,5 +79,19 @@ describe('GET/list + cancel /me/bookings', () => {
     const booking = await createBooking(a.token, f.address.id, f.service.id);
     const b = await makeCustomer();
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/cancel`, headers: auth(b.token) })).statusCode).toBe(404);
+  });
+
+  it('after a technician accepts, the customer booking detail shows technician name + masked phone', async () => {
+    const c = await makeCustomer();
+    const f = await seedBookable(c.customerId);
+    const booking = await createBooking(c.token, f.address.id, f.service.id);
+    const t = await makeTechnician(['AC']);
+    await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) });
+    const got = (await app.inject({ method: 'GET', url: `/me/bookings/${booking.id}`, headers: auth(c.token) })).json();
+    expect(got.state).toBe('ACCEPTED');
+    expect(got.technician.name).toBe('Tech');
+    expect(got.technician.maskedPhone).toMatch(/^•+\d{4}$/);
+    // directional masking: customer never sees the technician's raw phone
+    expect(JSON.stringify(got)).not.toMatch(/9\d{9}/);
   });
 });

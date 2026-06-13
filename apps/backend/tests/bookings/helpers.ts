@@ -1,3 +1,4 @@
+import type { ServiceSkill } from '@prisma/client';
 import { prisma } from '../schema/helpers.js';
 import { signAccessToken } from '../../src/shared/auth/tokens.js';
 
@@ -29,11 +30,17 @@ export async function seedBookable(customerId: string, opts?: { visitFeePaise?: 
   const pincode = String(390001 + n); // 6-digit, unique per call
   const zone = await prisma.zone.create({ data: { name: zoneName, visitFeePaise } });
   const cat = await prisma.serviceCategory.create({ data: { name: `Cat-${n}` } });
-  const service = await prisma.service.create({ data: { categoryId: cat.id, name: 'AC gas refill', tier: 'T2' } });
+  const service = await prisma.service.create({ data: { categoryId: cat.id, name: 'AC gas refill', tier: 'T2', requiredSkill: 'AC' } });
   await prisma.servicePrice.create({ data: { serviceId: service.id, zoneId: zone.id, laborPaise } });
   await prisma.pincodeZone.create({ data: { pincode, zoneId: zone.id } });
   const address = await prisma.address.create({
     data: { customerId, label: 'Home', line1: '12 MG Road', pincode, zoneId: zone.id, isDefault: true },
   });
   return { zone, cat, service, address, visitFeePaise, laborPaise, zoneName, pincode };
+}
+
+export async function makeTechnician(skills: ServiceSkill[] = ['AC'], status: 'VERIFIED' | 'PENDING' = 'VERIFIED') {
+  const user = await prisma.user.create({ data: { phone: uniquePhone(), role: 'TECHNICIAN' } });
+  const t = await prisma.technician.create({ data: { userId: user.id, name: 'Tech', skills, status } });
+  return { token: signAccessToken(user.id, 'TECHNICIAN'), userId: user.id, technicianId: t.id };
 }

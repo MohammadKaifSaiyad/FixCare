@@ -59,7 +59,9 @@ export async function createBooking(userId: string, body: CreateBookingBody): Pr
           data: { action: 'BOOKING_STATE_CHANGED', actorType: 'USER', actorId: userId,
                    metadata: { bookingId: created.id, from: null, to: 'CREATED' } },
         });
-        return created;
+        // auto-open to the technician pool (SYSTEM actor)
+        const opened = await transitionBooking(tx, created, 'DISPATCHED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'system' });
+        return opened;
       });
       return toBookingDto(row);
     } catch (e) {
@@ -73,20 +75,25 @@ export async function createBooking(userId: string, body: CreateBookingBody): Pr
 export async function listBookings(userId: string): Promise<BookingDto[]> {
   const { id: customerId } = await requireCustomer(userId);
   const rows = await prisma.booking.findMany({ where: { customerId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
-  return rows.map(toBookingDto);
+  return rows.map((b) => toBookingDto(b));
 }
 
 export async function getBooking(userId: string, id: string): Promise<BookingDto> {
   const { id: customerId } = await requireCustomer(userId);
-  const b = await ownBookingOrThrow(customerId, id);
-  return toBookingDto(b);
+  // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
+  const b = await prisma.booking.findFirst({
+    where: { id, customerId, deletedAt: null },
+    include: { technician: { include: { user: true } } },
+  });
+  if (!b) throw new NotFoundError('Booking not found');
+  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined);
 }
 
 export async function cancelBooking(userId: string, id: string): Promise<BookingDto> {
   const { id: customerId } = await requireCustomer(userId);
   const booking = await ownBookingOrThrow(customerId, id);
   const updated = await prisma.$transaction((tx) =>
-    transitionBooking(tx, booking, 'CANCELLED_BY_CUSTOMER', { type: 'USER', id: userId }),
+    transitionBooking(tx, booking, 'CANCELLED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId }),
   );
   return toBookingDto(updated);
 }

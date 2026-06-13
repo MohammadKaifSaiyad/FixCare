@@ -42,17 +42,22 @@ End-to-end journey for a single job, with fraud locks at each phase.
 ### Backend Actions
 - Determine zone (Vadodara/Padra) → apply geofenced rate
 - Calculate labor tier if applicable
-- Dispatch algorithm picks technician:
-  `rating × proximity × current_load × cash_compliance`
-- Visit fee **authorized** (not charged) via UPI AutoPay
+- **Broadcast dispatch:** the booking opens to *all eligible technicians* (VERIFIED + matching
+  skill). The **first to accept wins** (atomic claim). See ADR
+  [`docs/decisions/2026-06-13-dispatch-broadcast-model.md`].
+  - _Future (deferred):_ a weighted ranking `rating × proximity × current_load × cash_compliance`
+    to order/limit who's offered the job, and a per-offer accept timer — both need the trust-score,
+    location, cash, and queue subsystems that don't exist yet.
+- Visit fee **authorized** (not charged) via UPI AutoPay _(payment slice — not in dispatch)_
 
 ### What Customer Sees
-- Technician name, photo, masked phone, QR-badge ID
-- ETA based on technician location
+- Technician name, photo, masked phone, QR-badge ID (once a technician has accepted)
+- ETA based on technician location _(deferred — needs technician location)_
 
 ### What Technician Sees
-- Address with masked customer phone
-- Accept/reject (30-second timer)
+- The open job in their available list: service, zone, fees, **address with masked customer phone**
+- Accept (first-to-accept wins) or skip (hides it from their own list)
+  - _Future (deferred):_ a per-offer 30-second accept timer
 
 ### 🔒 Fraud Locks at This Phase
 - Customer with unsettled payment → blocked from booking
