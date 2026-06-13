@@ -15,7 +15,10 @@ describe('ALLOWED_ACTORS', () => {
     expect(actorAllowedFor('CANCELLED_BY_CUSTOMER', 'CUSTOMER')).toBe(true);
     expect(actorAllowedFor('CANCELLED_BY_CUSTOMER', 'TECHNICIAN')).toBe(false);
   });
-  it('an unmapped to-state has no role restriction (returns true)', () => {
-    expect(actorAllowedFor('ARRIVED', 'TECHNICIAN')).toBe(true);
+  it('DEFAULT-DENY: an unmapped to-state is rejected for every actor (a later slice must add its entry)', () => {
+    expect(actorAllowedFor('ARRIVED', 'TECHNICIAN')).toBe(false);
+    expect(actorAllowedFor('ARRIVED', 'SYSTEM')).toBe(false);
+    expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'TECHNICIAN')).toBe(false);
+    expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(false);
   });
 });

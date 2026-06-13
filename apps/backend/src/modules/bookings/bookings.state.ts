@@ -28,8 +28,11 @@ export function isTransitionAllowed(from: BookingState, to: BookingState): boole
 
 export type ActorKind = 'CUSTOMER' | 'TECHNICIAN' | 'ADMIN' | 'SYSTEM';
 
-/** Which actor kind may drive a transition INTO a given state. A to-state absent from this map has
- *  no role restriction yet (later slices add their entries). A present to-state is default-deny. */
+/** Which actor kind(s) may drive a transition INTO a given state. DEFAULT-DENY: a to-state NOT
+ *  listed here is rejected for every actor — so each later slice MUST add its entry before its
+ *  transition route works (an omission fails loud with 403, not a silent bypass). This matters most
+ *  for the keystone handshakes (ARRIVED, CUSTOMER_CONFIRMED) where Golden Rule 2 forbids a single
+ *  party driving the transition alone. B2a wires only the three below. */
 const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
   DISPATCHED:            ['SYSTEM'],
   ACCEPTED:              ['TECHNICIAN'],
@@ -38,7 +41,7 @@ const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
 
 export function actorAllowedFor(to: BookingState, kind: ActorKind): boolean {
   const allowed = ALLOWED_ACTORS[to];
-  return allowed === undefined || allowed.includes(kind);
+  return allowed !== undefined && allowed.includes(kind); // default-deny: unmapped to-state → false
 }
 
 /** Who is driving a transition. `id` is the User.id (or a system marker). */

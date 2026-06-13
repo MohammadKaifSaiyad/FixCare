@@ -53,8 +53,8 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
     const claim = await tx.booking.updateMany({ where: { id: bookingId, technicianId: null }, data: { technicianId: tech.id } });
     if (claim.count === 0) throw new ConflictError('This job is no longer available');
   });
-  const full = await prisma.booking.findUniqueOrThrow({
-    where: { id: bookingId },
+  const full = await prisma.booking.findFirstOrThrow({
+    where: { id: bookingId, deletedAt: null },
     include: { address: true, service: true, customer: { include: { user: true } } },
   });
   return toTechnicianJobDto(full, full.address, full.service.requiredSkill, full.customer.user.phone);
