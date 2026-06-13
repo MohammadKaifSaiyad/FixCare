@@ -37,7 +37,7 @@ describe('GET/list + cancel /me/bookings', () => {
     expect((await app.inject({ method: 'GET', url: '/me/bookings/00000000-0000-0000-0000-000000000000', headers: auth(a.token) })).statusCode).toBe(404);
   });
 
-  it('cancel from CREATED → CANCELLED_BY_CUSTOMER + audit', async () => {
+  it('cancel from DISPATCHED → CANCELLED_BY_CUSTOMER + audit', async () => {
     const a = await makeCustomer();
     const f = await seedBookable(a.customerId);
     const booking = await createBooking(a.token, f.address.id, f.service.id);
@@ -45,7 +45,7 @@ describe('GET/list + cancel /me/bookings', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().state).toBe('CANCELLED_BY_CUSTOMER');
     const audits = await prisma.auditLog.findMany({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['bookingId'], equals: booking.id } } });
-    expect(audits.length).toBe(2); // create (→CREATED) + cancel (→CANCELLED_BY_CUSTOMER)
+    expect(audits.length).toBe(3); // null→CREATED + CREATED→DISPATCHED (auto-open) + DISPATCHED→CANCELLED_BY_CUSTOMER
   });
 
   it('two concurrent cancels: exactly one wins (200), the other is rejected; only one cancel audit', async () => {

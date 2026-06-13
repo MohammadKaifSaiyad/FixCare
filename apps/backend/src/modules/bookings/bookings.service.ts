@@ -59,7 +59,9 @@ export async function createBooking(userId: string, body: CreateBookingBody): Pr
           data: { action: 'BOOKING_STATE_CHANGED', actorType: 'USER', actorId: userId,
                    metadata: { bookingId: created.id, from: null, to: 'CREATED' } },
         });
-        return created;
+        // auto-open to the technician pool (SYSTEM actor)
+        const opened = await transitionBooking(tx, created, 'DISPATCHED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'system' });
+        return opened;
       });
       return toBookingDto(row);
     } catch (e) {
@@ -86,7 +88,7 @@ export async function cancelBooking(userId: string, id: string): Promise<Booking
   const { id: customerId } = await requireCustomer(userId);
   const booking = await ownBookingOrThrow(customerId, id);
   const updated = await prisma.$transaction((tx) =>
-    transitionBooking(tx, booking, 'CANCELLED_BY_CUSTOMER', { type: 'USER', id: userId }),
+    transitionBooking(tx, booking, 'CANCELLED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId }),
   );
   return toBookingDto(updated);
 }

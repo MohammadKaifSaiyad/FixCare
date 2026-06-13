@@ -11,20 +11,19 @@ function auth(t: string) { return { authorization: `Bearer ${t}` }; }
 function future() { return new Date(Date.now() + 86_400_000).toISOString(); }
 
 describe('POST /me/bookings', () => {
-  it('creates a booking with the full price snapshot + CREATED state + audit', async () => {
+  it('creates a booking with the full price snapshot + DISPATCHED state + audit trail', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const res = await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token),
       payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toMatchObject({
-      state: 'CREATED', visitFeePaise: 14900, laborPaise: 60000, laborTier: 'T2',
+      state: 'DISPATCHED', visitFeePaise: 14900, laborPaise: 60000, laborTier: 'T2',
       service: { name: 'AC gas refill' }, zone: { name: f.zoneName },
     });
     expect(res.json().bookingNumber).toMatch(/^FC-/);
-    const audit = await prisma.auditLog.findFirst({ where: { action: 'BOOKING_STATE_CHANGED' } });
-    expect(audit).toBeTruthy();
-    expect(audit!.metadata).toMatchObject({ to: 'CREATED' });
+    const audits = await prisma.auditLog.findMany({ where: { action: 'BOOKING_STATE_CHANGED' }, orderBy: { createdAt: 'asc' } });
+    expect(audits.map((a) => (a.metadata as { to: string }).to)).toEqual(['CREATED', 'DISPATCHED']);
   });
 
   it('SNAPSHOT IS IMMUTABLE: changing catalog price + pincode→zone after creation does not change the booking', async () => {
