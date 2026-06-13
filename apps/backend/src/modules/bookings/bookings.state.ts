@@ -35,6 +35,8 @@ export type ActorKind = 'CUSTOMER' | 'TECHNICIAN' | 'ADMIN' | 'SYSTEM';
  *  party driving the transition alone. B2a wires only the three below. */
 const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
   DISPATCHED:            ['SYSTEM'],
+  EN_ROUTE:              ['TECHNICIAN'],
+  ARRIVED:               ['CUSTOMER'],
   ACCEPTED:              ['TECHNICIAN'],
   CANCELLED_BY_CUSTOMER: ['CUSTOMER'],
 };
