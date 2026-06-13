@@ -1,3 +1,4 @@
+import type { ServiceSkill } from '@prisma/client';
 import { prisma } from '../schema/helpers.js';
 import { signAccessToken } from '../../src/shared/auth/tokens.js';
 
@@ -36,4 +37,10 @@ export async function seedBookable(customerId: string, opts?: { visitFeePaise?: 
     data: { customerId, label: 'Home', line1: '12 MG Road', pincode, zoneId: zone.id, isDefault: true },
   });
   return { zone, cat, service, address, visitFeePaise, laborPaise, zoneName, pincode };
+}
+
+export async function makeTechnician(skills: ServiceSkill[] = ['AC'], status: 'VERIFIED' | 'PENDING' = 'VERIFIED') {
+  const user = await prisma.user.create({ data: { phone: uniquePhone(), role: 'TECHNICIAN' } });
+  const t = await prisma.technician.create({ data: { userId: user.id, name: 'Tech', skills, status } });
+  return { token: signAccessToken(user.id, 'TECHNICIAN'), userId: user.id, technicianId: t.id };
 }

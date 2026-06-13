@@ -8,6 +8,7 @@ import { registerProfileRoutes } from './modules/profiles/profiles.routes.js';
 import { registerCatalogRoutes } from './modules/catalog/catalog.routes.js';
 import { registerAddressesRoutes } from './modules/addresses/addresses.routes.js';
 import { registerBookingRoutes } from './modules/bookings/bookings.routes.js';
+import { registerTechnicianJobRoutes } from './modules/technician-jobs/technician-jobs.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -20,6 +21,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerCatalogRoutes(app);
   await registerAddressesRoutes(app);
   await registerBookingRoutes(app);
+  await registerTechnicianJobRoutes(app);
 
   app.get('/health', async () => {
     let db = 'down';
