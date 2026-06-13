@@ -44,11 +44,11 @@ export async function seedCatalog(prisma: PrismaClient): Promise<void> {
 
   const gasRefill = await prisma.service.upsert({
     where: { categoryId_name: { categoryId: ac.id, name: 'AC gas refill' } },
-    update: {}, create: { categoryId: ac.id, name: 'AC gas refill', tier: 'T2' },
+    update: {}, create: { categoryId: ac.id, name: 'AC gas refill', tier: 'T2', requiredSkill: 'AC' },
   });
   const fanRepair = await prisma.service.upsert({
     where: { categoryId_name: { categoryId: fan.id, name: 'Ceiling fan repair' } },
-    update: {}, create: { categoryId: fan.id, name: 'Ceiling fan repair', tier: 'T1' },
+    update: {}, create: { categoryId: fan.id, name: 'Ceiling fan repair', tier: 'T1', requiredSkill: 'FAN' },
   });
 
   const prices: Array<{ serviceId: string; zoneId: string; laborPaise: number }> = [

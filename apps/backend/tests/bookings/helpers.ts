@@ -29,7 +29,7 @@ export async function seedBookable(customerId: string, opts?: { visitFeePaise?: 
   const pincode = String(390001 + n); // 6-digit, unique per call
   const zone = await prisma.zone.create({ data: { name: zoneName, visitFeePaise } });
   const cat = await prisma.serviceCategory.create({ data: { name: `Cat-${n}` } });
-  const service = await prisma.service.create({ data: { categoryId: cat.id, name: 'AC gas refill', tier: 'T2' } });
+  const service = await prisma.service.create({ data: { categoryId: cat.id, name: 'AC gas refill', tier: 'T2', requiredSkill: 'AC' } });
   await prisma.servicePrice.create({ data: { serviceId: service.id, zoneId: zone.id, laborPaise } });
   await prisma.pincodeZone.create({ data: { pincode, zoneId: zone.id } });
   const address = await prisma.address.create({
