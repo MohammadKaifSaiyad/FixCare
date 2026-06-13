@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
-import { ForbiddenError } from '../../shared/errors.js';
-import { listAvailableJobs, listMyJobs, acceptJob, skipJob } from './technician-jobs.service.js';
+import { ValidationError, ForbiddenError } from '../../shared/errors.js';
+import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob } from './technician-jobs.service.js';
+import { arriveBody } from './technician-jobs.schemas.js';
 
 function requireTechnicianRole(req: { user?: { role: string } }): void {
   if (req.user?.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
@@ -27,5 +28,17 @@ export async function registerTechnicianJobRoutes(app: FastifyInstance) {
     requireTechnicianRole(req);
     await skipJob(req.user!.id, (req.params as { id: string }).id);
     return reply.code(204).send();
+  });
+
+  app.post('/technician/jobs/:id/en-route', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    return reply.send(await enRouteJob(req.user!.id, (req.params as { id: string }).id));
+  });
+
+  app.post('/technician/jobs/:id/arrive', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    const p = arriveBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await arriveJob(req.user!.id, (req.params as { id: string }).id, p.data));
   });
 }

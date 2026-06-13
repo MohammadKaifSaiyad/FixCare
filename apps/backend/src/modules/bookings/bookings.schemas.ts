@@ -12,3 +12,6 @@ export const createBookingBody = z
     path: ['scheduledSlot'],
   });
 export type CreateBookingBody = z.infer<typeof createBookingBody>;
+
+export const confirmArrivalBody = z.object({ code: z.string().regex(/^\d{6}$/, 'code must be 6 digits') }).strict();
+export type ConfirmArrivalBody = z.infer<typeof confirmArrivalBody>;

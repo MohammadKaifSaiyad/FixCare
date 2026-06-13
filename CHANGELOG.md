@@ -8,6 +8,34 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-13 — Booking slice B3 (arrival handshake — KEYSTONE #1)
+
+- **The project's first keystone interaction + first money-gating evidence** (Golden Rules 1-2). A
+  two-sided, evidence-gated handshake locks the visit-fee milestone; neither party alone can reach `ARRIVED`.
+- **Flow:** tech `POST /technician/jobs/:id/en-route` (`ACCEPTED→EN_ROUTE`) → tech `POST /technician/jobs/:id/arrive`
+  `{lat,lng}` (GPS-validated, mints a single-use code, **no state change**) → customer
+  `POST /me/bookings/:id/confirm-arrival` `{code}` (`EN_ROUTE→ARRIVED`, sets `arrivedAt` + `visitFeeLockedAt`).
+- **GPS gate (fraud-defense #11):** when the customer address has coordinates, haversine distance > 200m → 422;
+  the technician's GPS is **always recorded** (`arrivalLat/Lng`) for review. Record-only when the address has no
+  coordinates (accepted V1 tradeoff — universal geofence lands with PostGIS).
+- **Arrival code:** server-minted 6-digit, **hashed in Redis**, single-use, 5-attempt-capped, 10-min TTL
+  (reuses the auth OTP idiom). Only the GPS-stamped arrive-tap mints it; only the customer entering it
+  transitions to ARRIVED → genuine two-sided proof. Brute-force-resistant (1M space + cap + TTL).
+- **Lock = milestone, no money moves:** `visitFeeLockedAt` is set only at the code-verified ARRIVED transition;
+  the payment slice (B6) will require it before any visit-fee claim.
+- **State machine:** `EN_ROUTE→TECHNICIAN`, `ARRIVED→CUSTOMER` added to `ALLOWED_ACTORS` (mandatory under
+  default-deny). `transitionBooking` gained an optional `evidence` param → the ARRIVED audit records
+  `{gpsRecorded, withinGeofence, codeConfirmed}` with **no raw coordinates / no phone** (Golden Rule 7).
+  Assigned-technician identity + customer owner-scope enforced (others → 403 / 404).
+- New `haversineMeters` (`shared/utils/geo.ts`); arrival-code helper (`bookings/arrival-code.ts`); 4 nullable
+  evidence columns + additive migration.
+- 196 backend tests green (TDD, real Postgres + Redis). Reviewed by `prisma-migration-reviewer` (additive),
+  `golden-rules-auditor` + spec (keystone integrity — no single-party ARRIVED — audit-in-tx, no PII verified),
+  `fraud-vector-checker` (#11 GPS gate + #1 farming both blocked; code brute-force-resistant) — no blocking
+  issues; fixed the one finding (missing `requireCustomerRole` on the confirm-arrival route). **Deferred:** B4
+  diagnosis+parts, B5 completion handshake (keystone #2), B6 visit-fee charge, universal geofence (PostGIS).
+  Built subagent-driven on `feature/booking-arrival` (pending PR/merge).
+
 ## 2026-06-13 — Booking slice B2a (broadcast dispatch + accept + actor-permissions)
 
 - **B2 decomposed** → B2a (this) / B2b (accept-timer + BullMQ, deferred) / B2c (weighted matching algo,

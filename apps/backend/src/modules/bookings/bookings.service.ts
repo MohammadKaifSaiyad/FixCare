@@ -1,11 +1,14 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
-import { ForbiddenError, NotFoundError, UnprocessableError } from '../../shared/errors.js';
+import { ForbiddenError, NotFoundError, UnprocessableError, ConflictError, UnauthorizedError } from '../../shared/errors.js';
 import { resolvePincode } from '../addresses/serviceability.service.js';
 import { generateBookingNumber } from './bookings.number.js';
 import { transitionBooking } from './bookings.state.js';
+import { verifyArrivalCode } from './arrival-code.js';
+import { haversineMeters } from '../../shared/utils/geo.js';
+import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
 import { toBookingDto, type BookingDto } from './bookings.types.js';
-import type { CreateBookingBody } from './bookings.schemas.js';
+import type { CreateBookingBody, ConfirmArrivalBody } from './bookings.schemas.js';
 
 async function requireCustomer(userId: string): Promise<{ id: string }> {
   const c = await prisma.customer.findFirst({ where: { userId, deletedAt: null } });
@@ -95,5 +98,49 @@ export async function cancelBooking(userId: string, id: string): Promise<Booking
   const updated = await prisma.$transaction((tx) =>
     transitionBooking(tx, booking, 'CANCELLED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId }),
   );
+  return toBookingDto(updated);
+}
+
+export async function confirmArrival(userId: string, id: string, body: ConfirmArrivalBody): Promise<BookingDto> {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await prisma.booking.findFirst({ where: { id, customerId, deletedAt: null }, include: { address: true } });
+  if (!booking) throw new NotFoundError('Booking not found');
+  if (booking.state !== 'EN_ROUTE') throw new ConflictError('Booking is not awaiting arrival confirmation');
+
+  // Note: a correct code is consumed (single-use) by verifyArrivalCode BEFORE the $transaction below.
+  // Redis and Postgres can't share a transaction; if the DB tx rolled back, the code would be spent
+  // and the customer would need the technician to re-tap arrive. This fails SAFE (never a false
+  // ARRIVED), and the DB tx here only sets timestamps/state — it does not realistically fail.
+  const result = await verifyArrivalCode(id, body.code);
+  if (result === 'no-code') {
+    // Distinguish between "technician never tapped Arrived" vs "code was minted but exhausted/expired".
+    // If GPS is recorded, the technician DID tap arrive (which always mints the code) — so 'no-code'
+    // means the attempt cap was hit or the code expired → treat as invalid (401).
+    const gpsPresent = booking.arrivalLat != null;
+    if (gpsPresent) throw new UnauthorizedError('Invalid or expired arrival code');
+    throw new ConflictError('The technician has not marked arrival yet');
+  }
+  if (result === 'invalid') throw new UnauthorizedError('Invalid or expired arrival code');
+
+  // re-derive audit evidence from the persisted arrival GPS + the address (no raw coords in audit)
+  const gpsRecorded = booking.arrivalLat != null && booking.arrivalLng != null;
+  const withinGeofence =
+    gpsRecorded && booking.address.lat != null && booking.address.lng != null
+      ? haversineMeters(booking.address.lat, booking.address.lng, booking.arrivalLat!, booking.arrivalLng!) <= ARRIVAL_GEOFENCE_METERS
+      : null;
+
+  // Enforce (not just record) the geofence at confirm time: if the recorded arrival GPS is provably
+  // outside the address geofence, the visit fee must not lock. (withinGeofence is null when the
+  // address has no coords — record-only fallback, allowed.) Never grant ARRIVED while the audit says
+  // the technician was not on-site.
+  if (withinGeofence === false) throw new UnprocessableError('Arrival GPS is outside the service address');
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await transitionBooking(
+      tx, booking, 'ARRIVED', { type: 'USER', kind: 'CUSTOMER', id: userId },
+      { gpsRecorded, withinGeofence, codeConfirmed: true },
+    );
+    return tx.booking.update({ where: { id }, data: { arrivedAt: new Date(), visitFeeLockedAt: new Date() } });
+  });
   return toBookingDto(updated);
 }

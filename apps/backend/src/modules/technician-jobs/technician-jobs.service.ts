@@ -1,7 +1,11 @@
 import { prisma } from '../../shared/database/prisma.js';
-import { ForbiddenError, NotFoundError, ConflictError } from '../../shared/errors.js';
+import { ForbiddenError, NotFoundError, ConflictError, UnprocessableError } from '../../shared/errors.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
+import { haversineMeters } from '../../shared/utils/geo.js';
+import { mintArrivalCode } from '../bookings/arrival-code.js';
+import { ARRIVAL_GEOFENCE_METERS } from '../bookings/bookings.constants.js';
 import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.types.js';
+import type { ArriveBody } from './technician-jobs.schemas.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -69,4 +73,43 @@ export async function skipJob(userId: string, bookingId: string): Promise<void> 
     create: { technicianId: tech.id, bookingId },
     update: {},
   });
+}
+
+
+
+/** Load a booking that must be assigned to this technician + in the given state. */
+async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE') {
+  const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true } });
+  if (!b) throw new NotFoundError('Job not found');
+  if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
+  if (b.state !== expectedState) throw new ConflictError(`Job is not in ${expectedState}`);
+  return b;
+}
+
+/** ACCEPTED → EN_ROUTE ("on my way"). Returns a minimal status object the technician app needs. */
+export async function enRouteJob(userId: string, bookingId: string): Promise<{ id: string; state: 'EN_ROUTE' }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'ACCEPTED');
+  await prisma.$transaction((tx) => transitionBooking(tx, booking, 'EN_ROUTE', { type: 'USER', kind: 'TECHNICIAN', id: userId }));
+  return { id: bookingId, state: 'EN_ROUTE' };
+}
+
+/** Arrive-tap: GPS gate (validate-if-present) + record GPS + mint the single-use code. NO state change. */
+export async function arriveJob(userId: string, bookingId: string, body: ArriveBody): Promise<{ arrivalCode: string; withinGeofence: boolean | null }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'EN_ROUTE');
+
+  // Record the technician's claimed GPS FIRST — fraud-defense #11 wants the GPS of every arrive-tap
+  // captured for later review, INCLUDING a rejected too-far attempt (a technician probing the
+  // geofence from 500m must leave a trace, not silently retry from closer).
+  await prisma.booking.update({ where: { id: bookingId }, data: { arrivalLat: body.lat, arrivalLng: body.lng } });
+
+  let withinGeofence: boolean | null = null;
+  if (booking.address.lat != null && booking.address.lng != null) {
+    const dist = haversineMeters(booking.address.lat, booking.address.lng, body.lat, body.lng);
+    if (dist > ARRIVAL_GEOFENCE_METERS) throw new UnprocessableError('You are too far from the customer location');
+    withinGeofence = true;
+  }
+  const arrivalCode = await mintArrivalCode(bookingId);
+  return { arrivalCode, withinGeofence };
 }

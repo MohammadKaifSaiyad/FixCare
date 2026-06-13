@@ -9,26 +9,35 @@ _Last updated: 2026-06-13_
 ---
 
 ## Phase
-**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1** merged to
-`main`. **Booking module underway** — decomposed into 7 sub-slices (B1 creation+snapshot → B2 dispatch
-→ B3 arrival handshake → B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes). **B1
-merged; B2 itself further split** into B2a (broadcast dispatch — done) / B2b (accept-timer + BullMQ)
-/ B2c (weighted matching algo). **B2a done** on `feature/booking-dispatch`.
+**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a** merged
+to `main`. **Booking module underway** — 7 sub-slices (B1 creation → B2 dispatch → B3 arrival handshake →
+B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); B2 split into B2a (dispatch, merged) /
+B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred). **B3 (arrival handshake — keystone
+#1) done** on `feature/booking-arrival`.
 
 ## Active task
-**Booking Slice B2a** complete on `feature/booking-dispatch` (broadcast dispatch: bookings auto-open
-`CREATED→DISPATCHED`; eligible = VERIFIED + matching `Service.requiredSkill`; first-to-accept wins
-atomically; per-tech skip; the **actor-permission map** (`ALLOWED_ACTORS`) now gates `transitionBooking`
-— completes the deferred B1 item; directional PII masking. 179 tests green; reviewed by all three
-agents — no blocking issues, the snapshot/atomic-claim/masking all verified; hardened the technicianId
-claim with a `technicianId:null` guard + added a `Booking.technicianId` index). **Dispatch model changed
-push→broadcast** (`docs/decisions/2026-06-13-dispatch-broadcast-model.md`; `core-flow.md` updated).
-Pending PR → `/code-review` → `main`. **Next:** **B3 — arrival handshake** (keystone #1: GPS + customer
-QR/code → ARRIVED, lock visit fee) or **B2b** (accept timer + BullMQ). Each adds its actor-permission
-entries + ownership checks. Design: [`docs/designs/2026-06-13-booking-b2a-dispatch-design.md`]; plan:
-[`docs/plans/2026-06-13-booking-b2a-dispatch.md`].
+**Booking Slice B3** complete on `feature/booking-arrival` — the **arrival handshake (Keystone #1)**:
+the first two-sided, money-gating interaction. Flow: tech `en-route` (ACCEPTED→EN_ROUTE) → tech `arrive`
+{lat,lng} (GPS gate validate-if-present 200m / record-only; mints a single-use Redis code; no state
+change) → customer `confirm-arrival` {code} (EN_ROUTE→ARRIVED + sets `visitFeeLockedAt`). Neither party
+alone reaches ARRIVED (Golden Rule 2 — proven by test). 196 tests green; reviewed by all three agents +
+spec — **no blocking issues**, keystone integrity + no-PII/coords-in-audit + brute-force-resistance all
+verified; fixed the one finding (missing `requireCustomerRole` on confirm-arrival route). Pending PR →
+`/code-review` → `main`. **Next:** **B4 — diagnosis + parts cart** (ARRIVED→DIAGNOSED, 2 photos, parts
+auto-cart) or **B5 — completion handshake** (keystone #2: OTP + 3 repair photos → CUSTOMER_CONFIRMED).
+Design: [`docs/designs/2026-06-13-booking-b3-arrival-design.md`]; plan:
+[`docs/plans/2026-06-13-booking-b3-arrival.md`].
 
 ## Last shipped
+- **Booking Slice B3** (`apps/backend`, arrival handshake — keystone #1): 4 nullable evidence columns
+  on `Booking` (`arrivalLat/Lng`, `arrivedAt`, `visitFeeLockedAt`); `haversineMeters` geo helper;
+  single-use hashed Redis arrival code (6-digit, 5-attempt cap, 10-min TTL); `EN_ROUTE→TECHNICIAN` +
+  `ARRIVED→CUSTOMER` actor entries; `POST /technician/jobs/:id/en-route` + `/arrive` (GPS gate
+  validate-if-present, record GPS always, mint code, **no state change**, assigned-tech identity) +
+  `POST /me/bookings/:id/confirm-arrival` (verify code → ARRIVED + `visitFeeLockedAt`); `transitionBooking`
+  gained an optional no-PII `evidence` param (audit records `gpsRecorded/withinGeofence/codeConfirmed`,
+  never raw coords). Two-sided, evidence-gated, no single-party path to ARRIVED. 196 tests; all three
+  agents — no blocking issues. On branch.
 - **Booking Slice B2a** (`apps/backend`): broadcast dispatch — `Booking.technicianId` + `Service.requiredSkill`
   (backfilled) + `JobSkip`; auto-open `CREATED→DISPATCHED` (SYSTEM) at creation; `GET /technician/jobs/available`
   (VERIFIED + skill-matched, masked customer view), `/mine`, `POST /accept` (atomic first-to-accept via the
@@ -91,10 +100,11 @@ entries + ownership checks. Design: [`docs/designs/2026-06-13-booking-b2a-dispat
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/booking-dispatch` → `main` (booking Slice B2a).
-2. **Booking Slice B3 — arrival handshake (keystone #1):** GPS-validated "Arrived" + customer QR/code
-   → `ARRIVED`, lock the visit fee. Two-sided, evidence-gated (keystone-handshake skill). OR **B2b** —
-   accept timer + the first BullMQ/queue infra. Each adds its `ALLOWED_ACTORS` entries + ownership checks.
+1. **PR + `/code-review` + merge** `feature/booking-arrival` → `main` (booking Slice B3).
+2. **Booking Slice B4 — diagnosis + parts cart** (`ARRIVED→DIAGNOSED`: 2 diagnosis photos via
+   camera-evidence-capture, structured-dropdown issue, auto-suggested parts cart, customer approve/decline)
+   OR **B5 — completion handshake (keystone #2)** (OTP + 3 repair photos → CUSTOMER_CONFIRMED). Each adds
+   its `ALLOWED_ACTORS` entries + ownership checks.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
@@ -119,6 +129,9 @@ entries + ownership checks. Design: [`docs/designs/2026-06-13-booking-b2a-dispat
   `GET /catalog/parts` query Zod-validated; seed env guard → whitelist; nullable `categoryId`;
   explicit `return asConflict(...)`.)_
 - Add a `Merchant` smoke test (the one profile without a dedicated test).
+- **Arrival GPS geofence is record-only when the address has no lat/lng** (B3 accepted V1 tradeoff):
+  the >200m hard gate only fires when the address carries coordinates. Close this once addresses
+  are backfilled with coordinates / PostGIS lands — make the arrival geofence a universal gate.
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
   their features land.

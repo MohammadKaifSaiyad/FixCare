@@ -15,9 +15,14 @@ describe('ALLOWED_ACTORS', () => {
     expect(actorAllowedFor('CANCELLED_BY_CUSTOMER', 'CUSTOMER')).toBe(true);
     expect(actorAllowedFor('CANCELLED_BY_CUSTOMER', 'TECHNICIAN')).toBe(false);
   });
-  it('DEFAULT-DENY: an unmapped to-state is rejected for every actor (a later slice must add its entry)', () => {
+  it('EN_ROUTE is technician-only; ARRIVED is customer-only (the arrival handshake)', () => {
+    expect(actorAllowedFor('EN_ROUTE', 'TECHNICIAN')).toBe(true);
+    expect(actorAllowedFor('EN_ROUTE', 'CUSTOMER')).toBe(false);
+    expect(actorAllowedFor('ARRIVED', 'CUSTOMER')).toBe(true);
     expect(actorAllowedFor('ARRIVED', 'TECHNICIAN')).toBe(false);
-    expect(actorAllowedFor('ARRIVED', 'SYSTEM')).toBe(false);
+  });
+  it('DEFAULT-DENY: a still-unmapped to-state is rejected for every actor (a later slice must add its entry)', () => {
+    expect(actorAllowedFor('DIAGNOSED', 'TECHNICIAN')).toBe(false);
     expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'TECHNICIAN')).toBe(false);
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(false);
   });

@@ -35,6 +35,8 @@ export type ActorKind = 'CUSTOMER' | 'TECHNICIAN' | 'ADMIN' | 'SYSTEM';
  *  party driving the transition alone. B2a wires only the three below. */
 const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
   DISPATCHED:            ['SYSTEM'],
+  EN_ROUTE:              ['TECHNICIAN'],
+  ARRIVED:               ['CUSTOMER'],
   ACCEPTED:              ['TECHNICIAN'],
   CANCELLED_BY_CUSTOMER: ['CUSTOMER'],
 };
@@ -58,6 +60,7 @@ export async function transitionBooking(
   booking: Booking,
   to: BookingState,
   actor: BookingActor,
+  evidence?: Record<string, unknown>,
 ): Promise<Booking> {
   if (!isTransitionAllowed(booking.state, to)) {
     throw new ConflictError(`Cannot transition booking from ${booking.state} to ${to}`);
@@ -80,7 +83,7 @@ export async function transitionBooking(
       action: 'BOOKING_STATE_CHANGED',
       actorType: actor.type,
       actorId: actor.id,
-      metadata: { bookingId: booking.id, from: booking.state, to },
+      metadata: { bookingId: booking.id, from: booking.state, to, ...(evidence ?? {}) },
     },
   });
   // re-read the row so callers get the updated state (updateMany doesn't return the row)
