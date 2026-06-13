@@ -6,6 +6,7 @@ import { generateBookingNumber } from './bookings.number.js';
 import { transitionBooking } from './bookings.state.js';
 import { verifyArrivalCode } from './arrival-code.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
+import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
 import { toBookingDto, type BookingDto } from './bookings.types.js';
 import type { CreateBookingBody, ConfirmArrivalBody } from './bookings.schemas.js';
 
@@ -125,8 +126,14 @@ export async function confirmArrival(userId: string, id: string, body: ConfirmAr
   const gpsRecorded = booking.arrivalLat != null && booking.arrivalLng != null;
   const withinGeofence =
     gpsRecorded && booking.address.lat != null && booking.address.lng != null
-      ? haversineMeters(booking.address.lat, booking.address.lng, booking.arrivalLat!, booking.arrivalLng!) <= 200
+      ? haversineMeters(booking.address.lat, booking.address.lng, booking.arrivalLat!, booking.arrivalLng!) <= ARRIVAL_GEOFENCE_METERS
       : null;
+
+  // Enforce (not just record) the geofence at confirm time: if the recorded arrival GPS is provably
+  // outside the address geofence, the visit fee must not lock. (withinGeofence is null when the
+  // address has no coords — record-only fallback, allowed.) Never grant ARRIVED while the audit says
+  // the technician was not on-site.
+  if (withinGeofence === false) throw new UnprocessableError('Arrival GPS is outside the service address');
 
   const updated = await prisma.$transaction(async (tx) => {
     await transitionBooking(

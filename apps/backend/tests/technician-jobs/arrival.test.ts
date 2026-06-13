@@ -48,9 +48,28 @@ describe('arrival handshake — en-route + arrive', () => {
 
     const far = await app.inject({ method: 'POST', url: `/technician/jobs/${id}/arrive`, headers: auth(t.token), payload: { lat: 22.40, lng: 73.30 } });
     expect(far.statusCode).toBe(422);
+    // even a REJECTED (too-far) tap records the technician's GPS for fraud review (no silent retry)
+    const afterFar = await prisma.booking.findUnique({ where: { id } });
+    expect(afterFar!.arrivalLat).toBe(22.40);
     const near = await app.inject({ method: 'POST', url: `/technician/jobs/${id}/arrive`, headers: auth(t.token), payload: { lat: 22.3074, lng: 73.1813 } });
     expect(near.statusCode).toBe(200);
     expect(near.json().withinGeofence).toBe(true);
+  });
+
+  it('confirm-arrival is BLOCKED (422) when the recorded GPS is outside the geofence (coords added after a no-coords arrive)', async () => {
+    const c = await makeCustomer();
+    const f = await seedBookable(c.customerId); // no address coords → geofence skipped at arrive
+    const t = await makeTechnician(['AC']);
+    const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
+    await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(t.token) });
+    const code = (await app.inject({ method: 'POST', url: `/technician/jobs/${id}/arrive`, headers: auth(t.token), payload: { lat: 22.40, lng: 73.30 } })).json().arrivalCode as string;
+    // now coords exist AND the recorded arrival GPS is far from them → withinGeofence:false at confirm
+    await prisma.address.update({ where: { id: f.address.id }, data: { lat: 22.3072, lng: 73.1812 } });
+    const res = await app.inject({ method: 'POST', url: `/me/bookings/${id}/confirm-arrival`, headers: auth(c.token), payload: { code } });
+    expect(res.statusCode).toBe(422);
+    const row = await prisma.booking.findUnique({ where: { id } });
+    expect(row!.state).toBe('EN_ROUTE'); // not ARRIVED — geofence enforced at confirm
+    expect(row!.visitFeeLockedAt).toBeNull();
   });
 
   it('en-route from non-ACCEPTED → 409; arrive from non-EN_ROUTE → 409', async () => {
