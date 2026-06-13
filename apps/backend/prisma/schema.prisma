@@ -320,6 +320,10 @@ model Booking {
 
   scheduledSlot DateTime
   state         BookingState @default(CREATED)
+  arrivalLat       Float?
+  arrivalLng       Float?
+  arrivedAt        DateTime?
+  visitFeeLockedAt DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
