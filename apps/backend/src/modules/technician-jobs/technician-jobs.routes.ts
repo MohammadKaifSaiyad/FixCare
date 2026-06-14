@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { ValidationError, ForbiddenError } from '../../shared/errors.js';
-import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob } from './technician-jobs.service.js';
-import { arriveBody } from './technician-jobs.schemas.js';
+import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart } from './technician-jobs.service.js';
+import { arriveBody, diagnoseBody, addPartBody } from './technician-jobs.schemas.js';
 
 function requireTechnicianRole(req: { user?: { role: string } }): void {
   if (req.user?.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
@@ -40,5 +40,26 @@ export async function registerTechnicianJobRoutes(app: FastifyInstance) {
     const p = arriveBody.safeParse(req.body);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     return reply.send(await arriveJob(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.post('/technician/jobs/:id/diagnose', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    const p = diagnoseBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await diagnoseJob(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.post('/technician/jobs/:id/parts', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    const p = addPartBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.code(201).send(await addPart(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.delete('/technician/jobs/:id/parts/:partId', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    const { id, partId } = req.params as { id: string; partId: string };
+    await removePart(req.user!.id, id, partId);
+    return reply.code(204).send();
   });
 }
