@@ -57,3 +57,12 @@ export const updatePincodeBody = z
   .partial().strict()
   .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
 export type UpdatePincodeBody = z.infer<typeof updatePincodeBody>;
+
+export const createIssueBody = z.object({ name: z.string().min(1), categoryId: z.string().min(1) }).strict();
+export type CreateIssueBody = z.infer<typeof createIssueBody>;
+
+export const updateIssueBody = z
+  .object({ name: z.string().min(1), status: z.enum(['ACTIVE', 'INACTIVE']) })
+  .partial().strict()
+  .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
+export type UpdateIssueBody = z.infer<typeof updateIssueBody>;

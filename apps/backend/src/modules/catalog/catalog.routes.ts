@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ValidationError } from '../../shared/errors.js';
-import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, partsQuery, createPartBody, updatePartBody, createPincodeBody, updatePincodeBody } from './catalog.schemas.js';
-import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice, listParts, createPart, updatePart, listPincodes, createPincode, updatePincode, deletePincode } from './catalog.service.js';
+import { createZoneBody, updateZoneBody, createCategoryBody, createServiceBody, upsertPriceBody, partsQuery, createPartBody, updatePartBody, createPincodeBody, updatePincodeBody, createIssueBody, updateIssueBody } from './catalog.schemas.js';
+import { listZones, createZone, updateZone, listCategories, createCategory, listServicesByZone, createService, upsertServicePrice, listParts, createPart, updatePart, listPincodes, createPincode, updatePincode, deletePincode, listIssues, createIssue, updateIssue, deleteIssue } from './catalog.service.js';
 
 export async function registerCatalogRoutes(app: FastifyInstance) {
   app.get('/catalog/zones', { preHandler: [requireAuth] }, async (_req, reply) => reply.send(await listZones()));
@@ -83,6 +83,28 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
 
   app.delete('/catalog/pincodes/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
     await deletePincode(req.user!.id, (req.params as { id: string }).id);
+    return reply.code(204).send();
+  });
+
+  app.get('/catalog/issues', { preHandler: [requireAuth] }, async (req, reply) => {
+    const q = req.query as { categoryId?: string };
+    return reply.send(await listIssues(q.categoryId));
+  });
+
+  app.post('/catalog/issues', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    const p = createIssueBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.code(201).send(await createIssue(req.user!.id, p.data));
+  });
+
+  app.patch('/catalog/issues/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    const p = updateIssueBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await updateIssue(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.delete('/catalog/issues/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
+    await deleteIssue(req.user!.id, (req.params as { id: string }).id);
     return reply.code(204).send();
   });
 }
