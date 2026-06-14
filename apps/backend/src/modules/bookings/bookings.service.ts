@@ -86,10 +86,10 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } } },
+    include: { technician: { include: { user: true } }, bookingParts: true },
   });
   if (!b) throw new NotFoundError('Booking not found');
-  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined);
+  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts);
 }
 
 export async function cancelBooking(userId: string, id: string): Promise<BookingDto> {
@@ -143,4 +143,33 @@ export async function confirmArrival(userId: string, id: string, body: ConfirmAr
     return tx.booking.update({ where: { id }, data: { arrivedAt: new Date(), visitFeeLockedAt: new Date() } });
   });
   return toBookingDto(updated);
+}
+
+/** Customer approves the diagnosis → DIAGNOSED → CUSTOMER_APPROVED. Freezes the parts cart (further
+ *  add/remove is rejected once the booking leaves DIAGNOSED). No money moves here — B6 handles charge. */
+export async function approveDiagnosis(userId: string, id: string): Promise<BookingDto> {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await prisma.booking.findFirst({ where: { id, customerId, deletedAt: null } });
+  if (!booking) throw new NotFoundError('Booking not found');
+  if (booking.state !== 'DIAGNOSED') throw new ConflictError('Booking is not awaiting a decision');
+  const updated = await prisma.$transaction((tx) =>
+    transitionBooking(tx, booking, 'CUSTOMER_APPROVED', { type: 'USER', kind: 'CUSTOMER', id: userId }),
+  );
+  const parts = await prisma.bookingPart.findMany({ where: { bookingId: id } });
+  return toBookingDto(updated, undefined, parts);
+}
+
+/** Customer declines the diagnosis → DIAGNOSED → DECLINED_BY_CUSTOMER (terminal). Records declinedAt.
+ *  The visit fee stays locked (it locked at ARRIVED in B3) — declining does not refund the visit. */
+export async function declineDiagnosis(userId: string, id: string): Promise<BookingDto> {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await prisma.booking.findFirst({ where: { id, customerId, deletedAt: null } });
+  if (!booking) throw new NotFoundError('Booking not found');
+  if (booking.state !== 'DIAGNOSED') throw new ConflictError('Booking is not awaiting a decision');
+  const updated = await prisma.$transaction(async (tx) => {
+    await transitionBooking(tx, booking, 'DECLINED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId });
+    return tx.booking.update({ where: { id }, data: { declinedAt: new Date() } });
+  });
+  const parts = await prisma.bookingPart.findMany({ where: { bookingId: id } });
+  return toBookingDto(updated, undefined, parts);
 }

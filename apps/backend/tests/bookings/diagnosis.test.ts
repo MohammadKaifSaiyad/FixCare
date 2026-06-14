@@ -83,3 +83,49 @@ describe('diagnose + parts cart', () => {
     expect(audits.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('approve / decline', () => {
+  async function diagnosedWithPart() {
+    const a = await arrivedBooking();
+    await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/diagnose`, headers: auth(a.t.token), payload: { diagnosedIssueId: a.issue.id } });
+    await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/parts`, headers: auth(a.t.token), payload: { partsCatalogId: a.part.id, qty: 1 } });
+    return a;
+  }
+
+  it('customer GET shows diagnosis + parts + estimate', async () => {
+    const a = await diagnosedWithPart();
+    const got = (await app.inject({ method: 'GET', url: `/me/bookings/${a.bookingId}`, headers: auth(a.c.token) })).json();
+    expect(got.diagnosis.issueName).toBe('Compressor fault');
+    expect(got.parts).toHaveLength(1);
+    expect(got.estimate.partsPaise).toBe(50000);
+    // labor 60000 + parts 50000 − visitFee 14900 = 95100
+    expect(got.estimate.totalPayablePaise).toBe(95100);
+  });
+
+  it('approve → CUSTOMER_APPROVED; cart frozen (part add after approve → 409)', async () => {
+    const a = await diagnosedWithPart();
+    const res = await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/approve`, headers: auth(a.c.token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().state).toBe('CUSTOMER_APPROVED');
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/parts`, headers: auth(a.t.token), payload: { partsCatalogId: a.part.id, qty: 1 } })).statusCode).toBe(409);
+  });
+
+  it('decline → DECLINED_BY_CUSTOMER (terminal) + declinedAt; visitFeeLockedAt stays set', async () => {
+    const a = await diagnosedWithPart();
+    const res = await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/decline`, headers: auth(a.c.token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().state).toBe('DECLINED_BY_CUSTOMER');
+    const row = await prisma.booking.findUnique({ where: { id: a.bookingId } });
+    expect(row!.declinedAt).not.toBeNull();
+    expect(row!.visitFeeLockedAt).not.toBeNull(); // set at ARRIVED (B3), unchanged
+  });
+
+  it('approve/decline from non-DIAGNOSED → 409; another customer → 404; the technician → 403', async () => {
+    const a = await diagnosedWithPart();
+    const other = await makeCustomer();
+    expect((await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/approve`, headers: auth(other.token) })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/approve`, headers: auth(a.t.token) })).statusCode).toBe(403);
+    await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/approve`, headers: auth(a.c.token) });
+    expect((await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/decline`, headers: auth(a.c.token) })).statusCode).toBe(409); // already approved
+  });
+});
