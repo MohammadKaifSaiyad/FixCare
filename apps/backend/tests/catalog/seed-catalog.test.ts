@@ -28,6 +28,9 @@ describe('seedCatalog', () => {
     expect(vadoPin!.zoneId).toBe(vadodara!.id);
     const padraPin = await prisma.pincodeZone.findUnique({ where: { pincode: '391440' } });
     expect(padraPin!.zoneId).toBe(padra!.id);
+
+    const acCat = await prisma.serviceCategory.findUnique({ where: { name: 'AC' } });
+    expect(await prisma.diagnosedIssue.count({ where: { categoryId: acCat!.id } })).toBeGreaterThanOrEqual(2);
   });
 
   it('is idempotent — running twice does not duplicate', async () => {

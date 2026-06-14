@@ -90,7 +90,20 @@ export async function seedCatalog(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  console.log('[seed] catalog: 2 zones, 2 categories, 2 services, 4 prices, 2 parts, 3 pincodes (idempotent)');
+  const issues: Array<{ name: string; categoryId: string }> = [
+    { name: 'AC compressor fault', categoryId: ac.id },
+    { name: 'AC gas leak', categoryId: ac.id },
+    { name: 'Fan capacitor failure', categoryId: fan.id },
+  ];
+  for (const iss of issues) {
+    await prisma.diagnosedIssue.upsert({
+      where: { categoryId_name: { categoryId: iss.categoryId, name: iss.name } },
+      update: {},
+      create: iss,
+    });
+  }
+
+  console.log('[seed] catalog: 2 zones, 2 categories, 2 services, 4 prices, 2 parts, 3 pincodes, 3 issues (idempotent)');
 }
 
 async function run(): Promise<void> {
