@@ -359,6 +359,10 @@ model BookingPart {
   id                String   @id @default(uuid())
   bookingId         String
   booking           Booking  @relation(fields: [bookingId], references: [id])
+  // Intentionally a bare reference (no FK relation): sku/name/ceilingPricePaise below are the durable
+  // SNAPSHOT and are the source of truth for this line — the catalog row may later change or be
+  // soft-deleted without affecting a quoted cart. Kept only for reverse-lookup ("which bookings used
+  // this part?"), hence the index but no relational integrity coupling.
   partsCatalogId    String
   sku               String
   name              String
@@ -366,6 +370,7 @@ model BookingPart {
   qty               Int
   createdAt         DateTime @default(now())
   @@index([bookingId])
+  @@index([partsCatalogId])
 }
 
 model JobSkip {

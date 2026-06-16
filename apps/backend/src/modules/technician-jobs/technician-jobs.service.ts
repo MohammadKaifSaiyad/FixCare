@@ -79,7 +79,7 @@ export async function skipJob(userId: string, bookingId: string): Promise<void> 
 
 /** Load a booking that must be assigned to this technician + in the given state. */
 async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE' | 'DIAGNOSED') {
-  const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true } });
+  const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
   if (!b) throw new NotFoundError('Job not found');
   if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
   if (b.state !== expectedState) throw new ConflictError(`Job is not in ${expectedState}`);
@@ -135,9 +135,14 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
 
 export async function addPart(userId: string, bookingId: string, body: AddPartBody): Promise<{ id: string }> {
   const tech = await requireTechnician(userId);
-  await ownAssignedBookingOrThrow(tech.id, bookingId, 'DIAGNOSED');
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'DIAGNOSED');
   const cat = await prisma.partsCatalog.findFirst({ where: { id: body.partsCatalogId, deletedAt: null, status: 'ACTIVE' } });
   if (!cat) throw new NotFoundError('Part not found');
+  // A category-scoped part must match the booking's service category (no padding the cart with
+  // unrelated parts to inflate the estimate). A null categoryId is a generic part — allowed anywhere.
+  if (cat.categoryId !== null && cat.categoryId !== booking.service.categoryId) {
+    throw new UnprocessableError('This part does not apply to this service category');
+  }
   const line = await prisma.$transaction(async (tx) => {
     const created = await tx.bookingPart.create({
       data: { bookingId, partsCatalogId: cat.id, sku: cat.sku, name: cat.name, ceilingPricePaise: cat.ceilingPricePaise, qty: body.qty },

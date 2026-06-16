@@ -152,10 +152,17 @@ export async function approveDiagnosis(userId: string, id: string): Promise<Book
   const booking = await prisma.booking.findFirst({ where: { id, customerId, deletedAt: null } });
   if (!booking) throw new NotFoundError('Booking not found');
   if (booking.state !== 'DIAGNOSED') throw new ConflictError('Booking is not awaiting a decision');
-  const updated = await prisma.$transaction((tx) =>
-    transitionBooking(tx, booking, 'CUSTOMER_APPROVED', { type: 'USER', kind: 'CUSTOMER', id: userId }),
-  );
-  const parts = await prisma.bookingPart.findMany({ where: { bookingId: id } });
+  const { updated, parts } = await prisma.$transaction(async (tx) => {
+    // Read the cart inside the tx so the audit evidence reflects EXACTLY the cart frozen at approval
+    // (the transition makes DIAGNOSED-only add/remove illegal, so the cart cannot change after this).
+    const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
+    const partsTotalPaise = cart.reduce((sum, p) => sum + p.ceilingPricePaise * p.qty, 0);
+    const row = await transitionBooking(
+      tx, booking, 'CUSTOMER_APPROVED', { type: 'USER', kind: 'CUSTOMER', id: userId },
+      { source: 'customer_approval', partCount: cart.length, partsTotalPaise },
+    );
+    return { updated: row, parts: cart };
+  });
   return toBookingDto(updated, undefined, parts);
 }
 
@@ -166,10 +173,14 @@ export async function declineDiagnosis(userId: string, id: string): Promise<Book
   const booking = await prisma.booking.findFirst({ where: { id, customerId, deletedAt: null } });
   if (!booking) throw new NotFoundError('Booking not found');
   if (booking.state !== 'DIAGNOSED') throw new ConflictError('Booking is not awaiting a decision');
-  const updated = await prisma.$transaction(async (tx) => {
-    await transitionBooking(tx, booking, 'DECLINED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId });
-    return tx.booking.update({ where: { id }, data: { declinedAt: new Date() } });
+  const { updated, parts } = await prisma.$transaction(async (tx) => {
+    const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
+    await transitionBooking(
+      tx, booking, 'DECLINED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId },
+      { source: 'customer_decline', partCount: cart.length },
+    );
+    const row = await tx.booking.update({ where: { id }, data: { declinedAt: new Date() } });
+    return { updated: row, parts: cart };
   });
-  const parts = await prisma.bookingPart.findMany({ where: { bookingId: id } });
   return toBookingDto(updated, undefined, parts);
 }

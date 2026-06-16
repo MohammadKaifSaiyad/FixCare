@@ -82,6 +82,16 @@ describe('diagnose + parts cart', () => {
     const audits = await prisma.auditLog.findMany({ where: { action: 'DIAGNOSIS_UPDATED' } });
     expect(audits.length).toBeGreaterThanOrEqual(3);
   });
+
+  it('a part from a different category → 422; a generic (null-category) part is allowed', async () => {
+    const { t, bookingId, issue } = await arrivedBooking();
+    await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+    const otherCat = await prisma.serviceCategory.create({ data: { name: `Other-${Math.random().toString(36).slice(2, 8)}` } });
+    const wrongPart = await prisma.partsCatalog.create({ data: { sku: `W-${Math.random().toString(36).slice(2, 8)}`, name: 'Wrong', ceilingPricePaise: 1000, categoryId: otherCat.id } });
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: wrongPart.id, qty: 1 } })).statusCode).toBe(422);
+    const generic = await prisma.partsCatalog.create({ data: { sku: `G-${Math.random().toString(36).slice(2, 8)}`, name: 'Generic screw', ceilingPricePaise: 500, categoryId: null } });
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: generic.id, qty: 1 } })).statusCode).toBe(201);
+  });
 });
 
 describe('approve / decline', () => {
