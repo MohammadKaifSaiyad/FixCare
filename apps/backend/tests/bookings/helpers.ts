@@ -44,3 +44,8 @@ export async function makeTechnician(skills: ServiceSkill[] = ['AC'], status: 'V
   const t = await prisma.technician.create({ data: { userId: user.id, name: 'Tech', skills, status } });
   return { token: signAccessToken(user.id, 'TECHNICIAN'), userId: user.id, technicianId: t.id };
 }
+
+/** Seed an ACTIVE DiagnosedIssue in the given category. */
+export async function seedIssue(categoryId: string, name = 'Compressor fault') {
+  return prisma.diagnosedIssue.create({ data: { name, categoryId } });
+}

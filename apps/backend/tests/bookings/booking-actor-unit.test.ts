@@ -21,8 +21,16 @@ describe('ALLOWED_ACTORS', () => {
     expect(actorAllowedFor('ARRIVED', 'CUSTOMER')).toBe(true);
     expect(actorAllowedFor('ARRIVED', 'TECHNICIAN')).toBe(false);
   });
+  it('DIAGNOSED is technician-only; CUSTOMER_APPROVED/DECLINED are customer-only', () => {
+    expect(actorAllowedFor('DIAGNOSED', 'TECHNICIAN')).toBe(true);
+    expect(actorAllowedFor('DIAGNOSED', 'CUSTOMER')).toBe(false);
+    expect(actorAllowedFor('CUSTOMER_APPROVED', 'CUSTOMER')).toBe(true);
+    expect(actorAllowedFor('CUSTOMER_APPROVED', 'TECHNICIAN')).toBe(false);
+    expect(actorAllowedFor('DECLINED_BY_CUSTOMER', 'CUSTOMER')).toBe(true);
+    expect(actorAllowedFor('DECLINED_BY_CUSTOMER', 'TECHNICIAN')).toBe(false);
+  });
   it('DEFAULT-DENY: a still-unmapped to-state is rejected for every actor (a later slice must add its entry)', () => {
-    expect(actorAllowedFor('DIAGNOSED', 'TECHNICIAN')).toBe(false);
+    expect(actorAllowedFor('PARTS_REQUESTED', 'TECHNICIAN')).toBe(false);
     expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'TECHNICIAN')).toBe(false);
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(false);
   });

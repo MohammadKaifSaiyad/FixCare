@@ -4,31 +4,49 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-06-13_
+_Last updated: 2026-06-20_
 
 ---
 
 ## Phase
-**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a** merged
+**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3** merged
 to `main`. **Booking module underway** — 7 sub-slices (B1 creation → B2 dispatch → B3 arrival handshake →
 B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); B2 split into B2a (dispatch, merged) /
-B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred). **B3 (arrival handshake — keystone
-#1) done** on `feature/booking-arrival`.
+B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4 split into **B4a (diagnosis +
+parts cart, DONE on branch)** / B4b (R2 + 2 mandatory diagnosis photos, deferred).
 
 ## Active task
-**Booking Slice B3** complete on `feature/booking-arrival` — the **arrival handshake (Keystone #1)**:
-the first two-sided, money-gating interaction. Flow: tech `en-route` (ACCEPTED→EN_ROUTE) → tech `arrive`
-{lat,lng} (GPS gate validate-if-present 200m / record-only; mints a single-use Redis code; no state
-change) → customer `confirm-arrival` {code} (EN_ROUTE→ARRIVED + sets `visitFeeLockedAt`). Neither party
-alone reaches ARRIVED (Golden Rule 2 — proven by test). 196 tests green; reviewed by all three agents +
-spec — **no blocking issues**, keystone integrity + no-PII/coords-in-audit + brute-force-resistance all
-verified; fixed the one finding (missing `requireCustomerRole` on confirm-arrival route). Pending PR →
-`/code-review` → `main`. **Next:** **B4 — diagnosis + parts cart** (ARRIVED→DIAGNOSED, 2 photos, parts
-auto-cart) or **B5 — completion handshake** (keystone #2: OTP + 3 repair photos → CUSTOMER_CONFIRMED).
-Design: [`docs/designs/2026-06-13-booking-b3-arrival-design.md`]; plan:
-[`docs/plans/2026-06-13-booking-b3-arrival.md`].
+**Booking Slice B4a** complete on `feature/booking-diagnosis` — **diagnosis + parts cart + approve/decline**.
+Flow: tech `POST /technician/jobs/:id/diagnose` `{diagnosedIssueId}` (`ARRIVED→DIAGNOSED`; structured issue
+from an admin catalog — no free text; issue-category must match the service category else 422; snapshots
+the issue name) → tech `POST /parts` `{partsCatalogId, qty}` + `DELETE /parts/:partId` (DIAGNOSED-only
+mutable cart; each line **snapshots** sku/name/ceilingPricePaise from the catalog at add-time; part
+category must match the service category) → customer `POST /me/bookings/:id/approve` (`→CUSTOMER_APPROVED`,
+cart frozen) or `/decline` (`→DECLINED_BY_CUSTOMER`, terminal, sets `declinedAt`; visit fee stays locked).
+Computed `estimate` = max(0, labor + Σ(ceilingPrice×qty) − visitFee credit). **No money moves** (charge is
+B6). Actor separation enforced (tech can't approve, customer can't diagnose). 220 tests green; reviewed by
+all three agents + spec/quality per task — fixed the real findings (part category-match guard;
+approve/decline audit evidence + in-tx cart snapshot; `BookingPart.partsCatalogId` index + intent comment);
+customer-side OTP on approve/decline **deferred to the shared OTP primitive (pre-B5)** — decision recorded
+in `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`. Pending PR → `/code-review` → `main`.
+**Next:** **B4b** (R2 third-party-wrapper + 2 mandatory diagnosis photos — reusable for B5's 3 repair
+photos) or **B5 — completion handshake** (keystone #2; needs the shared OTP primitive extracted first).
+Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
+[`docs/plans/2026-06-14-booking-b4a-diagnosis.md`].
 
 ## Last shipped
+- **Booking Slice B4a** (`apps/backend`, diagnosis + parts cart): `DiagnosedIssue` admin catalog
+  (MANAGER+, category-scoped, `@@unique([categoryId,name])`, soft-delete, `CATALOG_UPDATED` audit) +
+  `/catalog/issues` CRUD; `BookingPart` snapshot cart line (no soft-delete by design = pre-approval mutable
+  cart) + `BookingPart.partsCatalogId` index; Booking diagnosis fields (`diagnosedIssueId/Name`,
+  `diagnosedAt`, `declinedAt`); `DIAGNOSIS_UPDATED` audit action; `DIAGNOSED/CUSTOMER_APPROVED/
+  DECLINED_BY_CUSTOMER` actor entries; tech `diagnose` (ARRIVED→DIAGNOSED, category-match 422, issue
+  snapshot, audited) + `parts` add/remove (price snapshot from catalog not request — Golden Rule 4; part
+  category-match; DIAGNOSED-only; audited in-tx); customer `approve`/`decline` (owner-scoped 404, role-gated
+  403, terminal decline, cart frozen at approval, audit carries the frozen-cart evidence read in-tx);
+  `computeEstimate` (visit-fee credit, floored at 0, integer paise); `BookingDto` += diagnosis/parts/
+  estimate. 220 tests; all three agents + per-task spec/quality review — findings fixed, OTP deferred
+  (decision doc). On branch.
 - **Booking Slice B3** (`apps/backend`, arrival handshake — keystone #1): 4 nullable evidence columns
   on `Booking` (`arrivalLat/Lng`, `arrivedAt`, `visitFeeLockedAt`); `haversineMeters` geo helper;
   single-use hashed Redis arrival code (6-digit, 5-attempt cap, 10-min TTL); `EN_ROUTE→TECHNICIAN` +
@@ -100,11 +118,11 @@ Design: [`docs/designs/2026-06-13-booking-b3-arrival-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/booking-arrival` → `main` (booking Slice B3).
-2. **Booking Slice B4 — diagnosis + parts cart** (`ARRIVED→DIAGNOSED`: 2 diagnosis photos via
-   camera-evidence-capture, structured-dropdown issue, auto-suggested parts cart, customer approve/decline)
-   OR **B5 — completion handshake (keystone #2)** (OTP + 3 repair photos → CUSTOMER_CONFIRMED). Each adds
-   its `ALLOWED_ACTORS` entries + ownership checks.
+1. **PR + `/code-review` + merge** `feature/booking-diagnosis` → `main` (booking Slice B4a).
+2. **Shared single-use OTP/challenge primitive** (extract the arrival-code idiom into a reusable Redis
+   primitive) — needed by **B5 — completion handshake (keystone #2)** AND by the deferred B4a approve/decline
+   confirmation token. Then **B4b** (R2 third-party-wrapper + 2 mandatory diagnosis photos, reusable for
+   B5's 3 repair photos) and/or **B5** (OTP + 3 repair photos → CUSTOMER_CONFIRMED).
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
@@ -132,6 +150,20 @@ Design: [`docs/designs/2026-06-13-booking-b3-arrival-design.md`]; plan:
 - **Arrival GPS geofence is record-only when the address has no lat/lng** (B3 accepted V1 tradeoff):
   the >200m hard gate only fires when the address carries coordinates. Close this once addresses
   are backfilled with coordinates / PostGIS lands — make the arrival geofence a universal gate.
+- **B4a deferred (carry to B4b/B5/B6):** (a) **2 mandatory diagnosis photos** + R2 third-party-wrapper +
+  presigned uploads + `PhotoEvidence` model = **B4b** (reusable for B5's 3 repair photos); (b)
+  **customer-side OTP/confirmation token on approve/decline** — deferred to the shared OTP primitive
+  (pre-B5); decision: `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`; (c) auto-suggested parts
+  + diagnosis-vs-actual mismatch fraud rule = B6.
+- **B4a `/code-review` altitude items (deferred, module-wide — fix all-at-once):** (a) the category-match
+  rule + the `prisma.diagnosedIssue`/`prisma.partsCatalog` reads live in technician-jobs = **cross-module
+  DB query** (CLAUDE.md says service-call/event only) — extract a catalog service fn when the cross-module
+  RBAC/helper refactor happens; (b) `diagnoseJob` inlines the assigned-booking guard instead of calling
+  `ownAssignedBookingOrThrow('ARRIVED')` — fold in with that refactor; (c) per-row ownership lives in each
+  handler while `ALLOWED_ACTORS` gates only the kind — co-locate when the actor gate is generalised; (d)
+  `diagnoseJob` writes both `BOOKING_STATE_CHANGED` and `DIAGNOSIS_UPDATED` (intentional: state event vs
+  domain event — kept); (e) approve/decline mutation responses omit the technician block (client re-fetches
+  via GET — minor).
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
   their features land.

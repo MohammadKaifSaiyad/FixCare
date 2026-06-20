@@ -8,6 +8,52 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-06-16 — Booking slice B4a (diagnosis + parts cart + approve/decline)
+
+- **Structured diagnosis, snapshot-priced cart, two-sided diagnosis→approval handoff. No money moves**
+  (the charge is the later B6 slice) — this slice gates *what* B6 will charge.
+- **DiagnosedIssue admin catalog:** `/catalog/issues` CRUD (MANAGER+, category-scoped,
+  `@@unique([categoryId,name])`, soft-delete, `CATALOG_UPDATED` audit) — diagnosis is a structured FK pick,
+  **never free text** (fraud-defense: no fabricated diagnoses).
+- **Technician flow:** `POST /technician/jobs/:id/diagnose {diagnosedIssueId}` (`ARRIVED→DIAGNOSED`; the
+  issue's category must equal the booking's service category → 422 otherwise; snapshots `diagnosedIssueName`
+  + `diagnosedAt`) → `POST /parts {partsCatalogId, qty}` / `DELETE /parts/:partId` (DIAGNOSED-only mutable
+  cart). Each cart line **snapshots** sku/name/`ceilingPricePaise` from `PartsCatalog` at add-time, so a
+  later catalog price edit can never change a quoted line (proven by test). The part's category must match
+  the service category (no padding the cart with unrelated parts). `qty` is Zod int ≥ 1.
+- **Catalog prices only (Golden Rule 4):** the technician supplies `{partsCatalogId, qty}` only — the price
+  is read server-side from the catalog row; the request carries no price field. Zero pricing discretion.
+- **Customer flow:** `POST /me/bookings/:id/approve` (`DIAGNOSED→CUSTOMER_APPROVED`, **cart frozen** — any
+  further add/remove is rejected once the booking leaves DIAGNOSED) or `/decline`
+  (`DIAGNOSED→DECLINED_BY_CUSTOMER`, terminal, sets `declinedAt`; the visit fee **stays locked** — declining
+  does not refund the B3 visit-fee milestone). Owner-scoped (others → 404, no IDOR), role-gated (technician
+  → 403). Both transitions write audit **evidence read inside the same transaction** (`source`, frozen-cart
+  `partCount`/`partsTotalPaise`).
+- **Estimate:** `computeEstimate` = `max(0, laborPaise + Σ(ceilingPricePaise × qty) − visitFeePaise credit)`
+  — the visit fee is credited toward labor+parts, floored at 0; all integer paise. Surfaced on `BookingDto`
+  (`diagnosis`, `parts`, `estimate`).
+- **State machine:** `DIAGNOSED→TECHNICIAN`, `CUSTOMER_APPROVED→CUSTOMER`, `DECLINED_BY_CUSTOMER→CUSTOMER`
+  added to `ALLOWED_ACTORS` (mandatory under default-deny). New `DIAGNOSIS_UPDATED` audit action
+  (diagnose/add/remove); state changes still emit `BOOKING_STATE_CHANGED` via `transitionBooking`.
+- **Schema:** `DiagnosedIssue` + `BookingPart` models + Booking diagnosis fields + 2 additive migrations
+  (the models; then a `BookingPart.partsCatalogId` index). `BookingPart` intentionally has no soft-delete
+  (pre-approval mutable cart; the financial record of truth is the post-charge ledger in B6).
+- **Reviews:** all three agents (prisma-migration / golden-rules / fraud-vector) + per-task spec/quality.
+  Fixed the real findings — part category-match guard, approve/decline audit-evidence + in-tx cart read,
+  `BookingPart.partsCatalogId` index + intent comment. **Deferred (recorded):** B4b's 2 mandatory diagnosis
+  photos (R2 wrapper); customer-side OTP on approve/decline → shared OTP primitive pre-B5
+  (`docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`); auto-suggest + mismatch rule → B6.
+- **`/code-review` pass** (high-recall, 7 finder angles) — fixed 6: **lifecycle-aware estimate** (no
+  visit-fee pre-credit before DIAGNOSED — a fresh booking no longer shows a credited/zero payable;
+  declined → 0 payable); **`listBookings` parts-inclusive** (list estimate now matches the detail view —
+  was labor-only); **`qty` capped at 99** (the unit price is catalog-fixed, so an unbounded qty was the
+  last estimate-inflation lever); **idempotent `removePart`** (`deleteMany` — a double-remove no longer
+  500s on Prisma P2025); **in-tx DIAGNOSED freeze guard** on add/remove (closes the cart-freeze TOCTOU
+  vs a concurrent approve); **`sumParts` + `ownDiagnosedBookingOrThrow` extracted** (one parts-total
+  formula, one approve/decline guard prelude). Altitude items (cross-module catalog query, diagnose
+  inline-guard dedup, actor-gate co-location) deferred to the module-wide refactor (STATUS).
+- **220 backend tests** (was 196), all green; build clean. On branch `feature/booking-diagnosis`.
+
 ## 2026-06-13 — Booking slice B3 (arrival handshake — KEYSTONE #1)
 
 - **The project's first keystone interaction + first money-gating evidence** (Golden Rules 1-2). A

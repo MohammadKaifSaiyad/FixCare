@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ConflictError, NotFoundError } from '../../shared/errors.js';
-import { toZoneDto, toCategoryDto, toPartDto, toPincodeZoneDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto, type PincodeZoneDto } from './catalog.types.js';
-import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody, CreatePartBody, UpdatePartBody, CreatePincodeBody, UpdatePincodeBody } from './catalog.schemas.js';
+import { toZoneDto, toCategoryDto, toPartDto, toPincodeZoneDto, toDiagnosedIssueDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto, type PincodeZoneDto, type DiagnosedIssueDto } from './catalog.types.js';
+import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody, CreatePartBody, UpdatePartBody, CreatePincodeBody, UpdatePincodeBody, CreateIssueBody, UpdateIssueBody } from './catalog.schemas.js';
 
 /** Map a Prisma unique-violation (P2002) to a 409. */
 function asConflict(err: unknown, message: string): never {
@@ -204,5 +204,47 @@ export async function deletePincode(actorId: string, id: string): Promise<void> 
   await prisma.$transaction(async (tx) => {
     await tx.pincodeZone.update({ where: { id }, data: { deletedAt: new Date() } });
     await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'PincodeZone', entityId: id, fields: ['deletedAt'] } } });
+  });
+}
+
+export async function listIssues(categoryId?: string): Promise<DiagnosedIssueDto[]> {
+  const rows = await prisma.diagnosedIssue.findMany({
+    where: { deletedAt: null, status: 'ACTIVE', ...(categoryId ? { categoryId } : {}) },
+    orderBy: { name: 'asc' },
+  });
+  return rows.map(toDiagnosedIssueDto);
+}
+
+export async function createIssue(actorId: string, body: CreateIssueBody): Promise<DiagnosedIssueDto> {
+  const cat = await prisma.serviceCategory.findFirst({ where: { id: body.categoryId, deletedAt: null } });
+  if (!cat) throw new NotFoundError('Category not found');
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const row = await tx.diagnosedIssue.create({ data: { name: body.name, categoryId: body.categoryId } });
+      await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'DiagnosedIssue', entityId: row.id, fields: Object.keys(body) } } });
+      return toDiagnosedIssueDto(row);
+    });
+  } catch (e) { return asConflict(e, 'An issue with that name already exists in this category'); }
+}
+
+export async function updateIssue(actorId: string, id: string, body: UpdateIssueBody): Promise<DiagnosedIssueDto> {
+  const existing = await prisma.diagnosedIssue.findFirst({ where: { id, deletedAt: null } });
+  if (!existing) throw new NotFoundError('Issue not found');
+  const changedFields = (Object.keys(body) as (keyof typeof body)[])
+    .filter((k) => (body as Record<string, unknown>)[k] !== (existing as Record<string, unknown>)[k]);
+  if (changedFields.length === 0) return toDiagnosedIssueDto(existing);
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.diagnosedIssue.update({ where: { id }, data: body });
+    await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'DiagnosedIssue', entityId: id, fields: changedFields } } });
+    return toDiagnosedIssueDto(row);
+  });
+}
+
+export async function deleteIssue(actorId: string, id: string): Promise<void> {
+  const existing = await prisma.diagnosedIssue.findFirst({ where: { id, deletedAt: null } });
+  if (!existing) throw new NotFoundError('Issue not found');
+  await prisma.$transaction(async (tx) => {
+    await tx.diagnosedIssue.update({ where: { id }, data: { deletedAt: new Date() } });
+    await tx.auditLog.create({ data: { action: 'CATALOG_UPDATED', actorType: 'ADMIN', actorId, metadata: { entity: 'DiagnosedIssue', entityId: id, fields: ['deletedAt'] } } });
   });
 }

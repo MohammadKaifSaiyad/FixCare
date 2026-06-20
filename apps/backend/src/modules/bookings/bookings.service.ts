@@ -8,6 +8,7 @@ import { verifyArrivalCode } from './arrival-code.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
 import { toBookingDto, type BookingDto } from './bookings.types.js';
+import { sumParts } from './estimate.js';
 import type { CreateBookingBody, ConfirmArrivalBody } from './bookings.schemas.js';
 
 async function requireCustomer(userId: string): Promise<{ id: string }> {
@@ -20,6 +21,16 @@ async function ownBookingOrThrow(customerId: string, id: string) {
   const b = await prisma.booking.findFirst({ where: { id, customerId, deletedAt: null } });
   if (!b) throw new NotFoundError('Booking not found');
   return b;
+}
+
+/** Owner-scoped load + DIAGNOSED guard shared by approve/decline — keeps the two money-gating
+ *  transitions from drifting apart. 404 (not 403) on a foreign id (no IDOR); 409 if not awaiting a
+ *  decision. */
+async function ownDiagnosedBookingOrThrow(userId: string, id: string) {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await ownBookingOrThrow(customerId, id);
+  if (booking.state !== 'DIAGNOSED') throw new ConflictError('Booking is not awaiting a decision');
+  return booking;
 }
 
 export async function createBooking(userId: string, body: CreateBookingBody): Promise<BookingDto> {
@@ -77,8 +88,15 @@ export async function createBooking(userId: string, body: CreateBookingBody): Pr
 
 export async function listBookings(userId: string): Promise<BookingDto[]> {
   const { id: customerId } = await requireCustomer(userId);
-  const rows = await prisma.booking.findMany({ where: { customerId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
-  return rows.map((b) => toBookingDto(b));
+  // include technician + cart so the list's estimate/diagnosis match the detail view (getBooking).
+  const rows = await prisma.booking.findMany({
+    where: { customerId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+    include: { technician: { include: { user: true } }, bookingParts: true },
+  });
+  return rows.map((b) =>
+    toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts),
+  );
 }
 
 export async function getBooking(userId: string, id: string): Promise<BookingDto> {
@@ -86,10 +104,10 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } } },
+    include: { technician: { include: { user: true } }, bookingParts: true },
   });
   if (!b) throw new NotFoundError('Booking not found');
-  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined);
+  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts);
 }
 
 export async function cancelBooking(userId: string, id: string): Promise<BookingDto> {
@@ -143,4 +161,37 @@ export async function confirmArrival(userId: string, id: string, body: ConfirmAr
     return tx.booking.update({ where: { id }, data: { arrivedAt: new Date(), visitFeeLockedAt: new Date() } });
   });
   return toBookingDto(updated);
+}
+
+/** Customer approves the diagnosis → DIAGNOSED → CUSTOMER_APPROVED. Freezes the parts cart (further
+ *  add/remove is rejected once the booking leaves DIAGNOSED). No money moves here — B6 handles charge. */
+export async function approveDiagnosis(userId: string, id: string): Promise<BookingDto> {
+  const booking = await ownDiagnosedBookingOrThrow(userId, id);
+  const { updated, parts } = await prisma.$transaction(async (tx) => {
+    // Read the cart inside the tx so the audit evidence reflects EXACTLY the cart frozen at approval
+    // (the transition makes DIAGNOSED-only add/remove illegal, so the cart cannot change after this).
+    const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
+    const row = await transitionBooking(
+      tx, booking, 'CUSTOMER_APPROVED', { type: 'USER', kind: 'CUSTOMER', id: userId },
+      { source: 'customer_approval', partCount: cart.length, partsTotalPaise: sumParts(cart) },
+    );
+    return { updated: row, parts: cart };
+  });
+  return toBookingDto(updated, undefined, parts);
+}
+
+/** Customer declines the diagnosis → DIAGNOSED → DECLINED_BY_CUSTOMER (terminal). Records declinedAt.
+ *  The visit fee stays locked (it locked at ARRIVED in B3) — declining does not refund the visit. */
+export async function declineDiagnosis(userId: string, id: string): Promise<BookingDto> {
+  const booking = await ownDiagnosedBookingOrThrow(userId, id);
+  const { updated, parts } = await prisma.$transaction(async (tx) => {
+    const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
+    await transitionBooking(
+      tx, booking, 'DECLINED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId },
+      { source: 'customer_decline', partCount: cart.length },
+    );
+    const row = await tx.booking.update({ where: { id }, data: { declinedAt: new Date() } });
+    return { updated: row, parts: cart };
+  });
+  return toBookingDto(updated, undefined, parts);
 }

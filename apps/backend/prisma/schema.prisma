@@ -193,6 +193,7 @@ enum AuditAction {
   PRICE_CHANGED
   CATALOG_UPDATED
   BOOKING_STATE_CHANGED
+  DIAGNOSIS_UPDATED
 }
 
 // =============================================================================
@@ -220,6 +221,7 @@ model ServiceCategory {
   deletedAt DateTime?
   services  Service[]
   parts     PartsCatalog[]
+  diagnosedIssues DiagnosedIssue[]
 }
 
 model Service {
@@ -324,6 +326,12 @@ model Booking {
   arrivalLng       Float?
   arrivedAt        DateTime?
   visitFeeLockedAt DateTime?
+  diagnosedIssueId   String?
+  diagnosedIssue     DiagnosedIssue? @relation(fields: [diagnosedIssueId], references: [id])
+  diagnosedIssueName String?
+  diagnosedAt        DateTime?
+  declinedAt         DateTime?
+  bookingParts       BookingPart[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
@@ -331,6 +339,38 @@ model Booking {
   @@index([customerId])
   @@index([state])
   @@index([technicianId])
+}
+
+model DiagnosedIssue {
+  id         String          @id @default(uuid())
+  name       String
+  categoryId String
+  category   ServiceCategory @relation(fields: [categoryId], references: [id])
+  status     CatalogStatus   @default(ACTIVE)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime?
+  bookings   Booking[]
+  @@unique([categoryId, name])
+  @@index([categoryId])
+}
+
+model BookingPart {
+  id                String   @id @default(uuid())
+  bookingId         String
+  booking           Booking  @relation(fields: [bookingId], references: [id])
+  // Intentionally a bare reference (no FK relation): sku/name/ceilingPricePaise below are the durable
+  // SNAPSHOT and are the source of truth for this line — the catalog row may later change or be
+  // soft-deleted without affecting a quoted cart. Kept only for reverse-lookup ("which bookings used
+  // this part?"), hence the index but no relational integrity coupling.
+  partsCatalogId    String
+  sku               String
+  name              String
+  ceilingPricePaise Int
+  qty               Int
+  createdAt         DateTime @default(now())
+  @@index([bookingId])
+  @@index([partsCatalogId])
 }
 
 model JobSkip {
