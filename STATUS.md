@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-06-16_
+_Last updated: 2026-06-20_
 
 ---
 
@@ -24,7 +24,7 @@ mutable cart; each line **snapshots** sku/name/ceilingPricePaise from the catalo
 category must match the service category) → customer `POST /me/bookings/:id/approve` (`→CUSTOMER_APPROVED`,
 cart frozen) or `/decline` (`→DECLINED_BY_CUSTOMER`, terminal, sets `declinedAt`; visit fee stays locked).
 Computed `estimate` = max(0, labor + Σ(ceilingPrice×qty) − visitFee credit). **No money moves** (charge is
-B6). Actor separation enforced (tech can't approve, customer can't diagnose). 216 tests green; reviewed by
+B6). Actor separation enforced (tech can't approve, customer can't diagnose). 220 tests green; reviewed by
 all three agents + spec/quality per task — fixed the real findings (part category-match guard;
 approve/decline audit evidence + in-tx cart snapshot; `BookingPart.partsCatalogId` index + intent comment);
 customer-side OTP on approve/decline **deferred to the shared OTP primitive (pre-B5)** — decision recorded
@@ -45,9 +45,8 @@ Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
   category-match; DIAGNOSED-only; audited in-tx); customer `approve`/`decline` (owner-scoped 404, role-gated
   403, terminal decline, cart frozen at approval, audit carries the frozen-cart evidence read in-tx);
   `computeEstimate` (visit-fee credit, floored at 0, integer paise); `BookingDto` += diagnosis/parts/
-  estimate. 216 tests; all three agents + per-task spec/quality review — findings fixed, OTP deferred
+  estimate. 220 tests; all three agents + per-task spec/quality review — findings fixed, OTP deferred
   (decision doc). On branch.
-- **Booking Slice B3** (`apps/backend`, arrival handshake — keystone #1): 4 nullable evidence columns
 - **Booking Slice B3** (`apps/backend`, arrival handshake — keystone #1): 4 nullable evidence columns
   on `Booking` (`arrivalLat/Lng`, `arrivedAt`, `visitFeeLockedAt`); `haversineMeters` geo helper;
   single-use hashed Redis arrival code (6-digit, 5-attempt cap, 10-min TTL); `EN_ROUTE→TECHNICIAN` +
@@ -155,8 +154,16 @@ Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
   presigned uploads + `PhotoEvidence` model = **B4b** (reusable for B5's 3 repair photos); (b)
   **customer-side OTP/confirmation token on approve/decline** — deferred to the shared OTP primitive
   (pre-B5); decision: `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`; (c) auto-suggested parts
-  + diagnosis-vs-actual mismatch fraud rule = B6; (d) `listBookings` DTO shows `partsPaise: 0` (summary
-  view omits the cart — detail view `GET :id` has it); revisit if the list needs live estimates.
+  + diagnosis-vs-actual mismatch fraud rule = B6.
+- **B4a `/code-review` altitude items (deferred, module-wide — fix all-at-once):** (a) the category-match
+  rule + the `prisma.diagnosedIssue`/`prisma.partsCatalog` reads live in technician-jobs = **cross-module
+  DB query** (CLAUDE.md says service-call/event only) — extract a catalog service fn when the cross-module
+  RBAC/helper refactor happens; (b) `diagnoseJob` inlines the assigned-booking guard instead of calling
+  `ownAssignedBookingOrThrow('ARRIVED')` — fold in with that refactor; (c) per-row ownership lives in each
+  handler while `ALLOWED_ACTORS` gates only the kind — co-locate when the actor gate is generalised; (d)
+  `diagnoseJob` writes both `BOOKING_STATE_CHANGED` and `DIAGNOSIS_UPDATED` (intentional: state event vs
+  domain event — kept); (e) approve/decline mutation responses omit the technician block (client re-fetches
+  via GET — minor).
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
   their features land.

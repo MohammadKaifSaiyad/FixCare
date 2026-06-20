@@ -144,6 +144,9 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
     throw new UnprocessableError('This part does not apply to this service category');
   }
   const line = await prisma.$transaction(async (tx) => {
+    // Re-assert DIAGNOSED inside the tx (optimistic guard, same idiom as transitionBooking): if the
+    // customer approved/declined concurrently the cart is frozen, so this matches 0 rows → reject.
+    await assertStillDiagnosed(tx, bookingId);
     const created = await tx.bookingPart.create({
       data: { bookingId, partsCatalogId: cat.id, sku: cat.sku, name: cat.name, ceilingPricePaise: cat.ceilingPricePaise, qty: body.qty },
     });
@@ -153,13 +156,23 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
   return { id: line.id };
 }
 
+/** Optimistic freeze guard: a no-op update conditional on the booking still being DIAGNOSED. 0 rows
+ *  affected means a concurrent approve/decline already left DIAGNOSED → the cart is frozen. */
+async function assertStillDiagnosed(tx: import('@prisma/client').Prisma.TransactionClient, bookingId: string): Promise<void> {
+  const r = await tx.booking.updateMany({ where: { id: bookingId, state: 'DIAGNOSED' }, data: { updatedAt: new Date() } });
+  if (r.count === 0) throw new ConflictError('The cart is frozen — the booking is no longer in DIAGNOSED');
+}
+
 export async function removePart(userId: string, bookingId: string, partId: string): Promise<void> {
   const tech = await requireTechnician(userId);
   await ownAssignedBookingOrThrow(tech.id, bookingId, 'DIAGNOSED');
   const line = await prisma.bookingPart.findFirst({ where: { id: partId, bookingId } });
   if (!line) throw new NotFoundError('Part line not found');
   await prisma.$transaction(async (tx) => {
-    await tx.bookingPart.delete({ where: { id: partId } });
+    await assertStillDiagnosed(tx, bookingId);
+    // deleteMany (scoped to {id, bookingId}) is idempotent — a concurrent double-remove deletes 0 rows
+    // instead of throwing Prisma P2025; the findFirst above already established the 404 case.
+    await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_removed', sku: line.sku } } });
   });
 }

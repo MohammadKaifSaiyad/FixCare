@@ -69,6 +69,7 @@ describe('diagnose + parts cart', () => {
     const { t, bookingId, issue, part } = await arrivedBooking();
     await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 0 } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 100 } })).statusCode).toBe(400); // qty cap
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: '00000000-0000-0000-0000-000000000000', qty: 1 } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `/technician/jobs/${bookingId}/parts/00000000-0000-0000-0000-000000000000`, headers: auth(t.token) })).statusCode).toBe(404);
   });
@@ -102,7 +103,7 @@ describe('approve / decline', () => {
     return a;
   }
 
-  it('customer GET shows diagnosis + parts + estimate', async () => {
+  it('customer GET + list both show diagnosis + parts + the same parts-inclusive estimate', async () => {
     const a = await diagnosedWithPart();
     const got = (await app.inject({ method: 'GET', url: `/me/bookings/${a.bookingId}`, headers: auth(a.c.token) })).json();
     expect(got.diagnosis.issueName).toBe('Compressor fault');
@@ -110,6 +111,11 @@ describe('approve / decline', () => {
     expect(got.estimate.partsPaise).toBe(50000);
     // labor 60000 + parts 50000 − visitFee 14900 = 95100
     expect(got.estimate.totalPayablePaise).toBe(95100);
+    // the list view must agree with the detail view (not a labor-only 45100)
+    const list = (await app.inject({ method: 'GET', url: '/me/bookings', headers: auth(a.c.token) })).json();
+    const row = list.find((b: { id: string }) => b.id === a.bookingId);
+    expect(row.parts).toHaveLength(1);
+    expect(row.estimate.totalPayablePaise).toBe(95100);
   });
 
   it('approve → CUSTOMER_APPROVED; cart frozen (part add after approve → 409)', async () => {
@@ -117,14 +123,17 @@ describe('approve / decline', () => {
     const res = await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/approve`, headers: auth(a.c.token) });
     expect(res.statusCode).toBe(200);
     expect(res.json().state).toBe('CUSTOMER_APPROVED');
+    expect(res.json().estimate.totalPayablePaise).toBe(95100); // credit still applies post-approval
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/parts`, headers: auth(a.t.token), payload: { partsCatalogId: a.part.id, qty: 1 } })).statusCode).toBe(409);
   });
+
 
   it('decline → DECLINED_BY_CUSTOMER (terminal) + declinedAt; visitFeeLockedAt stays set', async () => {
     const a = await diagnosedWithPart();
     const res = await app.inject({ method: 'POST', url: `/me/bookings/${a.bookingId}/decline`, headers: auth(a.c.token) });
     expect(res.statusCode).toBe(200);
     expect(res.json().state).toBe('DECLINED_BY_CUSTOMER');
+    expect(res.json().estimate.totalPayablePaise).toBe(0); // repair won't happen → nothing payable for it
     const row = await prisma.booking.findUnique({ where: { id: a.bookingId } });
     expect(row!.declinedAt).not.toBeNull();
     expect(row!.visitFeeLockedAt).not.toBeNull(); // set at ARRIVED (B3), unchanged

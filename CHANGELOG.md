@@ -43,7 +43,16 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   `BookingPart.partsCatalogId` index + intent comment. **Deferred (recorded):** B4b's 2 mandatory diagnosis
   photos (R2 wrapper); customer-side OTP on approve/decline → shared OTP primitive pre-B5
   (`docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`); auto-suggest + mismatch rule → B6.
-- **216 backend tests** (was 196), all green; build clean. On branch `feature/booking-diagnosis`.
+- **`/code-review` pass** (high-recall, 7 finder angles) — fixed 6: **lifecycle-aware estimate** (no
+  visit-fee pre-credit before DIAGNOSED — a fresh booking no longer shows a credited/zero payable;
+  declined → 0 payable); **`listBookings` parts-inclusive** (list estimate now matches the detail view —
+  was labor-only); **`qty` capped at 99** (the unit price is catalog-fixed, so an unbounded qty was the
+  last estimate-inflation lever); **idempotent `removePart`** (`deleteMany` — a double-remove no longer
+  500s on Prisma P2025); **in-tx DIAGNOSED freeze guard** on add/remove (closes the cart-freeze TOCTOU
+  vs a concurrent approve); **`sumParts` + `ownDiagnosedBookingOrThrow` extracted** (one parts-total
+  formula, one approve/decline guard prelude). Altitude items (cross-module catalog query, diagnose
+  inline-guard dedup, actor-gate co-location) deferred to the module-wide refactor (STATUS).
+- **220 backend tests** (was 196), all green; build clean. On branch `feature/booking-diagnosis`.
 
 ## 2026-06-13 — Booking slice B3 (arrival handshake — KEYSTONE #1)
 
