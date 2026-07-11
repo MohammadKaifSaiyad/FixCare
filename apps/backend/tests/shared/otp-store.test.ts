@@ -69,4 +69,10 @@ describe('otp-store', () => {
   it('no send throttle by default: many mints all succeed', async () => {
     for (let i = 0; i < 6; i++) expect((await mintOtp('otp:test:9', cfg)).status).toBe('ok');
   });
+
+  it('corrupt stored value → no-code and the key is deleted (fail safe, fail closed)', async () => {
+    await redis.set('otp:test:10', 'not-json', 'EX', 60);
+    expect((await verifyOtp('otp:test:10', '123456', cfg)).status).toBe('no-code');
+    expect(await redis.get('otp:test:10')).toBeNull();
+  });
 });

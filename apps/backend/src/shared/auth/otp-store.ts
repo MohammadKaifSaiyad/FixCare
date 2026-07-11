@@ -41,7 +41,8 @@ export async function mintOtp<P = undefined>(
   return { status: 'ok', code };
 }
 
-/** Verify `code` against `key`. Single-use: a correct code deletes the key. */
+/** Verify `code` against `key`. Single-use: a correct code deletes the key.
+ *  Note: `exhausted` also deletes the key, so a retry AFTER exhaustion reports `no-code`. */
 export async function verifyOtp<P = undefined>(
   key: string,
   code: string,
@@ -50,7 +51,15 @@ export async function verifyOtp<P = undefined>(
   const raw = await redis.get(key);
   if (!raw) return { status: 'no-code' };
 
-  const state = JSON.parse(raw) as StoredOtp;
+  let state: StoredOtp;
+  try {
+    state = JSON.parse(raw) as StoredOtp;
+  } catch {
+    // Corrupt value (only this store writes these keys, so near-impossible): treat as
+    // "no valid code" rather than throwing at a security boundary — fail safe, fail closed.
+    await redis.del(key);
+    return { status: 'no-code' };
+  }
 
   if (state.attempts >= cfg.maxAttempts) {
     await redis.del(key);
