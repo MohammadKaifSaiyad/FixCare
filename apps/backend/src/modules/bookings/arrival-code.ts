@@ -6,7 +6,7 @@ const key = (bookingId: string) => `arrival:${bookingId}`;
 
 /** Mint the single-use 6-digit arrival code (10-min TTL). Re-minting replaces any prior code. */
 export async function mintArrivalCode(bookingId: string): Promise<string> {
-  const r = await mintOtp(key(bookingId), { ttlSeconds: TTL_SECONDS, maxAttempts: MAX_ATTEMPTS });
+  const r = await mintOtp(key(bookingId), { ttlSeconds: TTL_SECONDS });
   // No sendLimit configured here, so mint never throttles — 'ok' is the only outcome.
   if (r.status !== 'ok') throw new Error('arrival code mint failed unexpectedly');
   return r.code;

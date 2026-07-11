@@ -3,7 +3,6 @@ import { generateOtp, hashOtp } from './otp.js';
 
 export interface OtpStoreConfig {
   ttlSeconds: number;
-  maxAttempts: number;
   /** Optional send-side throttle: at most `max` mints per `windowSeconds` for this key. */
   sendLimit?: { max: number; windowSeconds: number };
 }

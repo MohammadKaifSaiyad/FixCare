@@ -40,6 +40,13 @@ describe('otp-store', () => {
     expect(await redis.get('otp:test:4')).toBeNull();
   });
 
+  it('a correct code on the LAST allowed attempt still succeeds (boundary: maxAttempts-1 wrong tries)', async () => {
+    const m = await mintOtp('otp:test:11', cfg);
+    const code = m.status === 'ok' ? m.code : '';
+    for (let i = 0; i < 4; i++) expect((await verifyOtp('otp:test:11', '000000', cfg)).status).toBe('invalid');
+    expect((await verifyOtp('otp:test:11', code, cfg)).status).toBe('ok');
+  });
+
   it('verify before any mint → no-code', async () => {
     expect((await verifyOtp('otp:test:5', '123456', cfg)).status).toBe('no-code');
   });

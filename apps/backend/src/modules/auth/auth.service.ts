@@ -23,7 +23,6 @@ export async function sendOtp({ phone, role }: SendOtpBody): Promise<SendOtpResu
     otpKey(phone),
     {
       ttlSeconds: config.OTP_TTL_SECONDS,
-      maxAttempts: config.OTP_MAX_VERIFY_ATTEMPTS,
       sendLimit: { max: config.OTP_MAX_SENDS_PER_WINDOW, windowSeconds: config.OTP_SEND_WINDOW_SECONDS },
     },
     { role },
@@ -48,8 +47,10 @@ export async function verifyOtp({ phone, otp }: VerifyOtpBody): Promise<AuthToke
   const r = await verifyOtpStore<{ role: UserRole }>(otpKey(phone), otp, {
     maxAttempts: config.OTP_MAX_VERIFY_ATTEMPTS,
   });
-  // Auth folds every failure mode into one generic 401 (no enumeration of why).
-  if (r.status !== 'ok') throw new UnauthorizedError('Invalid or expired OTP');
+  // Auth folds every failure mode into one generic 401 (no enumeration of why). The !r.payload
+  // guard also covers a key stored without a payload (e.g. a pre-refactor in-flight OTP whose
+  // role lived at the top level) — better a 401 + fresh OTP than a destructuring crash.
+  if (r.status !== 'ok' || !r.payload) throw new UnauthorizedError('Invalid or expired OTP');
   const { role } = r.payload;
 
   return prisma.$transaction(async (tx) => {
