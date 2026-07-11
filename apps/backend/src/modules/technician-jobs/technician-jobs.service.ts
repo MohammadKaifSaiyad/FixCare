@@ -5,7 +5,9 @@ import { haversineMeters } from '../../shared/utils/geo.js';
 import { mintArrivalCode } from '../bookings/arrival-code.js';
 import { ARRIVAL_GEOFENCE_METERS } from '../bookings/bookings.constants.js';
 import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.types.js';
-import type { ArriveBody, DiagnoseBody, AddPartBody } from './technician-jobs.schemas.js';
+import { photoStorage } from '../../shared/third-party/r2-storage.js';
+import { randomUUID } from 'node:crypto';
+import type { ArriveBody, DiagnoseBody, AddPartBody, SignPhotoBody, ConfirmPhotoBody } from './technician-jobs.schemas.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -78,7 +80,7 @@ export async function skipJob(userId: string, bookingId: string): Promise<void> 
 
 
 /** Load a booking that must be assigned to this technician + in the given state. */
-async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE' | 'DIAGNOSED') {
+async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE' | 'ARRIVED' | 'DIAGNOSED') {
   const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
   if (!b) throw new NotFoundError('Job not found');
   if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
@@ -175,4 +177,36 @@ export async function removePart(userId: string, bookingId: string, partId: stri
     await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_removed', sku: line.sku } } });
   });
+}
+
+/** Presign a photo upload slot. ARRIVED-only (the on-site diagnosis window). */
+export async function signPhotoUpload(userId: string, bookingId: string, body: SignPhotoBody): Promise<{ url: string; key: string; expiresAt: string }> {
+  const tech = await requireTechnician(userId);
+  await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
+  const key = `jobs/${bookingId}/${body.kind}-${randomUUID()}.jpg`;
+  const { url, expiresAt } = await photoStorage.presignUpload(key, body.contentLengthBytes);
+  return { url, key, expiresAt: expiresAt.toISOString() };
+}
+
+/** Confirm an uploaded photo: HEAD-verified (evidence must EXIST, not be claimed — Golden Rule 1),
+ *  booking-scoped key, replace-by-soft-delete per (booking, kind), audited in-tx. */
+export async function confirmPhoto(userId: string, bookingId: string, body: ConfirmPhotoBody): Promise<{ id: string; kind: ConfirmPhotoBody['kind']; capturedAt: string }> {
+  const tech = await requireTechnician(userId);
+  await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
+  if (!body.key.startsWith(`jobs/${bookingId}/`)) throw new UnprocessableError('Key does not belong to this booking');
+  if (!(await photoStorage.objectExists(body.key))) throw new UnprocessableError('Upload not found — PUT the photo to the signed URL first');
+
+  const created = await prisma.$transaction(async (tx) => {
+    // Retake = replace: soft-delete the previous active row for this slot (evidence trail kept).
+    const replaced = await tx.photoEvidence.updateMany({ where: { bookingId, kind: body.kind, deletedAt: null }, data: { deletedAt: new Date() } });
+    const row = await tx.photoEvidence.create({
+      data: { bookingId, kind: body.kind, r2Key: body.key, geotagLat: body.geotagLat ?? null, geotagLng: body.geotagLng ?? null, capturedAt: new Date(body.capturedAt) },
+    });
+    // No coords in audit (Rule 7) — only whether a geotag exists.
+    await tx.auditLog.create({
+      data: { action: 'PHOTO_UPLOADED', actorType: 'USER', actorId: userId, metadata: { bookingId, kind: body.kind, hasGeotag: body.geotagLat != null, replaced: replaced.count > 0 } },
+    });
+    return row;
+  });
+  return { id: created.id, kind: body.kind, capturedAt: created.capturedAt.toISOString() };
 }
