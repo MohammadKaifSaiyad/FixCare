@@ -194,6 +194,7 @@ enum AuditAction {
   CATALOG_UPDATED
   BOOKING_STATE_CHANGED
   DIAGNOSIS_UPDATED
+  PHOTO_UPLOADED
 }
 
 // =============================================================================
@@ -332,6 +333,7 @@ model Booking {
   diagnosedAt        DateTime?
   declinedAt         DateTime?
   bookingParts       BookingPart[]
+  photos             PhotoEvidence[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
@@ -353,6 +355,30 @@ model DiagnosedIssue {
   bookings   Booking[]
   @@unique([categoryId, name])
   @@index([categoryId])
+}
+
+// Photo evidence for a booking (B4b: 2 diagnosis slots; B5 appends 3 REPAIR_* slots).
+// One ACTIVE row per (booking, kind) — a retake soft-deletes the old row and inserts a new
+// one in the same transaction (evidence trail is never destroyed; NEVER hard-delete).
+enum PhotoKind {
+  DIAGNOSIS_OVERVIEW
+  DIAGNOSIS_CLOSEUP
+}
+
+model PhotoEvidence {
+  id         String    @id @default(cuid())
+  bookingId  String
+  booking    Booking   @relation(fields: [bookingId], references: [id])
+  kind       PhotoKind
+  r2Key      String // jobs/{bookingId}/{kind}-{uuid}.jpg — opaque, no PII
+  geotagLat  Float? // nullable: indoor GPS is genuinely unavailable on budget devices
+  geotagLng  Float?
+  capturedAt DateTime // client-claimed capture time
+  deletedAt  DateTime? // soft-delete = replaced by a retake
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([bookingId, kind])
 }
 
 model BookingPart {
