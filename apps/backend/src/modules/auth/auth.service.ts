@@ -1,6 +1,5 @@
-import { redis } from '../../shared/redis/client.js';
 import { config } from '../../shared/config.js';
-import { generateOtp, hashOtp } from '../../shared/auth/otp.js';
+import { mintOtp, verifyOtp as verifyOtpStore } from '../../shared/auth/otp-store.js';
 import { verifyPassword } from '../../shared/auth/argon2.js';
 import { TooManyRequestsError, UnauthorizedError, ForbiddenError } from '../../shared/errors.js';
 import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
@@ -13,7 +12,6 @@ import type { SendOtpBody, VerifyOtpBody, RefreshBody, LogoutBody, AdminLoginBod
 const otpSender = makeOtpSender();
 
 const otpKey = (phone: string) => `otp:${phone}`;
-const rlKey = (phone: string) => `otp-rl:${phone}`;
 
 export interface SendOtpResult {
   ok: true;
@@ -21,21 +19,20 @@ export interface SendOtpResult {
 }
 
 export async function sendOtp({ phone, role }: SendOtpBody): Promise<SendOtpResult> {
-  const count = await redis.incr(rlKey(phone));
-  if (count === 1) await redis.expire(rlKey(phone), config.OTP_SEND_WINDOW_SECONDS);
-  if (count > config.OTP_MAX_SENDS_PER_WINDOW) {
+  const r = await mintOtp<{ role: UserRole }>(
+    otpKey(phone),
+    {
+      ttlSeconds: config.OTP_TTL_SECONDS,
+      maxAttempts: config.OTP_MAX_VERIFY_ATTEMPTS,
+      sendLimit: { max: config.OTP_MAX_SENDS_PER_WINDOW, windowSeconds: config.OTP_SEND_WINDOW_SECONDS },
+    },
+    { role },
+  );
+  if (r.status === 'throttled') {
     throw new TooManyRequestsError('Too many OTP requests. Try again later.');
   }
-
-  const otp = generateOtp();
-  await redis.set(
-    otpKey(phone),
-    JSON.stringify({ hash: hashOtp(otp), attempts: 0, role }),
-    'EX', config.OTP_TTL_SECONDS,
-  );
-  await otpSender.send(phone, otp);
-
-  return config.NODE_ENV === 'production' ? { ok: true } : { ok: true, devOtp: otp };
+  await otpSender.send(phone, r.code);
+  return config.NODE_ENV === 'production' ? { ok: true } : { ok: true, devOtp: r.code };
 }
 
 /** Create a User + exactly the matching role profile, atomically. The ONLY user-creation path. */
@@ -48,28 +45,19 @@ export async function createUserWithProfile(tx: Prisma.TransactionClient, phone:
 }
 
 export async function verifyOtp({ phone, otp }: VerifyOtpBody): Promise<AuthTokens> {
-  const raw = await redis.get(otpKey(phone));
-  if (!raw) throw new UnauthorizedError('Invalid or expired OTP');
-
-  const state = JSON.parse(raw) as { hash: string; attempts: number; role: UserRole };
-
-  if (state.attempts >= config.OTP_MAX_VERIFY_ATTEMPTS) {
-    await redis.del(otpKey(phone));
-    throw new UnauthorizedError('Invalid or expired OTP');
-  }
-  if (hashOtp(otp) !== state.hash) {
-    await redis.set(otpKey(phone), JSON.stringify({ ...state, attempts: state.attempts + 1 }), 'KEEPTTL');
-    throw new UnauthorizedError('Invalid or expired OTP');
-  }
-
-  await redis.del(otpKey(phone)); // single-use
+  const r = await verifyOtpStore<{ role: UserRole }>(otpKey(phone), otp, {
+    maxAttempts: config.OTP_MAX_VERIFY_ATTEMPTS,
+  });
+  // Auth folds every failure mode into one generic 401 (no enumeration of why).
+  if (r.status !== 'ok') throw new UnauthorizedError('Invalid or expired OTP');
+  const { role } = r.payload;
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.user.findUnique({ where: { phone } });
     let user = existing;
     let isNew = false;
     if (!existing) {
-      user = await createUserWithProfile(tx, phone, state.role);
+      user = await createUserWithProfile(tx, phone, role);
       isNew = true;
     } else if (existing.status !== 'ACTIVE' || existing.deletedAt) {
       throw new ForbiddenError('Account is not active');
