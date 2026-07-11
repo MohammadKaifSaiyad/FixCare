@@ -1,34 +1,37 @@
-import { redis } from '../../shared/redis/client.js';
-import { generateOtp, hashOtp } from '../../shared/auth/otp.js';
+import { mintOtp, verifyOtp } from '../../shared/auth/otp-store.js';
 
-const TTL_SECONDS = 600; // 10 minutes
+const TTL_SECONDS = 600;
 const MAX_ATTEMPTS = 5;
 const key = (bookingId: string) => `arrival:${bookingId}`;
 
-/** Mint a single-use 6-digit arrival code for a booking; store only its hash in Redis. Returns the
- *  raw code (shown to the technician once). A re-mint overwrites any existing code. */
+/** Mint the single-use 6-digit arrival code (10-min TTL). Re-minting replaces any prior code. */
 export async function mintArrivalCode(bookingId: string): Promise<string> {
-  const code = generateOtp();
-  await redis.set(key(bookingId), JSON.stringify({ hash: hashOtp(code), attempts: 0 }), 'EX', TTL_SECONDS);
-  return code;
+  const r = await mintOtp(key(bookingId), { ttlSeconds: TTL_SECONDS });
+  // No sendLimit configured here, so mint never throttles — 'ok' is the only outcome.
+  if (r.status !== 'ok') throw new Error('arrival code mint failed unexpectedly');
+  return r.code;
 }
 
 export type ArrivalVerifyResult = 'ok' | 'invalid' | 'no-code';
 
-/** Verify a code for a booking. 'no-code' = nothing minted / expired / attempts exhausted;
- *  'invalid' = wrong code (attempt counted); 'ok' = correct (code consumed, single-use). */
+/** Verify (and on success consume) the arrival code. Tri-state: 'ok' | 'invalid' (wrong code,
+ *  attempts remain) | 'no-code' (never minted, expired, exhausted, or already consumed). */
 export async function verifyArrivalCode(bookingId: string, code: string): Promise<ArrivalVerifyResult> {
-  const raw = await redis.get(key(bookingId));
-  if (!raw) return 'no-code';
-  const state = JSON.parse(raw) as { hash: string; attempts: number };
-  if (state.attempts >= MAX_ATTEMPTS) {
-    await redis.del(key(bookingId));
-    return 'no-code';
+  const r = await verifyOtp(key(bookingId), code, { maxAttempts: MAX_ATTEMPTS });
+  switch (r.status) {
+    case 'ok':
+      return 'ok';
+    case 'invalid':
+      return 'invalid';
+    // Exhausted attempts deletes the key; arrival has always surfaced this as 'no-code'
+    // (the booking caller maps 'no-code' → 409). Preserve that exactly.
+    case 'exhausted':
+    case 'no-code':
+      return 'no-code';
+    default: {
+      // Compile-time exhaustiveness: a 5th VerifyResult status must be mapped here explicitly.
+      const unreachable: never = r;
+      throw new Error(`Unhandled verifyOtp status: ${JSON.stringify(unreachable)}`);
+    }
   }
-  if (hashOtp(code) !== state.hash) {
-    await redis.set(key(bookingId), JSON.stringify({ ...state, attempts: state.attempts + 1 }), 'KEEPTTL');
-    return 'invalid';
-  }
-  await redis.del(key(bookingId)); // single-use
-  return 'ok';
 }

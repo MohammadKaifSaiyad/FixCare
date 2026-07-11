@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-06-20_
+_Last updated: 2026-07-11_
 
 ---
 
@@ -16,26 +16,32 @@ B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4 split in
 parts cart, DONE on branch)** / B4b (R2 + 2 mandatory diagnosis photos, deferred).
 
 ## Active task
-**Booking Slice B4a** complete on `feature/booking-diagnosis` — **diagnosis + parts cart + approve/decline**.
-Flow: tech `POST /technician/jobs/:id/diagnose` `{diagnosedIssueId}` (`ARRIVED→DIAGNOSED`; structured issue
-from an admin catalog — no free text; issue-category must match the service category else 422; snapshots
-the issue name) → tech `POST /parts` `{partsCatalogId, qty}` + `DELETE /parts/:partId` (DIAGNOSED-only
-mutable cart; each line **snapshots** sku/name/ceilingPricePaise from the catalog at add-time; part
-category must match the service category) → customer `POST /me/bookings/:id/approve` (`→CUSTOMER_APPROVED`,
-cart frozen) or `/decline` (`→DECLINED_BY_CUSTOMER`, terminal, sets `declinedAt`; visit fee stays locked).
-Computed `estimate` = max(0, labor + Σ(ceilingPrice×qty) − visitFee credit). **No money moves** (charge is
-B6). Actor separation enforced (tech can't approve, customer can't diagnose). 220 tests green; reviewed by
-all three agents + spec/quality per task — fixed the real findings (part category-match guard;
-approve/decline audit evidence + in-tx cart snapshot; `BookingPart.partsCatalogId` index + intent comment);
-customer-side OTP on approve/decline **deferred to the shared OTP primitive (pre-B5)** — decision recorded
-in `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`. Pending PR → `/code-review` → `main`.
-**Next:** **B4b** (R2 third-party-wrapper + 2 mandatory diagnosis photos — reusable for B5's 3 repair
-photos) or **B5 — completion handshake** (keystone #2; needs the shared OTP primitive extracted first).
-Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
-[`docs/plans/2026-06-14-booking-b4a-diagnosis.md`].
+**Shared OTP primitive** complete on `feature/shared-otp-primitive` — the hashed-OTP-in-Redis idiom
+extracted into ONE audited store: `shared/auth/otp-store.ts` (`mintOtp<P>`/`verifyOtp<P>`; SHA-256 at
+rest, attempt cap, single-use delete; generic typed payload; tagged status union
+`ok|invalid|exhausted|no-code`; **opt-in** send throttle `sendLimit:{max,windowSeconds}` with the counter
+at `<key>:rl`). **Both existing sites refactored onto it behavior-preservingly** — `arrival-code.ts` is a
+thin wrapper (exhausted→`'no-code'` mapping keeps its asserted 409 semantics) and `auth.service.ts`
+send/verify (role payload round-trips; all verify failures still fold into one generic 401; devOtp
+unchanged; throttle counter key moved `otp-rl:<phone>`→`otp:<phone>:rl`, plan-documented). Existing auth +
+arrival/handshake suites passed UNCHANGED as the proof. One plan bug found + fixed: the new test's keys
+fell outside `flushTestRedis`'s prefixes → throttle counter leaked across runs; test keys moved under
+`otp:`. Final whole-branch review **Ready-to-merge YES** + golden-rules CLEAN + fraud-vector all blocks
+intact; minors folded in (verifyOtp corrupt-value fail-safe + test; arrival JSDoc + exhaustiveness
+default; dead `otp-rl:*` test scan removed) and /code-review fixes (payload guard, mint API tightened). 230 tests green. **Ready for B5's completion OTP and the
+deferred B4a approve/decline token — zero new crypto needed.** Pending PR → `main`.
+Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
+[`docs/plans/2026-06-28-shared-otp-primitive.md`].
 
 ## Last shipped
-- **Booking Slice B4a** (`apps/backend`, diagnosis + parts cart): `DiagnosedIssue` admin catalog
+- **Shared OTP primitive** (`apps/backend`): `shared/auth/otp-store.ts` — single audited single-use OTP
+  store (mint/verify, SHA-256 hash at rest, attempt cap, single-use delete, generic typed payload,
+  4-arm status union, opt-in send throttle); `arrival-code.ts` + auth `sendOtp`/`verifyOtp` refactored
+  onto it with their original suites passing unchanged; new otp-store unit tests (10) with proper redis
+  key isolation; final-review hardening (corrupt-value fail-safe, exhaustiveness default) + /code-review
+  fixes (payload guard → 401 not crash; maxAttempts out of the mint config). 230 tests. On branch.
+- **Booking Slice B4a** — **merged to `main`** (PR #14, squash `8aedf89`): diagnosis + parts cart +
+  approve/decline. `DiagnosedIssue` admin catalog
   (MANAGER+, category-scoped, `@@unique([categoryId,name])`, soft-delete, `CATALOG_UPDATED` audit) +
   `/catalog/issues` CRUD; `BookingPart` snapshot cart line (no soft-delete by design = pre-approval mutable
   cart) + `BookingPart.partsCatalogId` index; Booking diagnosis fields (`diagnosedIssueId/Name`,
@@ -46,7 +52,7 @@ Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
   403, terminal decline, cart frozen at approval, audit carries the frozen-cart evidence read in-tx);
   `computeEstimate` (visit-fee credit, floored at 0, integer paise); `BookingDto` += diagnosis/parts/
   estimate. 220 tests; all three agents + per-task spec/quality review — findings fixed, OTP deferred
-  (decision doc). On branch.
+  (decision doc).
 - **Booking Slice B3** (`apps/backend`, arrival handshake — keystone #1): 4 nullable evidence columns
   on `Booking` (`arrivalLat/Lng`, `arrivedAt`, `visitFeeLockedAt`); `haversineMeters` geo helper;
   single-use hashed Redis arrival code (6-digit, 5-attempt cap, 10-min TTL); `EN_ROUTE→TECHNICIAN` +
@@ -118,11 +124,10 @@ Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/booking-diagnosis` → `main` (booking Slice B4a).
-2. **Shared single-use OTP/challenge primitive** (extract the arrival-code idiom into a reusable Redis
-   primitive) — needed by **B5 — completion handshake (keystone #2)** AND by the deferred B4a approve/decline
-   confirmation token. Then **B4b** (R2 third-party-wrapper + 2 mandatory diagnosis photos, reusable for
-   B5's 3 repair photos) and/or **B5** (OTP + 3 repair photos → CUSTOMER_CONFIRMED).
+1. **PR + `/code-review` + merge** `feature/shared-otp-primitive` → `main`.
+2. **B5 — completion handshake (keystone #2)** (OTP via the new primitive + 3 repair photos →
+   CUSTOMER_CONFIRMED) and/or **B4b** first (R2 third-party-wrapper + 2 mandatory diagnosis photos,
+   reusable for B5's 3 repair photos). Wire the deferred B4a approve/decline token alongside B5's OTP.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
@@ -152,8 +157,9 @@ Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
   are backfilled with coordinates / PostGIS lands — make the arrival geofence a universal gate.
 - **B4a deferred (carry to B4b/B5/B6):** (a) **2 mandatory diagnosis photos** + R2 third-party-wrapper +
   presigned uploads + `PhotoEvidence` model = **B4b** (reusable for B5's 3 repair photos); (b)
-  **customer-side OTP/confirmation token on approve/decline** — deferred to the shared OTP primitive
-  (pre-B5); decision: `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`; (c) auto-suggested parts
+  **customer-side OTP/confirmation token on approve/decline** — primitive now EXISTS
+  (`shared/auth/otp-store.ts`); wire the token when B5 wires its completion OTP; decision:
+  `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`; (c) auto-suggested parts
   + diagnosis-vs-actual mismatch fraud rule = B6.
 - **B4a `/code-review` altitude items (deferred, module-wide — fix all-at-once):** (a) the category-match
   rule + the `prisma.diagnosedIssue`/`prisma.partsCatalog` reads live in technician-jobs = **cross-module
@@ -164,6 +170,11 @@ Design: [`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`]; plan:
   `diagnoseJob` writes both `BOOKING_STATE_CHANGED` and `DIAGNOSIS_UPDATED` (intentional: state event vs
   domain event — kept); (e) approve/decline mutation responses omit the technician block (client re-fetches
   via GET — minor).
+- **OTP store throttle: INCR→EXPIRE→SET non-atomic** (`otp-store.ts` mint path; pre-existing behavior
+  carried over from the old auth code). Two failure shapes: crash between INCR and SET burns a send
+  slot (worst case one wasted slot per 900s window); crash between INCR and EXPIRE leaves a TTL-less
+  counter = that phone throttled until a manual redis del. Fix once via Lua/MULTI when B5 next touches
+  the store; all call sites benefit.
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
   their features land.
