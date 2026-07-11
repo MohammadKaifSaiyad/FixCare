@@ -8,6 +8,27 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-11 — Shared single-use OTP primitive (`shared/auth/otp-store.ts`)
+
+- **The hashed-OTP-in-Redis idiom is now ONE audited implementation** instead of hand-rolled copies —
+  `mintOtp<P>(key, {ttlSeconds, maxAttempts, sendLimit?}, payload?)` / `verifyOtp<P>(key, code, {maxAttempts})`.
+  SHA-256 at rest, verify-attempt cap, single-use delete; generic typed payload; tagged status union
+  `ok | invalid | exhausted | no-code`; **opt-in** send throttle (counter at `<key>:rl`).
+- **Both existing sites refactored onto it, behavior-preserving** (their original test suites passed
+  UNCHANGED as the proof): `arrival-code.ts` is now a thin wrapper (`exhausted` maps to its `'no-code'`
+  → keeps the asserted exhausted→409 semantics); auth `sendOtp`/`verifyOtp` (the `{role}` payload
+  round-trips through the store; every verify failure still folds into the one generic 401; devOtp
+  unchanged; throttle key moved `otp-rl:<phone>` → `otp:<phone>:rl` — ephemeral counter, plan-documented).
+- **Design refinement during planning:** the verify union gained a distinct `exhausted` arm (vs folding
+  into `invalid`) because `arrival-code.test.ts` asserts exhausted→`'no-code'` — each caller now chooses
+  its mapping, making the refactor exactly behavior-preserving.
+- **Plan bug found by the full-suite run + fixed:** the new otp-store test used keys outside
+  `flushTestRedis`'s prefixes, so the 900s-TTL throttle counter leaked across runs (first mint →
+  `throttled` on any re-run inside the window). Test keys moved under `otp:`; proven by back-to-back runs.
+- **Ready for B5** (completion OTP) and the deferred B4a approve/decline token — zero new crypto needed.
+- 228 tests (220 + 8 new otp-store units). Executed subagent-driven: per-task spec+quality reviews all
+  Approved (deferred minors recorded in the SDD ledger for final-review triage).
+
 ## 2026-06-16 — Booking slice B4a (diagnosis + parts cart + approve/decline)
 
 - **Structured diagnosis, snapshot-priced cart, two-sided diagnosis→approval handoff. No money moves**
