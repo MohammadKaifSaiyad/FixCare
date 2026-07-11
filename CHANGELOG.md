@@ -26,8 +26,14 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   `flushTestRedis`'s prefixes, so the 900s-TTL throttle counter leaked across runs (first mint →
   `throttled` on any re-run inside the window). Test keys moved under `otp:`; proven by back-to-back runs.
 - **Ready for B5** (completion OTP) and the deferred B4a approve/decline token — zero new crypto needed.
-- 228 tests (220 + 8 new otp-store units). Executed subagent-driven: per-task spec+quality reviews all
-  Approved (deferred minors recorded in the SDD ledger for final-review triage).
+- **Final review pass:** whole-branch review Ready-to-merge YES; golden-rules-auditor CLEAN;
+  fraud-vector-checker — all documented blocks (brute-force cap, single-use, TTL, actor separation,
+  send-flood throttle) intact. Minors folded in: `verifyOtp` corrupt-value fail-safe (del + `no-code`
+  instead of an unhandled throw, + test); arrival-code JSDoc restored + compile-time exhaustiveness
+  `default`; dead `otp-rl:*` scan removed from the test flush helper. Throttle INCR→SET non-atomicity
+  (pre-existing) → hardening backlog.
+- 229 tests (220 + 9 new otp-store units). Executed subagent-driven: per-task spec+quality reviews all
+  Approved.
 
 ## 2026-06-16 — Booking slice B4a (diagnosis + parts cart + approve/decline)
 
