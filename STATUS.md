@@ -28,7 +28,7 @@ arrival/handshake suites passed UNCHANGED as the proof. One plan bug found + fix
 fell outside `flushTestRedis`'s prefixes → throttle counter leaked across runs; test keys moved under
 `otp:`. Final whole-branch review **Ready-to-merge YES** + golden-rules CLEAN + fraud-vector all blocks
 intact; minors folded in (verifyOtp corrupt-value fail-safe + test; arrival JSDoc + exhaustiveness
-default; dead `otp-rl:*` test scan removed). 229 tests green. **Ready for B5's completion OTP and the
+default; dead `otp-rl:*` test scan removed) and /code-review fixes (payload guard, mint API tightened). 230 tests green. **Ready for B5's completion OTP and the
 deferred B4a approve/decline token — zero new crypto needed.** Pending PR → `main`.
 Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
 [`docs/plans/2026-06-28-shared-otp-primitive.md`].
@@ -37,9 +37,9 @@ Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
 - **Shared OTP primitive** (`apps/backend`): `shared/auth/otp-store.ts` — single audited single-use OTP
   store (mint/verify, SHA-256 hash at rest, attempt cap, single-use delete, generic typed payload,
   4-arm status union, opt-in send throttle); `arrival-code.ts` + auth `sendOtp`/`verifyOtp` refactored
-  onto it with their original suites passing unchanged; new otp-store unit tests (9) with proper redis
-  key isolation; final-review hardening (corrupt-value fail-safe, exhaustiveness default). 229 tests.
-  On branch.
+  onto it with their original suites passing unchanged; new otp-store unit tests (10) with proper redis
+  key isolation; final-review hardening (corrupt-value fail-safe, exhaustiveness default) + /code-review
+  fixes (payload guard → 401 not crash; maxAttempts out of the mint config). 230 tests. On branch.
 - **Booking Slice B4a** — **merged to `main`** (PR #14, squash `8aedf89`): diagnosis + parts cart +
   approve/decline. `DiagnosedIssue` admin catalog
   (MANAGER+, category-scoped, `@@unique([categoryId,name])`, soft-delete, `CATALOG_UPDATED` audit) +
@@ -170,10 +170,11 @@ Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
   `diagnoseJob` writes both `BOOKING_STATE_CHANGED` and `DIAGNOSIS_UPDATED` (intentional: state event vs
   domain event — kept); (e) approve/decline mutation responses omit the technician block (client re-fetches
   via GET — minor).
-- **OTP store throttle: INCR→SET non-atomic** (`otp-store.ts` mint path; pre-existing behavior carried
-  over from the old auth code — a crash between the two commands burns a send slot without storing an
-  OTP, worst case one wasted slot per 900s window). Fix once via Lua/MULTI when B5 next touches the
-  store; all call sites benefit.
+- **OTP store throttle: INCR→EXPIRE→SET non-atomic** (`otp-store.ts` mint path; pre-existing behavior
+  carried over from the old auth code). Two failure shapes: crash between INCR and SET burns a send
+  slot (worst case one wasted slot per 900s window); crash between INCR and EXPIRE leaves a TTL-less
+  counter = that phone throttled until a manual redis del. Fix once via Lua/MULTI when B5 next touches
+  the store; all call sites benefit.
 - Dynamic-introspection TRUNCATE in test helpers (vs the hand-maintained table list).
 - Future env keys (R2_*, RAZORPAY_*, MSG91_* real values) added to `.env.example` when
   their features land.

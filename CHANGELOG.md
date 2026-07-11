@@ -32,7 +32,14 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   instead of an unhandled throw, + test); arrival-code JSDoc restored + compile-time exhaustiveness
   `default`; dead `otp-rl:*` scan removed from the test flush helper. Throttle INCR→SET non-atomicity
   (pre-existing) → hardening backlog.
-- 229 tests (220 + 9 new otp-store units). Executed subagent-driven: per-task spec+quality reviews all
+- **`/code-review` pass (8 finder angles, verified):** fixed — auth verify guards `!r.payload` (a
+  payload-less key, e.g. a pre-refactor in-flight OTP during the deploy window, now yields the generic
+  401 instead of a destructuring TypeError/500); `maxAttempts` removed from `OtpStoreConfig` (mint never
+  read it — verify-side only, kills the two-place drift surface); boundary test added (correct code on
+  the last allowed attempt succeeds). Refuted: folding `exhausted` into `invalid` (breaks arrival's
+  asserted 409), throttled-user-can-verify-old-OTP (intended), RTT micro-opts (V1 noise). Backlog
+  expanded: INCR→EXPIRE crash variant (TTL-less counter = manual-del throttle) noted alongside INCR→SET.
+- 230 tests (220 + 10 new otp-store units). Executed subagent-driven: per-task spec+quality reviews all
   Approved.
 
 ## 2026-06-16 — Booking slice B4a (diagnosis + parts cart + approve/decline)
