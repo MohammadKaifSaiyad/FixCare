@@ -48,23 +48,36 @@ export class R2PhotoStorage implements PhotoStorage {
     });
   }
   async presignUpload(key: string, contentLengthBytes: number): Promise<{ url: string; expiresAt: Date }> {
-    // ContentType + ContentLength become SIGNED headers: the PUT must match them exactly,
-    // which is how the jpeg-only + 1MB policy is enforced cryptographically.
-    const cmd = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: 'image/jpeg', ContentLength: contentLengthBytes });
-    const url = await getSignedUrl(this.client, cmd, { expiresIn: UPLOAD_TTL_SECONDS });
-    return { url, expiresAt: new Date(Date.now() + UPLOAD_TTL_SECONDS * 1000) };
+    try {
+      // ContentType + ContentLength become SIGNED headers: the PUT must match them exactly,
+      // which is how the jpeg-only + 1MB policy is enforced cryptographically.
+      const cmd = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: 'image/jpeg', ContentLength: contentLengthBytes });
+      const url = await getSignedUrl(this.client, cmd, { expiresIn: UPLOAD_TTL_SECONDS });
+      return { url, expiresAt: new Date(Date.now() + UPLOAD_TTL_SECONDS * 1000) };
+    } catch {
+      throw new Error('R2 presignUpload failed'); // typed boundary: never leak raw SDK errors
+    }
   }
   async objectExists(key: string): Promise<boolean> {
     try {
       await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
       return true;
     } catch (e) {
-      if (e && typeof e === 'object' && 'name' in e && (e as { name: string }).name === 'NotFound') return false;
+      // NotFound is the name today; the 404 status is the durable signal across SDK versions.
+      // This gates Golden Rule 1 (evidence must exist) — be robust, and fail closed otherwise.
+      if (e && typeof e === 'object') {
+        const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+        if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) return false;
+      }
       throw new Error('R2 objectExists failed'); // typed boundary: never leak raw SDK errors
     }
   }
   async presignRead(key: string): Promise<string> {
-    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: READ_TTL_SECONDS });
+    try {
+      return await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: READ_TTL_SECONDS });
+    } catch {
+      throw new Error('R2 presignRead failed'); // typed boundary: never leak raw SDK errors
+    }
   }
 }
 
