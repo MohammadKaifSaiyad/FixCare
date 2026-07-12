@@ -80,12 +80,17 @@ export async function skipJob(userId: string, bookingId: string): Promise<void> 
 
 
 
-/** Load a booking that must be assigned to this technician + in the given state. */
-async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE' | 'ARRIVED' | 'DIAGNOSED') {
+/** Load a booking that must be assigned to this technician + in one of the given state(s). */
+async function ownAssignedBookingOrThrow(
+  techId: string,
+  bookingId: string,
+  expectedState: import('@prisma/client').BookingState | readonly import('@prisma/client').BookingState[],
+) {
+  const states = Array.isArray(expectedState) ? expectedState : [expectedState];
   const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
   if (!b) throw new NotFoundError('Job not found');
   if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
-  if (b.state !== expectedState) throw new ConflictError(`Job is not in ${expectedState}`);
+  if (!states.includes(b.state)) throw new ConflictError(`Job is not in ${states.join(' or ')}`);
   return b;
 }
 
@@ -202,6 +207,39 @@ export async function removePart(userId: string, bookingId: string, partId: stri
     await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_removed', sku: line.sku } } });
   });
+}
+
+/** CUSTOMER_APPROVED → PARTS_REQUESTED. Only honest with a non-empty approved cart. */
+export async function partsNeeded(userId: string, bookingId: string): Promise<{ id: string; state: 'PARTS_REQUESTED' }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'CUSTOMER_APPROVED');
+  const partCount = await prisma.bookingPart.count({ where: { bookingId } });
+  if (partCount === 0) throw new UnprocessableError('No parts in the approved estimate — start the repair instead');
+  await prisma.$transaction((tx) =>
+    transitionBooking(tx, booking, 'PARTS_REQUESTED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { partCount }),
+  );
+  return { id: bookingId, state: 'PARTS_REQUESTED' };
+}
+
+/** PARTS_REQUESTED → PARTS_ACQUIRED (merchant procurement is WhatsApp-manual in V1 — tracked only). */
+export async function partsAcquired(userId: string, bookingId: string): Promise<{ id: string; state: 'PARTS_ACQUIRED' }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'PARTS_REQUESTED');
+  await prisma.$transaction((tx) =>
+    transitionBooking(tx, booking, 'PARTS_ACQUIRED', { type: 'USER', kind: 'TECHNICIAN', id: userId }),
+  );
+  return { id: bookingId, state: 'PARTS_ACQUIRED' };
+}
+
+/** CUSTOMER_APPROVED | PARTS_ACQUIRED → REPAIR_IN_PROGRESS. Opens the repair-photo window. */
+export async function startRepair(userId: string, bookingId: string): Promise<{ id: string; state: 'REPAIR_IN_PROGRESS' }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, ['CUSTOMER_APPROVED', 'PARTS_ACQUIRED'] as const);
+  await prisma.$transaction(async (tx) => {
+    await transitionBooking(tx, booking, 'REPAIR_IN_PROGRESS', { type: 'USER', kind: 'TECHNICIAN', id: userId });
+    await tx.booking.update({ where: { id: bookingId }, data: { repairStartedAt: new Date() } });
+  });
+  return { id: bookingId, state: 'REPAIR_IN_PROGRESS' };
 }
 
 /** One owner for the R2 key shape: sign BUILDS with this prefix, confirm VERIFIES against it —
