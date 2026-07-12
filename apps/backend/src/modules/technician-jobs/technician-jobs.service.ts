@@ -215,7 +215,9 @@ export async function signPhotoUpload(userId: string, bookingId: string, body: S
 export async function confirmPhoto(userId: string, bookingId: string, body: ConfirmPhotoBody): Promise<{ id: string; kind: ConfirmPhotoBody['kind']; capturedAt: string }> {
   const tech = await requireTechnician(userId);
   await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
-  if (!body.key.startsWith(`jobs/${bookingId}/`)) throw new UnprocessableError('Key does not belong to this booking');
+  // Key must match this booking AND this slot — sign bakes the kind into the key, so a single
+  // uploaded object cannot be confirmed into BOTH slots (2 photos means two DISTINCT photos).
+  if (!body.key.startsWith(`jobs/${bookingId}/${body.kind}-`)) throw new UnprocessableError('Key does not belong to this booking and slot');
   if (!(await photoStorage.objectExists(body.key))) throw new UnprocessableError('Upload not found — PUT the photo to the signed URL first');
 
   const created = await prisma.$transaction(async (tx) => {

@@ -32,35 +32,43 @@ export class DevPhotoStorage implements PhotoStorage {
   }
 }
 
-/** Real R2 (S3-compatible). Throws a clear error if the R2 env keys are missing. */
+/** Real R2 (S3-compatible). Cred check + client construction are LAZY (first use, not import):
+ *  the module singleton is created at import time, and production must boot WITHOUT R2 creds
+ *  (feature inert until provisioned — same posture as Msg91OtpSender, which throws in send(),
+ *  never in its constructor). Only an actual photo operation fails when unconfigured. */
 export class R2PhotoStorage implements PhotoStorage {
-  private readonly client: S3Client;
-  private readonly bucket: string;
-  constructor() {
+  private lazy: { client: S3Client; bucket: string } | null = null;
+  private r2(): { client: S3Client; bucket: string } {
+    if (this.lazy) return this.lazy;
     if (!config.R2_ACCOUNT_ID || !config.R2_ACCESS_KEY_ID || !config.R2_SECRET_ACCESS_KEY || !config.R2_BUCKET) {
       throw new Error('R2 storage is not configured (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET)');
     }
-    this.bucket = config.R2_BUCKET;
-    this.client = new S3Client({
-      region: 'auto',
-      endpoint: `https://${config.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: { accessKeyId: config.R2_ACCESS_KEY_ID, secretAccessKey: config.R2_SECRET_ACCESS_KEY },
-    });
+    this.lazy = {
+      bucket: config.R2_BUCKET,
+      client: new S3Client({
+        region: 'auto',
+        endpoint: `https://${config.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: { accessKeyId: config.R2_ACCESS_KEY_ID, secretAccessKey: config.R2_SECRET_ACCESS_KEY },
+      }),
+    };
+    return this.lazy;
   }
   async presignUpload(key: string, contentLengthBytes: number): Promise<{ url: string; expiresAt: Date }> {
+    const { client, bucket } = this.r2();
     try {
       // ContentType + ContentLength become SIGNED headers: the PUT must match them exactly,
       // which is how the jpeg-only + 1MB policy is enforced cryptographically.
-      const cmd = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: 'image/jpeg', ContentLength: contentLengthBytes });
-      const url = await getSignedUrl(this.client, cmd, { expiresIn: UPLOAD_TTL_SECONDS });
+      const cmd = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: 'image/jpeg', ContentLength: contentLengthBytes });
+      const url = await getSignedUrl(client, cmd, { expiresIn: UPLOAD_TTL_SECONDS });
       return { url, expiresAt: new Date(Date.now() + UPLOAD_TTL_SECONDS * 1000) };
     } catch {
       throw new Error('R2 presignUpload failed'); // typed boundary: never leak raw SDK errors
     }
   }
   async objectExists(key: string): Promise<boolean> {
+    const { client, bucket } = this.r2();
     try {
-      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
       return true;
     } catch (e) {
       // NotFound is the name today; the 404 status is the durable signal across SDK versions.
@@ -73,8 +81,9 @@ export class R2PhotoStorage implements PhotoStorage {
     }
   }
   async presignRead(key: string): Promise<string> {
+    const { client, bucket } = this.r2();
     try {
-      return await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: READ_TTL_SECONDS });
+      return await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: READ_TTL_SECONDS });
     } catch {
       throw new Error('R2 presignRead failed'); // typed boundary: never leak raw SDK errors
     }

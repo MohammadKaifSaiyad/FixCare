@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DevPhotoStorage, photoStorage } from '../../src/shared/third-party/r2-storage.js';
+import { DevPhotoStorage, R2PhotoStorage, photoStorage } from '../../src/shared/third-party/r2-storage.js';
 
 describe('DevPhotoStorage', () => {
   it('presigns an upload with a 24h expiry and a deterministic dev URL', async () => {
@@ -23,5 +23,15 @@ describe('DevPhotoStorage', () => {
 
   it('the module singleton is the Dev impl outside production', () => {
     expect(photoStorage).toBeInstanceOf(DevPhotoStorage);
+  });
+});
+
+describe('R2PhotoStorage boot safety', () => {
+  it('constructs WITHOUT R2 creds (production must boot before R2 is provisioned); first USE fails with a clear config error', async () => {
+    // Creds are checked lazily on first use, never in the constructor — a production deploy
+    // before the R2 account exists must not crash the whole API at import time.
+    const s = new R2PhotoStorage();
+    await expect(s.objectExists('jobs/x/k.jpg')).rejects.toThrow(/R2 storage is not configured/);
+    await expect(s.presignRead('jobs/x/k.jpg')).rejects.toThrow(/R2 storage is not configured/);
   });
 });

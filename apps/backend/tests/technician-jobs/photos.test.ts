@@ -12,7 +12,9 @@ function auth(t: string) { return { authorization: `Bearer ${t}` }; }
 function future() { return new Date(Date.now() + 86_400_000).toISOString(); }
 const dev = photoStorage as DevPhotoStorage;
 
-/** Booking driven to ARRIVED (photo window). Mirrors tests/bookings/diagnosis.test.ts. */
+/** Booking driven to ARRIVED (photo window). Mirrors tests/bookings/diagnosis.test.ts.
+ *  NOTE: deliberately does NOT seed diagnosis photos — the gate tests below manage photo state
+ *  explicitly; a test that calls /diagnose must upload/seed both slots itself. */
 async function arrivedBooking() {
   const c = await makeCustomer();
   const f = await seedBookable(c.customerId);
@@ -52,6 +54,15 @@ describe('photo sign + confirm', () => {
     const meta = audits[0]!.metadata as { hasGeotag: boolean; kind: string };
     expect(meta.hasGeotag).toBe(true);
     expect(meta.kind).toBe('DIAGNOSIS_OVERVIEW');
+  });
+
+  it('one uploaded object cannot fill BOTH slots — confirm with a mismatched kind → 422', async () => {
+    const { t, bookingId } = await arrivedBooking();
+    const sign = (await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/photos/sign`, headers: auth(t.token), payload: { kind: 'DIAGNOSIS_OVERVIEW', contentLengthBytes: 1000 } })).json();
+    dev.markUploaded(sign.key);
+    // same key, confirmed as the OTHER slot — the kind is baked into the key, so this must fail
+    const crossSlot = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/photos`, headers: auth(t.token), payload: { kind: 'DIAGNOSIS_CLOSEUP', key: sign.key, capturedAt: new Date().toISOString() } });
+    expect(crossSlot.statusCode).toBe(422);
   });
 
   it('confirm without a real upload → 422; key from another booking → 422', async () => {
