@@ -73,10 +73,10 @@ WhatsApp-manual in V1 — the parts states are tracked + audited only).
   via `otpSender.send(customerPhone, code)` (Dev sender logs; MSG91 inert until DLT). Non-prod
   response carries `devOtp` (auth's posture). NOTE: `flushTestRedis` already covers nothing under
   `completion:*` — its scan list gains the prefix.
-- **Verify** (technician enters the code): same tri-state mapping as arrival —
-  `ok` → transition; `invalid` → 401; `exhausted`/`no-code` → if the flow provably started
-  (`repairCompletedAt` set — mint is only reachable after REPAIR_COMPLETE) treat `no-code` as
-  expired/exhausted → 401, else 409 "customer has not requested the confirmation code yet".
+- **Verify** (technician enters the code): the store's 4-arm union maps directly — no arrival-style
+  heuristic needed (the `exhausted` arm exists for exactly this): `ok` → transition;
+  `invalid`/`exhausted` → 401 "invalid or expired code"; `no-code` → 409 "no active code — ask the
+  customer to request one" (covers never-minted AND expired; the customer just re-requests).
   Single-use: a correct code is consumed; re-verify → no-code.
 - Re-mint replaces the prior code (store semantics, same as arrival).
 - Audit: never the code, never the phone. `PHOTO_UPLOADED`-style dedicated action is NOT needed —
