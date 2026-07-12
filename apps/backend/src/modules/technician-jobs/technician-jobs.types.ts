@@ -1,5 +1,6 @@
 import type { Booking, Address, ServiceSkill } from '@prisma/client';
 import { maskPhone } from '../../shared/utils/mask.js';
+import type { PhotoSummary } from '../bookings/bookings.types.js';
 
 export interface TechnicianJobDto {
   id: string;
@@ -12,6 +13,7 @@ export interface TechnicianJobDto {
   laborPaise: number;
   address: { line1: string; line2: string | null; landmark: string | null; pincode: string };
   customer: { maskedPhone: string };
+  photos: PhotoSummary[];
 }
 
 /** Masked technician-facing view of a booking. `booking` carries the snapshot fields; `address` is
@@ -22,6 +24,7 @@ export function toTechnicianJobDto(
   address: Address,
   requiredSkill: ServiceSkill,
   customerPhone: string,
+  photos: PhotoSummary[] = [],
 ): TechnicianJobDto {
   return {
     id: booking.id,
@@ -34,5 +37,6 @@ export function toTechnicianJobDto(
     laborPaise: booking.laborPaise,
     address: { line1: address.line1, line2: address.line2, landmark: address.landmark, pincode: address.pincode },
     customer: { maskedPhone: maskPhone(customerPhone) },
+    photos,
   };
 }

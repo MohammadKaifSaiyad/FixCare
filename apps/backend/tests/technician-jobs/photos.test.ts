@@ -123,3 +123,24 @@ describe('diagnosis photo gate', () => {
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(422);
   });
 });
+
+describe('photos in DTOs', () => {
+  it('customer GET /me/bookings/:id and technician /mine carry {kind, capturedAt, url} for ACTIVE photos only', async () => {
+    const { c, t, bookingId } = await arrivedBooking();
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_OVERVIEW');
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_CLOSEUP');
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_CLOSEUP'); // retake — only the replacement shows
+
+    const got = (await app.inject({ method: 'GET', url: `/me/bookings/${bookingId}`, headers: auth(c.token) })).json();
+    expect(got.photos).toHaveLength(2);
+    const kinds = got.photos.map((p: { kind: string }) => p.kind).sort();
+    expect(kinds).toEqual(['DIAGNOSIS_CLOSEUP', 'DIAGNOSIS_OVERVIEW']);
+    for (const p of got.photos) {
+      expect(p.url).toContain('read'); // signed READ url, never the raw key
+      expect(p).not.toHaveProperty('r2Key');
+    }
+    const mine = (await app.inject({ method: 'GET', url: '/technician/jobs/mine', headers: auth(t.token) })).json();
+    const job = mine.find((j: { id: string }) => j.id === bookingId);
+    expect(job.photos).toHaveLength(2);
+  });
+});

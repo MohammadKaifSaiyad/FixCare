@@ -7,7 +7,7 @@ import { transitionBooking } from './bookings.state.js';
 import { verifyArrivalCode } from './arrival-code.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
-import { toBookingDto, type BookingDto } from './bookings.types.js';
+import { toBookingDto, toPhotoSummaries, type BookingDto } from './bookings.types.js';
 import { sumParts } from './estimate.js';
 import type { CreateBookingBody, ConfirmArrivalBody } from './bookings.schemas.js';
 
@@ -92,11 +92,11 @@ export async function listBookings(userId: string): Promise<BookingDto[]> {
   const rows = await prisma.booking.findMany({
     where: { customerId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
-    include: { technician: { include: { user: true } }, bookingParts: true },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } } },
   });
-  return rows.map((b) =>
-    toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts),
-  );
+  return Promise.all(rows.map(async (b) =>
+    toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts, await toPhotoSummaries(b.photos)),
+  ));
 }
 
 export async function getBooking(userId: string, id: string): Promise<BookingDto> {
@@ -104,10 +104,10 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } }, bookingParts: true },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } } },
   });
   if (!b) throw new NotFoundError('Booking not found');
-  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts);
+  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts, await toPhotoSummaries(b.photos));
 }
 
 export async function cancelBooking(userId: string, id: string): Promise<BookingDto> {

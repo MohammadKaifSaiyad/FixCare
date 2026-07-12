@@ -5,6 +5,7 @@ import { haversineMeters } from '../../shared/utils/geo.js';
 import { mintArrivalCode } from '../bookings/arrival-code.js';
 import { ARRIVAL_GEOFENCE_METERS } from '../bookings/bookings.constants.js';
 import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.types.js';
+import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
 import type { ArriveBody, DiagnoseBody, AddPartBody, SignPhotoBody, ConfirmPhotoBody } from './technician-jobs.schemas.js';
@@ -37,10 +38,10 @@ export async function listMyJobs(userId: string): Promise<TechnicianJobDto[]> {
   const tech = await requireTechnician(userId);
   const bookings = await prisma.booking.findMany({
     where: { technicianId: tech.id, deletedAt: null },
-    include: { address: true, service: true, customer: { include: { user: true } } },
+    include: { address: true, service: true, customer: { include: { user: true } }, photos: { where: { deletedAt: null } } },
     orderBy: { createdAt: 'desc' },
   });
-  return bookings.map((b) => toTechnicianJobDto(b, b.address, b.service.requiredSkill, b.customer.user.phone));
+  return Promise.all(bookings.map(async (b) => toTechnicianJobDto(b, b.address, b.service.requiredSkill, b.customer.user.phone, await toPhotoSummaries(b.photos))));
 }
 
 export async function acceptJob(userId: string, bookingId: string): Promise<TechnicianJobDto> {
