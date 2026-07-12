@@ -29,9 +29,13 @@ claimed; in-tx `assertStillInState('ARRIVED')` freeze guard). **Diagnosis gate:*
 requires BOTH slots active (422 otherwise), read in-tx, `photoIds` in the transition audit evidence.
 Customer `GET /me/bookings(/:id)` + tech `/mine` DTOs carry `photos: [{kind, capturedAt, url}]`
 (15-min signed GETs; raw r2Key never leaves the API). Geotag optional (indoor GPS reality),
-`capturedAt` required. Compression is APP-side (<500KB; camera-only re-confirmed). 244 tests green,
-tsc clean. Per-task spec+quality reviews all Approved (2 Important findings fixed in-branch: R2 SDK
-typed-boundary wrap; confirmPhoto TOCTOU freeze guard). Pending final reviews → PR → `main`.
+`capturedAt` required. Compression is APP-side (<500KB; camera-only re-confirmed). **246 tests green,
+tsc clean.** Per-task spec+quality reviews all Approved (2 Important findings fixed in-branch: R2 SDK
+typed-boundary wrap; confirmPhoto TOCTOU freeze guard). Final gates: whole-branch review "With fixes"
+→ ALL FIXED (production-boot crash: R2 creds now checked lazily on first use, never at import — app
+boots before R2 is provisioned + boot test); prisma-migration-reviewer (uuid id fixed, PG16 pin
+confirmed); golden-rules CLEAN; fraud-vector — 1 gap fixed (slot-pinned keys: one uploaded object can
+no longer fill both diagnosis slots). Pending `/code-review` → PR → `main`.
 **B5 (completion handshake, keystone #2) is now FULLY unblocked** — OTP primitive ✅ + photo pipeline ✅
 (extend `PhotoKind` with REPAIR_*, reuse sign/confirm verbatim).
 Design: [`docs/designs/2026-07-11-booking-b4b-photos-design.md`]; plan:

@@ -31,9 +31,17 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   `capturedAt` required. Camera-only capture re-confirmed (gallery stays blocked, app-side rule).
 - **DTOs:** customer `GET /me/bookings(/:id)` + technician `/mine` carry
   `photos: [{kind, capturedAt, url}]` (15-min signed reads; raw `r2Key` structurally excluded).
-- 244 tests (230 + 14 new: 3 schema, 4 wrapper, 7 endpoint/gate/DTO), tsc clean. Subagent-driven:
-  per-task spec+quality reviews all Approved; 2 Important findings fixed in-branch (R2 SDK
-  typed-boundary wrap + robust 404 detection; confirmPhoto TOCTOU freeze guard).
+- **Final-gate fixes (whole-branch + prisma + golden-rules + fraud-vector reviews):** production-boot
+  crash fixed — `R2PhotoStorage` creds are checked LAZILY on first use, never in the constructor, so a
+  deploy before the R2 account exists boots inert instead of dying at import (+ boot test);
+  **slot-pinned keys** — confirm now requires `jobs/{bookingId}/{kind}-…`, so one uploaded object
+  cannot be confirmed into both diagnosis slots (fraud-vector finding, + test); `PhotoEvidence.id`
+  cuid→uuid (consistency; Prisma-level default, table shipped empty). Golden-rules audit CLEAN.
+  Backlog: `capturedAt` is client-claimed/advisory (doc note for fraud-defenses before B5);
+  presign fan-out batching when repair photos land.
+- 246 tests (230 + 16 new), tsc clean. Subagent-driven: per-task spec+quality reviews all Approved;
+  2 Important findings fixed in-branch during task gates (R2 SDK typed-boundary wrap + robust 404
+  detection; confirmPhoto TOCTOU freeze guard).
 
 ## 2026-07-11 — Shared single-use OTP primitive (`shared/auth/otp-store.ts`)
 
