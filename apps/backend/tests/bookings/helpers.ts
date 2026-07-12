@@ -49,3 +49,13 @@ export async function makeTechnician(skills: ServiceSkill[] = ['AC'], status: 'V
 export async function seedIssue(categoryId: string, name = 'Compressor fault') {
   return prisma.diagnosedIssue.create({ data: { name, categoryId } });
 }
+
+/** B4b: diagnosis requires both photo slots. Seed them directly (the photo ENDPOINTS have their own
+ *  tests in tests/technician-jobs/photos.test.ts — fixtures shortcut through prisma for speed). */
+export async function seedDiagnosisPhotos(bookingId: string) {
+  for (const kind of ['DIAGNOSIS_OVERVIEW', 'DIAGNOSIS_CLOSEUP'] as const) {
+    await prisma.photoEvidence.create({
+      data: { bookingId, kind, r2Key: `jobs/${bookingId}/${kind}-seed.jpg`, capturedAt: new Date() },
+    });
+  }
+}

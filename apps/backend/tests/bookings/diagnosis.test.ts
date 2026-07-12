@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
-import { makeCustomer, makeTechnician, seedBookable, seedIssue } from './helpers.js';
+import { makeCustomer, makeTechnician, seedBookable, seedIssue, seedDiagnosisPhotos } from './helpers.js';
 
 const app = await buildApp();
 afterAll(() => app.close());
@@ -20,6 +20,7 @@ async function arrivedBooking() {
   await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/en-route`, headers: auth(t.token) });
   const code = (await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/arrive`, headers: auth(t.token), payload: { lat: 22.31, lng: 73.18 } })).json().arrivalCode;
   await app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/confirm-arrival`, headers: auth(c.token), payload: { code } });
+  await seedDiagnosisPhotos(booking.id); // B4b: diagnose now requires both photo slots filled
   const issue = await seedIssue(f.cat.id);
   const part = await prisma.partsCatalog.create({ data: { sku: `P-${Math.random().toString(36).slice(2, 8)}`, name: 'Capacitor', ceilingPricePaise: 50000, categoryId: f.cat.id } });
   return { c, t, f, bookingId: booking.id as string, issue, part };

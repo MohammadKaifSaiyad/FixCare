@@ -127,9 +127,20 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
   if (issue.categoryId !== booking.service.categoryId) throw new UnprocessableError('That issue does not apply to this service');
 
   await prisma.$transaction(async (tx) => {
+    // Photo gate (B4b): both diagnosis slots must have an ACTIVE photo before the booking can be
+    // DIAGNOSED — the photos are the evidence behind the estimate the customer approves (Rule 1).
+    // Read inside the tx so a concurrent retake/replace can't be half-visible.
+    const activePhotos = await tx.photoEvidence.findMany({
+      where: { bookingId, deletedAt: null, kind: { in: ['DIAGNOSIS_OVERVIEW', 'DIAGNOSIS_CLOSEUP'] } },
+      select: { id: true, kind: true },
+    });
+    const slots = new Set(activePhotos.map((p) => p.kind));
+    if (!slots.has('DIAGNOSIS_OVERVIEW') || !slots.has('DIAGNOSIS_CLOSEUP')) {
+      throw new UnprocessableError('2 diagnosis photos required (overview + close-up)');
+    }
     await tx.booking.update({ where: { id: bookingId }, data: { diagnosedIssueId: issue.id, diagnosedIssueName: issue.name, diagnosedAt: new Date() } });
     // transitionBooking checks the from-state (still ARRIVED in this tx) via its optimistic lock.
-    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id });
+    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id) });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'diagnosed', diagnosedIssueId: issue.id } } });
   });
   return { id: bookingId, state: 'DIAGNOSED' };

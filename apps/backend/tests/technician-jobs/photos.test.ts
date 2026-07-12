@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
-import { makeCustomer, makeTechnician, seedBookable } from '../bookings/helpers.js';
+import { makeCustomer, makeTechnician, seedBookable, seedIssue } from '../bookings/helpers.js';
 import { photoStorage, DevPhotoStorage } from '../../src/shared/third-party/r2-storage.js';
 
 const app = await buildApp();
@@ -88,5 +88,38 @@ describe('photo sign + confirm', () => {
     const fresh = await arrivedBooking();
     await prisma.booking.update({ where: { id: fresh.bookingId }, data: { state: 'CUSTOMER_APPROVED' } });
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${fresh.bookingId}/photos/sign`, headers: auth(fresh.t.token), payload: { kind: 'DIAGNOSIS_OVERVIEW', contentLengthBytes: 1000 } })).statusCode).toBe(409);
+  });
+});
+
+describe('diagnosis photo gate', () => {
+  it('diagnose without both photos → 422; with both → 200 and audit carries photoIds', async () => {
+    const { t, bookingId } = await arrivedBooking();
+    const issue = await (async () => {
+      const cat = await prisma.booking.findUnique({ where: { id: bookingId }, include: { service: true } });
+      return seedIssue(cat!.service.categoryId);
+    })();
+    // 0 photos
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(422);
+    // 1 of 2
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_OVERVIEW');
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(422);
+    // both
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_CLOSEUP');
+    const ok = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+    expect(ok.statusCode).toBe(200);
+    const audit = await prisma.auditLog.findFirst({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'DIAGNOSED' } } });
+    const meta = audit!.metadata as { photoIds?: string[] };
+    expect(meta.photoIds).toHaveLength(2);
+  });
+
+  it('a soft-deleted (replaced-away) slot does not count', async () => {
+    const { t, bookingId } = await arrivedBooking();
+    const cat = await prisma.booking.findUnique({ where: { id: bookingId }, include: { service: true } });
+    const issue = await seedIssue(cat!.service.categoryId);
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_OVERVIEW');
+    await uploadPhoto(t.token, bookingId, 'DIAGNOSIS_CLOSEUP');
+    // simulate a slot whose only row got soft-deleted (no active replacement)
+    await prisma.photoEvidence.updateMany({ where: { bookingId, kind: 'DIAGNOSIS_CLOSEUP' }, data: { deletedAt: new Date() } });
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(422);
   });
 });
