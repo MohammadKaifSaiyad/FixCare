@@ -158,11 +158,21 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
   return { id: line.id };
 }
 
-/** Optimistic freeze guard: a no-op update conditional on the booking still being DIAGNOSED. 0 rows
- *  affected means a concurrent approve/decline already left DIAGNOSED → the cart is frozen. */
+/** Optimistic freeze guard: a no-op update conditional on the booking still being in `state`.
+ *  0 rows affected means a concurrent transition already moved the booking on → the write is stale. */
+async function assertStillInState(
+  tx: import('@prisma/client').Prisma.TransactionClient,
+  bookingId: string,
+  state: 'ARRIVED' | 'DIAGNOSED',
+  message: string,
+): Promise<void> {
+  const r = await tx.booking.updateMany({ where: { id: bookingId, state }, data: { updatedAt: new Date() } });
+  if (r.count === 0) throw new ConflictError(message);
+}
+
+/** Cart freeze: a concurrent approve/decline already left DIAGNOSED. */
 async function assertStillDiagnosed(tx: import('@prisma/client').Prisma.TransactionClient, bookingId: string): Promise<void> {
-  const r = await tx.booking.updateMany({ where: { id: bookingId, state: 'DIAGNOSED' }, data: { updatedAt: new Date() } });
-  if (r.count === 0) throw new ConflictError('The cart is frozen — the booking is no longer in DIAGNOSED');
+  await assertStillInState(tx, bookingId, 'DIAGNOSED', 'The cart is frozen — the booking is no longer in DIAGNOSED');
 }
 
 export async function removePart(userId: string, bookingId: string, partId: string): Promise<void> {
@@ -197,6 +207,9 @@ export async function confirmPhoto(userId: string, bookingId: string, body: Conf
   if (!(await photoStorage.objectExists(body.key))) throw new UnprocessableError('Upload not found — PUT the photo to the signed URL first');
 
   const created = await prisma.$transaction(async (tx) => {
+    // Re-assert ARRIVED inside the tx (same freeze idiom as the cart): a concurrent diagnose must
+    // not race a photo replacement in — the photos counted by the gate are the ones that stay.
+    await assertStillInState(tx, bookingId, 'ARRIVED', 'Photos can only be confirmed while on-site — the booking has moved on');
     // Retake = replace: soft-delete the previous active row for this slot (evidence trail kept).
     const replaced = await tx.photoEvidence.updateMany({ where: { bookingId, kind: body.kind, deletedAt: null }, data: { deletedAt: new Date() } });
     const row = await tx.photoEvidence.create({
