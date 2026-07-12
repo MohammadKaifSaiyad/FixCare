@@ -8,6 +8,33 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-12 — Booking slice B4b (R2 photo evidence + 2 mandatory diagnosis photos)
+
+- **The photo-evidence pipeline exists** — the missing half of B5's dependencies (OTP primitive was
+  the other). Cloudflare R2 via the `PhotoStorage` third-party wrapper
+  (`shared/third-party/r2-storage.ts`, otp-sender pattern): presigned direct PUT with `image/jpeg`
+  AND the exact byte length **signed into the URL** (cryptographic 1MB cap; app compresses <500KB
+  client-side — no server-side image processing), 24h upload expiry, HEAD `objectExists`, 15-min
+  signed GETs, typed error boundary, Dev stub for tests, `R2_*` config keys optional until the
+  account is provisioned. New deps: `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`.
+- **`PhotoEvidence` slot model:** `PhotoKind` (`DIAGNOSIS_OVERVIEW`/`DIAGNOSIS_CLOSEUP`; B5 appends 3
+  `REPAIR_*` values — that is the ENTIRE B5 storage change). One ACTIVE row per (booking, kind);
+  retake = soft-delete + insert in one tx — **evidence is never destroyed**. `PHOTO_UPLOADED` audit
+  in-tx with `{kind, hasGeotag, replaced}` — never coordinates (Golden Rule 7).
+- **Endpoints:** `POST /technician/jobs/:id/photos/sign` + `POST .../photos` (confirm) — ARRIVED-only,
+  assigned-tech, booking-scoped keys (cross-booking 422), **HEAD-verified** (evidence must EXIST in
+  R2, not be claimed — Golden Rule 1), in-tx `assertStillInState('ARRIVED')` freeze guard (the cart's
+  guard generalized).
+- **The diagnosis gate:** ARRIVED→DIAGNOSED now requires BOTH photo slots active (422 `'2 diagnosis
+  photos required (overview + close-up)'`), read inside the transaction; the passing `photoIds` ride
+  the `BOOKING_STATE_CHANGED` audit evidence. Geotag optional (indoor GPS on budget Androids),
+  `capturedAt` required. Camera-only capture re-confirmed (gallery stays blocked, app-side rule).
+- **DTOs:** customer `GET /me/bookings(/:id)` + technician `/mine` carry
+  `photos: [{kind, capturedAt, url}]` (15-min signed reads; raw `r2Key` structurally excluded).
+- 244 tests (230 + 14 new: 3 schema, 4 wrapper, 7 endpoint/gate/DTO), tsc clean. Subagent-driven:
+  per-task spec+quality reviews all Approved; 2 Important findings fixed in-branch (R2 SDK
+  typed-boundary wrap + robust 404 detection; confirmPhoto TOCTOU freeze guard).
+
 ## 2026-07-11 — Shared single-use OTP primitive (`shared/auth/otp-store.ts`)
 
 - **The hashed-OTP-in-Redis idiom is now ONE audited implementation** instead of hand-rolled copies —

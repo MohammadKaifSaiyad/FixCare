@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-11_
+_Last updated: 2026-07-12_
 
 ---
 
@@ -12,34 +12,44 @@ _Last updated: 2026-07-11_
 **Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3** merged
 to `main`. **Booking module underway** — 7 sub-slices (B1 creation → B2 dispatch → B3 arrival handshake →
 B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); B2 split into B2a (dispatch, merged) /
-B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4 split into **B4a (diagnosis +
-parts cart, DONE on branch)** / B4b (R2 + 2 mandatory diagnosis photos, deferred).
+B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4 split into **B4a (merged)** /
+**B4b (R2 + 2 mandatory diagnosis photos, DONE on branch)**. Shared OTP primitive merged (PR #15).
 
 ## Active task
-**Shared OTP primitive** complete on `feature/shared-otp-primitive` — the hashed-OTP-in-Redis idiom
-extracted into ONE audited store: `shared/auth/otp-store.ts` (`mintOtp<P>`/`verifyOtp<P>`; SHA-256 at
-rest, attempt cap, single-use delete; generic typed payload; tagged status union
-`ok|invalid|exhausted|no-code`; **opt-in** send throttle `sendLimit:{max,windowSeconds}` with the counter
-at `<key>:rl`). **Both existing sites refactored onto it behavior-preservingly** — `arrival-code.ts` is a
-thin wrapper (exhausted→`'no-code'` mapping keeps its asserted 409 semantics) and `auth.service.ts`
-send/verify (role payload round-trips; all verify failures still fold into one generic 401; devOtp
-unchanged; throttle counter key moved `otp-rl:<phone>`→`otp:<phone>:rl`, plan-documented). Existing auth +
-arrival/handshake suites passed UNCHANGED as the proof. One plan bug found + fixed: the new test's keys
-fell outside `flushTestRedis`'s prefixes → throttle counter leaked across runs; test keys moved under
-`otp:`. Final whole-branch review **Ready-to-merge YES** + golden-rules CLEAN + fraud-vector all blocks
-intact; minors folded in (verifyOtp corrupt-value fail-safe + test; arrival JSDoc + exhaustiveness
-default; dead `otp-rl:*` test scan removed) and /code-review fixes (payload guard, mint API tightened). 230 tests green. **Ready for B5's completion OTP and the
-deferred B4a approve/decline token — zero new crypto needed.** Pending PR → `main`.
-Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
-[`docs/plans/2026-06-28-shared-otp-primitive.md`].
+**Booking Slice B4b** complete on `feature/booking-b4b-photos` — **R2 photo evidence + 2 mandatory
+diagnosis photos**. `shared/third-party/r2-storage.ts` PhotoStorage wrapper (otp-sender pattern: Dev
+stub + real R2 via `@aws-sdk/client-s3`; presigned PUT pins `image/jpeg` + the exact byte length —
+cryptographic 1MB cap — 24h expiry; HEAD `objectExists`; 15-min signed reads; typed error boundary;
+R2_* config keys optional until provisioned). `PhotoEvidence` slot model (`PhotoKind`
+DIAGNOSIS_OVERVIEW/CLOSEUP — B5 appends 3 REPAIR_*; one ACTIVE row per (booking,kind); retake =
+soft-delete + insert in-tx, evidence never destroyed; `PHOTO_UPLOADED` audit with `hasGeotag`, never
+coords). Tech `POST /technician/jobs/:id/photos/sign` + `POST .../photos` (ARRIVED-only,
+assigned-tech, booking-scoped keys, HEAD-verified — Golden Rule 1: evidence must EXIST, not be
+claimed; in-tx `assertStillInState('ARRIVED')` freeze guard). **Diagnosis gate:** ARRIVED→DIAGNOSED
+requires BOTH slots active (422 otherwise), read in-tx, `photoIds` in the transition audit evidence.
+Customer `GET /me/bookings(/:id)` + tech `/mine` DTOs carry `photos: [{kind, capturedAt, url}]`
+(15-min signed GETs; raw r2Key never leaves the API). Geotag optional (indoor GPS reality),
+`capturedAt` required. Compression is APP-side (<500KB; camera-only re-confirmed). 244 tests green,
+tsc clean. Per-task spec+quality reviews all Approved (2 Important findings fixed in-branch: R2 SDK
+typed-boundary wrap; confirmPhoto TOCTOU freeze guard). Pending final reviews → PR → `main`.
+**B5 (completion handshake, keystone #2) is now FULLY unblocked** — OTP primitive ✅ + photo pipeline ✅
+(extend `PhotoKind` with REPAIR_*, reuse sign/confirm verbatim).
+Design: [`docs/designs/2026-07-11-booking-b4b-photos-design.md`]; plan:
+[`docs/plans/2026-07-11-booking-b4b-photos.md`].
 
 ## Last shipped
-- **Shared OTP primitive** (`apps/backend`): `shared/auth/otp-store.ts` — single audited single-use OTP
-  store (mint/verify, SHA-256 hash at rest, attempt cap, single-use delete, generic typed payload,
-  4-arm status union, opt-in send throttle); `arrival-code.ts` + auth `sendOtp`/`verifyOtp` refactored
-  onto it with their original suites passing unchanged; new otp-store unit tests (10) with proper redis
-  key isolation; final-review hardening (corrupt-value fail-safe, exhaustiveness default) + /code-review
-  fixes (payload guard → 401 not crash; maxAttempts out of the mint config). 230 tests. On branch.
+- **Booking Slice B4b** (`apps/backend`, photo evidence): PhotoStorage R2 wrapper (presigned direct
+  PUT jpeg-only/1MB-signed/24h, HEAD verify, 15-min signed reads, Dev stub for tests, optional R2_*
+  keys); `PhotoEvidence` slot model + `PHOTO_UPLOADED` audit; sign/confirm endpoints (ARRIVED-only,
+  booking-scoped keys, HEAD-verified, retake = soft-delete replace, in-tx freeze guard); 2-photo gate
+  on ARRIVED→DIAGNOSED with photoIds in the audit evidence; photos in customer + technician DTOs.
+  244 tests. On branch.
+- **Shared OTP primitive** — **merged to `main`** (PR #15, squash `d8bdce8`): `shared/auth/otp-store.ts`
+  — single audited single-use OTP store (mint/verify, SHA-256 hash at rest, attempt cap, single-use
+  delete, generic typed payload, 4-arm status union, opt-in send throttle); `arrival-code.ts` + auth
+  `sendOtp`/`verifyOtp` refactored onto it with their original suites passing unchanged; final-review
+  hardening + /code-review fixes (payload guard → 401 not crash; maxAttempts out of the mint config).
+  230 tests.
 - **Booking Slice B4a** — **merged to `main`** (PR #14, squash `8aedf89`): diagnosis + parts cart +
   approve/decline. `DiagnosedIssue` admin catalog
   (MANAGER+, category-scoped, `@@unique([categoryId,name])`, soft-delete, `CATALOG_UPDATED` audit) +
@@ -124,10 +134,11 @@ Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/shared-otp-primitive` → `main`.
-2. **B5 — completion handshake (keystone #2)** (OTP via the new primitive + 3 repair photos →
-   CUSTOMER_CONFIRMED) and/or **B4b** first (R2 third-party-wrapper + 2 mandatory diagnosis photos,
-   reusable for B5's 3 repair photos). Wire the deferred B4a approve/decline token alongside B5's OTP.
+1. **PR + `/code-review` + merge** `feature/booking-b4b-photos` → `main`.
+2. **B5 — completion handshake (keystone #2)** — now FULLY unblocked: completion OTP via
+   `shared/auth/otp-store.ts` + 3 repair photos via `PhotoKind` REPAIR_* extension (sign/confirm
+   reused verbatim) → CUSTOMER_CONFIRMED. Wire the deferred B4a approve/decline token alongside.
+   Provision the real Cloudflare R2 account + creds (R2_* env) before launch.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
@@ -155,8 +166,8 @@ Design: [`docs/designs/2026-06-28-shared-otp-primitive-design.md`]; plan:
 - **Arrival GPS geofence is record-only when the address has no lat/lng** (B3 accepted V1 tradeoff):
   the >200m hard gate only fires when the address carries coordinates. Close this once addresses
   are backfilled with coordinates / PostGIS lands — make the arrival geofence a universal gate.
-- **B4a deferred (carry to B4b/B5/B6):** (a) **2 mandatory diagnosis photos** + R2 third-party-wrapper +
-  presigned uploads + `PhotoEvidence` model = **B4b** (reusable for B5's 3 repair photos); (b)
+- **B4a deferred (carry to B5/B6):** (a) ~~2 mandatory diagnosis photos + R2 wrapper~~ — **DONE in
+  B4b** (`PhotoEvidence`, sign/confirm, diagnosis gate; B5 reuses via REPAIR_* enum extension); (b)
   **customer-side OTP/confirmation token on approve/decline** — primitive now EXISTS
   (`shared/auth/otp-store.ts`); wire the token when B5 wires its completion OTP; decision:
   `docs/decisions/2026-06-16-approve-decline-no-otp-b4a.md`; (c) auto-suggested parts
