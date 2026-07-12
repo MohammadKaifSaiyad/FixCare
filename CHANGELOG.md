@@ -39,6 +39,16 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   cuid→uuid (consistency; Prisma-level default, table shipped empty). Golden-rules audit CLEAN.
   Backlog: `capturedAt` is client-claimed/advisory (doc note for fraud-defenses before B5);
   presign fan-out batching when repair photos land.
+- **`/code-review` pass (8 finder angles, verified):** fixed — `diagnoseJob` now takes the booking
+  row lock BEFORE reading photos (a concurrent retake could previously slip between the gate read
+  and the commit, leaving soft-deleted photoIds in the audit evidence); `DIAGNOSIS_KINDS` single
+  source of truth for the slot list (Zod enum + gate filter — deliberately not nativeEnum so B5's
+  REPAIR_* kinds stay invalid in the diagnosis window); `photoKeyPrefix()` owns the key shape for
+  both sign (build) and confirm (verify). Refuted by tx reasoning: concurrent-confirm double-active-
+  row (the freeze guard's booking-row write serializes confirm txs); unverified-key-suffix attack
+  (a key cannot exist in R2 unless sign minted its presigned PUT). Backlog: cross-module
+  photoEvidence access (fold into the existing module-wide refactor), test-helper dedup, dynamic SDK
+  import, capturedAt-must-be-UTC app note.
 - 246 tests (230 + 16 new), tsc clean. Subagent-driven: per-task spec+quality reviews all Approved;
   2 Important findings fixed in-branch during task gates (R2 SDK typed-boundary wrap + robust 404
   detection; confirmPhoto TOCTOU freeze guard).

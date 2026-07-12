@@ -35,7 +35,7 @@ typed-boundary wrap; confirmPhoto TOCTOU freeze guard). Final gates: whole-branc
 → ALL FIXED (production-boot crash: R2 creds now checked lazily on first use, never at import — app
 boots before R2 is provisioned + boot test); prisma-migration-reviewer (uuid id fixed, PG16 pin
 confirmed); golden-rules CLEAN; fraud-vector — 1 gap fixed (slot-pinned keys: one uploaded object can
-no longer fill both diagnosis slots). Pending `/code-review` → PR → `main`.
+no longer fill both diagnosis slots). `/code-review` DONE (race + drift fixes folded in). Pending PR → `main`.
 **B5 (completion handshake, keystone #2) is now FULLY unblocked** — OTP primitive ✅ + photo pipeline ✅
 (extend `PhotoKind` with REPAIR_*, reuse sign/confirm verbatim).
 Design: [`docs/designs/2026-07-11-booking-b4b-photos-design.md`]; plan:
@@ -47,7 +47,7 @@ Design: [`docs/designs/2026-07-11-booking-b4b-photos-design.md`]; plan:
   keys); `PhotoEvidence` slot model + `PHOTO_UPLOADED` audit; sign/confirm endpoints (ARRIVED-only,
   booking-scoped keys, HEAD-verified, retake = soft-delete replace, in-tx freeze guard); 2-photo gate
   on ARRIVED→DIAGNOSED with photoIds in the audit evidence; photos in customer + technician DTOs.
-  244 tests. On branch.
+  246 tests. On branch.
 - **Shared OTP primitive** — **merged to `main`** (PR #15, squash `d8bdce8`): `shared/auth/otp-store.ts`
   — single audited single-use OTP store (mint/verify, SHA-256 hash at rest, attempt cap, single-use
   delete, generic typed payload, 4-arm status union, opt-in send throttle); `arrival-code.ts` + auth
