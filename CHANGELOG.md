@@ -8,6 +8,51 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-12 — Booking slice B4b (R2 photo evidence + 2 mandatory diagnosis photos)
+
+- **The photo-evidence pipeline exists** — the missing half of B5's dependencies (OTP primitive was
+  the other). Cloudflare R2 via the `PhotoStorage` third-party wrapper
+  (`shared/third-party/r2-storage.ts`, otp-sender pattern): presigned direct PUT with `image/jpeg`
+  AND the exact byte length **signed into the URL** (cryptographic 1MB cap; app compresses <500KB
+  client-side — no server-side image processing), 24h upload expiry, HEAD `objectExists`, 15-min
+  signed GETs, typed error boundary, Dev stub for tests, `R2_*` config keys optional until the
+  account is provisioned. New deps: `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`.
+- **`PhotoEvidence` slot model:** `PhotoKind` (`DIAGNOSIS_OVERVIEW`/`DIAGNOSIS_CLOSEUP`; B5 appends 3
+  `REPAIR_*` values — that is the ENTIRE B5 storage change). One ACTIVE row per (booking, kind);
+  retake = soft-delete + insert in one tx — **evidence is never destroyed**. `PHOTO_UPLOADED` audit
+  in-tx with `{kind, hasGeotag, replaced}` — never coordinates (Golden Rule 7).
+- **Endpoints:** `POST /technician/jobs/:id/photos/sign` + `POST .../photos` (confirm) — ARRIVED-only,
+  assigned-tech, booking-scoped keys (cross-booking 422), **HEAD-verified** (evidence must EXIST in
+  R2, not be claimed — Golden Rule 1), in-tx `assertStillInState('ARRIVED')` freeze guard (the cart's
+  guard generalized).
+- **The diagnosis gate:** ARRIVED→DIAGNOSED now requires BOTH photo slots active (422 `'2 diagnosis
+  photos required (overview + close-up)'`), read inside the transaction; the passing `photoIds` ride
+  the `BOOKING_STATE_CHANGED` audit evidence. Geotag optional (indoor GPS on budget Androids),
+  `capturedAt` required. Camera-only capture re-confirmed (gallery stays blocked, app-side rule).
+- **DTOs:** customer `GET /me/bookings(/:id)` + technician `/mine` carry
+  `photos: [{kind, capturedAt, url}]` (15-min signed reads; raw `r2Key` structurally excluded).
+- **Final-gate fixes (whole-branch + prisma + golden-rules + fraud-vector reviews):** production-boot
+  crash fixed — `R2PhotoStorage` creds are checked LAZILY on first use, never in the constructor, so a
+  deploy before the R2 account exists boots inert instead of dying at import (+ boot test);
+  **slot-pinned keys** — confirm now requires `jobs/{bookingId}/{kind}-…`, so one uploaded object
+  cannot be confirmed into both diagnosis slots (fraud-vector finding, + test); `PhotoEvidence.id`
+  cuid→uuid (consistency; Prisma-level default, table shipped empty). Golden-rules audit CLEAN.
+  Backlog: `capturedAt` is client-claimed/advisory (doc note for fraud-defenses before B5);
+  presign fan-out batching when repair photos land.
+- **`/code-review` pass (8 finder angles, verified):** fixed — `diagnoseJob` now takes the booking
+  row lock BEFORE reading photos (a concurrent retake could previously slip between the gate read
+  and the commit, leaving soft-deleted photoIds in the audit evidence); `DIAGNOSIS_KINDS` single
+  source of truth for the slot list (Zod enum + gate filter — deliberately not nativeEnum so B5's
+  REPAIR_* kinds stay invalid in the diagnosis window); `photoKeyPrefix()` owns the key shape for
+  both sign (build) and confirm (verify). Refuted by tx reasoning: concurrent-confirm double-active-
+  row (the freeze guard's booking-row write serializes confirm txs); unverified-key-suffix attack
+  (a key cannot exist in R2 unless sign minted its presigned PUT). Backlog: cross-module
+  photoEvidence access (fold into the existing module-wide refactor), test-helper dedup, dynamic SDK
+  import, capturedAt-must-be-UTC app note.
+- 246 tests (230 + 16 new), tsc clean. Subagent-driven: per-task spec+quality reviews all Approved;
+  2 Important findings fixed in-branch during task gates (R2 SDK typed-boundary wrap + robust 404
+  detection; confirmPhoto TOCTOU freeze guard).
+
 ## 2026-07-11 — Shared single-use OTP primitive (`shared/auth/otp-store.ts`)
 
 - **The hashed-OTP-in-Redis idiom is now ONE audited implementation** instead of hand-rolled copies —

@@ -1,6 +1,14 @@
-import type { Booking, BookingPart } from '@prisma/client';
+import type { Booking, BookingPart, PhotoEvidence } from '@prisma/client';
 import { maskPhone } from '../../shared/utils/mask.js';
 import { computeEstimate, type Estimate } from './estimate.js';
+import { photoStorage } from '../../shared/third-party/r2-storage.js';
+
+export interface PhotoSummary { kind: PhotoEvidence['kind']; capturedAt: string; url: string }
+
+/** Map ACTIVE photo rows to summaries with signed read URLs. Async because presignRead signs. */
+export async function toPhotoSummaries(photos: PhotoEvidence[]): Promise<PhotoSummary[]> {
+  return Promise.all(photos.map(async (p) => ({ kind: p.kind, capturedAt: p.capturedAt.toISOString(), url: await photoStorage.presignRead(p.r2Key) })));
+}
 
 export interface BookingDto {
   id: string;
@@ -22,12 +30,15 @@ export interface BookingDto {
   parts: { id: string; sku: string; name: string; ceilingPricePaise: number; qty: number }[];
   // Computed from the labor/visit-fee snapshots + the cart. Labor-only (parts []) until diagnosis.
   estimate: Estimate;
+  // Active photo evidence with SHORT-LIVED signed read URLs (15 min) — raw r2Key never leaves the API.
+  photos: PhotoSummary[];
 }
 
 export function toBookingDto(
   b: Booking,
   tech?: { name: string; phone: string },
   parts: BookingPart[] = [],
+  photos: PhotoSummary[] = [],
 ): BookingDto {
   return {
     id: b.id,
@@ -44,5 +55,6 @@ export function toBookingDto(
     diagnosis: b.diagnosedIssueName ? { issueName: b.diagnosedIssueName } : null,
     parts: parts.map((p) => ({ id: p.id, sku: p.sku, name: p.name, ceilingPricePaise: p.ceilingPricePaise, qty: p.qty })),
     estimate: computeEstimate(b, parts),
+    photos,
   };
 }

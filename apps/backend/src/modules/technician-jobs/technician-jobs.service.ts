@@ -5,7 +5,10 @@ import { haversineMeters } from '../../shared/utils/geo.js';
 import { mintArrivalCode } from '../bookings/arrival-code.js';
 import { ARRIVAL_GEOFENCE_METERS } from '../bookings/bookings.constants.js';
 import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.types.js';
-import type { ArriveBody, DiagnoseBody, AddPartBody } from './technician-jobs.schemas.js';
+import { toPhotoSummaries } from '../bookings/bookings.types.js';
+import { photoStorage } from '../../shared/third-party/r2-storage.js';
+import { randomUUID } from 'node:crypto';
+import { DIAGNOSIS_KINDS, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody } from './technician-jobs.schemas.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -35,10 +38,10 @@ export async function listMyJobs(userId: string): Promise<TechnicianJobDto[]> {
   const tech = await requireTechnician(userId);
   const bookings = await prisma.booking.findMany({
     where: { technicianId: tech.id, deletedAt: null },
-    include: { address: true, service: true, customer: { include: { user: true } } },
+    include: { address: true, service: true, customer: { include: { user: true } }, photos: { where: { deletedAt: null } } },
     orderBy: { createdAt: 'desc' },
   });
-  return bookings.map((b) => toTechnicianJobDto(b, b.address, b.service.requiredSkill, b.customer.user.phone));
+  return Promise.all(bookings.map(async (b) => toTechnicianJobDto(b, b.address, b.service.requiredSkill, b.customer.user.phone, await toPhotoSummaries(b.photos))));
 }
 
 export async function acceptJob(userId: string, bookingId: string): Promise<TechnicianJobDto> {
@@ -78,7 +81,7 @@ export async function skipJob(userId: string, bookingId: string): Promise<void> 
 
 
 /** Load a booking that must be assigned to this technician + in the given state. */
-async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE' | 'DIAGNOSED') {
+async function ownAssignedBookingOrThrow(techId: string, bookingId: string, expectedState: 'ACCEPTED' | 'EN_ROUTE' | 'ARRIVED' | 'DIAGNOSED') {
   const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
   if (!b) throw new NotFoundError('Job not found');
   if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
@@ -125,9 +128,23 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
   if (issue.categoryId !== booking.service.categoryId) throw new UnprocessableError('That issue does not apply to this service');
 
   await prisma.$transaction(async (tx) => {
+    // Take the booking row lock FIRST (this update blocks concurrent confirmPhoto txs, which also
+    // write the booking row via assertStillInState) so the photo read below sees the FINAL committed
+    // slot set — otherwise a retake could commit between our read and our commit, and the audit's
+    // photoIds would reference a soft-deleted row instead of its active replacement.
     await tx.booking.update({ where: { id: bookingId }, data: { diagnosedIssueId: issue.id, diagnosedIssueName: issue.name, diagnosedAt: new Date() } });
+    // Photo gate (B4b): both diagnosis slots must have an ACTIVE photo before the booking can be
+    // DIAGNOSED — the photos are the evidence behind the estimate the customer approves (Rule 1).
+    const activePhotos = await tx.photoEvidence.findMany({
+      where: { bookingId, deletedAt: null, kind: { in: [...DIAGNOSIS_KINDS] } },
+      select: { id: true, kind: true },
+    });
+    const slots = new Set(activePhotos.map((p) => p.kind));
+    if (!DIAGNOSIS_KINDS.every((k) => slots.has(k))) {
+      throw new UnprocessableError('2 diagnosis photos required (overview + close-up)');
+    }
     // transitionBooking checks the from-state (still ARRIVED in this tx) via its optimistic lock.
-    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id });
+    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id) });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'diagnosed', diagnosedIssueId: issue.id } } });
   });
   return { id: bookingId, state: 'DIAGNOSED' };
@@ -156,11 +173,21 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
   return { id: line.id };
 }
 
-/** Optimistic freeze guard: a no-op update conditional on the booking still being DIAGNOSED. 0 rows
- *  affected means a concurrent approve/decline already left DIAGNOSED → the cart is frozen. */
+/** Optimistic freeze guard: a no-op update conditional on the booking still being in `state`.
+ *  0 rows affected means a concurrent transition already moved the booking on → the write is stale. */
+async function assertStillInState(
+  tx: import('@prisma/client').Prisma.TransactionClient,
+  bookingId: string,
+  state: 'ARRIVED' | 'DIAGNOSED',
+  message: string,
+): Promise<void> {
+  const r = await tx.booking.updateMany({ where: { id: bookingId, state }, data: { updatedAt: new Date() } });
+  if (r.count === 0) throw new ConflictError(message);
+}
+
+/** Cart freeze: a concurrent approve/decline already left DIAGNOSED. */
 async function assertStillDiagnosed(tx: import('@prisma/client').Prisma.TransactionClient, bookingId: string): Promise<void> {
-  const r = await tx.booking.updateMany({ where: { id: bookingId, state: 'DIAGNOSED' }, data: { updatedAt: new Date() } });
-  if (r.count === 0) throw new ConflictError('The cart is frozen — the booking is no longer in DIAGNOSED');
+  await assertStillInState(tx, bookingId, 'DIAGNOSED', 'The cart is frozen — the booking is no longer in DIAGNOSED');
 }
 
 export async function removePart(userId: string, bookingId: string, partId: string): Promise<void> {
@@ -175,4 +202,47 @@ export async function removePart(userId: string, bookingId: string, partId: stri
     await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_removed', sku: line.sku } } });
   });
+}
+
+/** One owner for the R2 key shape: sign BUILDS with this prefix, confirm VERIFIES against it —
+ *  a change to the layout cannot drift between the two (B5's repair kinds reuse both paths). */
+function photoKeyPrefix(bookingId: string, kind: string): string {
+  return `jobs/${bookingId}/${kind}-`;
+}
+
+/** Presign a photo upload slot. ARRIVED-only (the on-site diagnosis window). */
+export async function signPhotoUpload(userId: string, bookingId: string, body: SignPhotoBody): Promise<{ url: string; key: string; expiresAt: string }> {
+  const tech = await requireTechnician(userId);
+  await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
+  const key = `${photoKeyPrefix(bookingId, body.kind)}${randomUUID()}.jpg`;
+  const { url, expiresAt } = await photoStorage.presignUpload(key, body.contentLengthBytes);
+  return { url, key, expiresAt: expiresAt.toISOString() };
+}
+
+/** Confirm an uploaded photo: HEAD-verified (evidence must EXIST, not be claimed — Golden Rule 1),
+ *  booking-scoped key, replace-by-soft-delete per (booking, kind), audited in-tx. */
+export async function confirmPhoto(userId: string, bookingId: string, body: ConfirmPhotoBody): Promise<{ id: string; kind: ConfirmPhotoBody['kind']; capturedAt: string }> {
+  const tech = await requireTechnician(userId);
+  await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
+  // Key must match this booking AND this slot — sign bakes the kind into the key, so a single
+  // uploaded object cannot be confirmed into BOTH slots (2 photos means two DISTINCT photos).
+  if (!body.key.startsWith(photoKeyPrefix(bookingId, body.kind))) throw new UnprocessableError('Key does not belong to this booking and slot');
+  if (!(await photoStorage.objectExists(body.key))) throw new UnprocessableError('Upload not found — PUT the photo to the signed URL first');
+
+  const created = await prisma.$transaction(async (tx) => {
+    // Re-assert ARRIVED inside the tx (same freeze idiom as the cart): a concurrent diagnose must
+    // not race a photo replacement in — the photos counted by the gate are the ones that stay.
+    await assertStillInState(tx, bookingId, 'ARRIVED', 'Photos can only be confirmed while on-site — the booking has moved on');
+    // Retake = replace: soft-delete the previous active row for this slot (evidence trail kept).
+    const replaced = await tx.photoEvidence.updateMany({ where: { bookingId, kind: body.kind, deletedAt: null }, data: { deletedAt: new Date() } });
+    const row = await tx.photoEvidence.create({
+      data: { bookingId, kind: body.kind, r2Key: body.key, geotagLat: body.geotagLat ?? null, geotagLng: body.geotagLng ?? null, capturedAt: new Date(body.capturedAt) },
+    });
+    // No coords in audit (Rule 7) — only whether a geotag exists.
+    await tx.auditLog.create({
+      data: { action: 'PHOTO_UPLOADED', actorType: 'USER', actorId: userId, metadata: { bookingId, kind: body.kind, hasGeotag: body.geotagLat != null, replaced: replaced.count > 0 } },
+    });
+    return row;
+  });
+  return { id: created.id, kind: body.kind, capturedAt: created.capturedAt.toISOString() };
 }
