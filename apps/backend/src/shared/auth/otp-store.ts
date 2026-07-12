@@ -23,21 +23,41 @@ interface StoredOtp {
 
 const rlKey = (key: string) => `${key}:rl`;
 
+// One atomic script: throttle-increment (+TTL on first hit), limit check, OTP write. Previously
+// these were 3 separate commands — a crash between them could burn a send slot (INCR landed, SET
+// didn't) or leave a TTL-less counter (INCR landed, EXPIRE didn't) that throttled the key until a
+// manual redis del. KEYS[1]=otp key, KEYS[2]=throttle counter; ARGV: json, ttl, max, window.
+// max=0 means "no throttle configured" — skip the counter entirely.
+const MINT_LUA = `
+local max = tonumber(ARGV[3])
+if max > 0 then
+  local n = redis.call('INCR', KEYS[2])
+  if n == 1 then redis.call('EXPIRE', KEYS[2], ARGV[4]) end
+  if n > max then return 0 end
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+return 1
+`;
+
 /** Mint a single-use 6-digit OTP under `key`. Optionally throttles minting and stores a typed payload. */
 export async function mintOtp<P = undefined>(
   key: string,
   cfg: OtpStoreConfig,
   payload?: P,
 ): Promise<MintResult> {
-  if (cfg.sendLimit) {
-    const n = await redis.incr(rlKey(key));
-    if (n === 1) await redis.expire(rlKey(key), cfg.sendLimit.windowSeconds);
-    if (n > cfg.sendLimit.max) return { status: 'throttled' };
-  }
   const code = generateOtp();
   const stored: StoredOtp = { hash: hashOtp(code), attempts: 0, payload };
-  await redis.set(key, JSON.stringify(stored), 'EX', cfg.ttlSeconds);
-  return { status: 'ok', code };
+  const ok = await redis.eval(
+    MINT_LUA,
+    2,
+    key,
+    rlKey(key),
+    JSON.stringify(stored),
+    String(cfg.ttlSeconds),
+    String(cfg.sendLimit?.max ?? 0),
+    String(cfg.sendLimit?.windowSeconds ?? 0),
+  );
+  return ok === 1 ? { status: 'ok', code } : { status: 'throttled' };
 }
 
 /** Verify `code` against `key`. Single-use: a correct code deletes the key.
