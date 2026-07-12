@@ -332,6 +332,9 @@ model Booking {
   diagnosedIssueName String?
   diagnosedAt        DateTime?
   declinedAt         DateTime?
+  repairStartedAt    DateTime?
+  repairCompletedAt  DateTime?
+  confirmedAt        DateTime? // completion OTP verified — dispute-resolution Tier-1 keys off this
   bookingParts       BookingPart[]
   photos             PhotoEvidence[]
   createdAt     DateTime     @default(now())
@@ -363,6 +366,9 @@ model DiagnosedIssue {
 enum PhotoKind {
   DIAGNOSIS_OVERVIEW
   DIAGNOSIS_CLOSEUP
+  REPAIR_OLD_PART
+  REPAIR_NEW_PACKAGING
+  REPAIR_INSTALLED
 }
 
 model PhotoEvidence {
