@@ -49,3 +49,6 @@ export const confirmPhotoBody = z.object({
   message: 'geotagLat and geotagLng must be provided together',
 });
 export type ConfirmPhotoBody = z.infer<typeof confirmPhotoBody>;
+
+export const confirmCompletionBody = z.object({ code: z.string().length(6) }).strict();
+export type ConfirmCompletionBody = z.infer<typeof confirmCompletionBody>;

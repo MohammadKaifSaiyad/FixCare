@@ -1,6 +1,7 @@
 import { prisma } from '../../shared/database/prisma.js';
-import { ForbiddenError, NotFoundError, ConflictError, UnprocessableError } from '../../shared/errors.js';
+import { ForbiddenError, NotFoundError, ConflictError, UnprocessableError, UnauthorizedError } from '../../shared/errors.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
+import { verifyCompletionCode } from '../bookings/completion-code.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { mintArrivalCode } from '../bookings/arrival-code.js';
 import { ARRIVAL_GEOFENCE_METERS } from '../bookings/bookings.constants.js';
@@ -8,7 +9,7 @@ import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.typ
 import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
-import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody } from './technician-jobs.schemas.js';
+import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody } from './technician-jobs.schemas.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -303,4 +304,22 @@ export async function confirmPhoto(userId: string, bookingId: string, body: Conf
     return row;
   });
   return { id: created.id, kind: body.kind, capturedAt: created.capturedAt.toISOString() };
+}
+
+/** REPAIR_COMPLETE → CUSTOMER_CONFIRMED (keystone #2). The technician drives the transition but
+ *  ONLY with the code minted to the customer's phone — no single-party path (Rule 2).
+ *  NOTE: a correct code is consumed BEFORE the tx (redis and Postgres can't share one); if the tx
+ *  rolled back the customer just re-requests — fails SAFE, never a false CUSTOMER_CONFIRMED
+ *  (same accepted trade-off as the arrival handshake). */
+export async function confirmCompletion(userId: string, bookingId: string, body: ConfirmCompletionBody): Promise<{ id: string; state: 'CUSTOMER_CONFIRMED' }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'REPAIR_COMPLETE');
+  const result = await verifyCompletionCode(bookingId, body.code);
+  if (result === 'no-code') throw new ConflictError('No active code — ask the customer to request one');
+  if (result === 'invalid') throw new UnauthorizedError('Invalid or expired completion code');
+  await prisma.$transaction(async (tx) => {
+    await transitionBooking(tx, booking, 'CUSTOMER_CONFIRMED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { codeConfirmed: true });
+    await tx.booking.update({ where: { id: bookingId }, data: { confirmedAt: new Date() } });
+  });
+  return { id: bookingId, state: 'CUSTOMER_CONFIRMED' };
 }
