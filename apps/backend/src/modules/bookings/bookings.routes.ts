@@ -49,6 +49,7 @@ export async function registerBookingRoutes(app: FastifyInstance) {
   });
 
   app.post('/me/bookings/:id/request-completion-otp', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireCustomerRole(req); // service's requireCustomer also enforces this — kept here for the module's route-layer convention
     return reply.send(await requestCompletionOtp(req.user!.id, (req.params as { id: string }).id));
   });
 }
