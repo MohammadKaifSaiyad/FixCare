@@ -59,3 +59,12 @@ export async function seedDiagnosisPhotos(bookingId: string) {
     });
   }
 }
+
+/** B5: complete-repair requires all three repair slots. Seed directly (endpoints have their own tests). */
+export async function seedRepairPhotos(bookingId: string) {
+  for (const kind of ['REPAIR_OLD_PART', 'REPAIR_NEW_PACKAGING', 'REPAIR_INSTALLED'] as const) {
+    await prisma.photoEvidence.create({
+      data: { bookingId, kind, r2Key: `jobs/${bookingId}/${kind}-seed.jpg`, capturedAt: new Date() },
+    });
+  }
+}

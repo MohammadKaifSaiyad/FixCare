@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
-import { makeCustomer, makeTechnician, seedBookable, seedIssue, seedDiagnosisPhotos } from '../bookings/helpers.js';
+import { makeCustomer, makeTechnician, seedBookable, seedIssue, seedDiagnosisPhotos, seedRepairPhotos } from '../bookings/helpers.js';
 
 const app = await buildApp();
 afterAll(() => app.close());
@@ -67,5 +67,42 @@ describe('repair path', () => {
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/start-repair`, headers: auth(t.token) })).statusCode).toBe(409);
     const audit = await prisma.auditLog.findFirst({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'REPAIR_IN_PROGRESS' } } });
     expect(audit).not.toBeNull();
+  });
+});
+
+describe('repair photos + complete-repair', () => {
+  async function inRepairBooking() {
+    const a = await approvedBooking(false);
+    await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/start-repair`, headers: auth(a.t.token) });
+    return a;
+  }
+
+  it('repair photo sign works in REPAIR_IN_PROGRESS; diagnosis kinds are 409 there (window map)', async () => {
+    const { t, bookingId } = await inRepairBooking();
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/photos/sign`, headers: auth(t.token), payload: { kind: 'REPAIR_OLD_PART', contentLengthBytes: 1000 } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/photos/sign`, headers: auth(t.token), payload: { kind: 'DIAGNOSIS_OVERVIEW', contentLengthBytes: 1000 } })).statusCode).toBe(409);
+  });
+
+  it('complete-repair: 422 until all 3 repair slots active; then 200 with photoIds in audit + repairCompletedAt', async () => {
+    const { t, bookingId } = await inRepairBooking();
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/complete-repair`, headers: auth(t.token) })).statusCode).toBe(422);
+    await seedRepairPhotos(bookingId);
+    // a soft-deleted slot must not count: kill one and re-check
+    await prisma.photoEvidence.updateMany({ where: { bookingId, kind: 'REPAIR_INSTALLED' }, data: { deletedAt: new Date() } });
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/complete-repair`, headers: auth(t.token) })).statusCode).toBe(422);
+    await prisma.photoEvidence.updateMany({ where: { bookingId, kind: 'REPAIR_INSTALLED' }, data: { deletedAt: null } });
+    const ok = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/complete-repair`, headers: auth(t.token) });
+    expect(ok.statusCode).toBe(200);
+    const row = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(row!.state).toBe('REPAIR_COMPLETE');
+    expect(row!.repairCompletedAt).not.toBeNull();
+    const audit = await prisma.auditLog.findFirst({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'REPAIR_COMPLETE' } } });
+    expect(((audit!.metadata as { photoIds: string[] }).photoIds)).toHaveLength(3);
+  });
+
+  it('diagnosis photos do NOT satisfy the repair gate', async () => {
+    const { t, bookingId } = await inRepairBooking();
+    // approvedBooking already seeded both diagnosis slots — still 422:
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/complete-repair`, headers: auth(t.token) })).statusCode).toBe(422);
   });
 });

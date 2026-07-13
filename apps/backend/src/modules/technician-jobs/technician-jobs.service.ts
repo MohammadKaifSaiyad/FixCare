@@ -8,7 +8,7 @@ import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.typ
 import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
-import { DIAGNOSIS_KINDS, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody } from './technician-jobs.schemas.js';
+import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody } from './technician-jobs.schemas.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -183,7 +183,7 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
 async function assertStillInState(
   tx: import('@prisma/client').Prisma.TransactionClient,
   bookingId: string,
-  state: 'ARRIVED' | 'DIAGNOSED',
+  state: 'ARRIVED' | 'DIAGNOSED' | 'REPAIR_IN_PROGRESS',
   message: string,
 ): Promise<void> {
   const r = await tx.booking.updateMany({ where: { id: bookingId, state }, data: { updatedAt: new Date() } });
@@ -242,16 +242,36 @@ export async function startRepair(userId: string, bookingId: string): Promise<{ 
   return { id: bookingId, state: 'REPAIR_IN_PROGRESS' };
 }
 
+/** REPAIR_IN_PROGRESS → REPAIR_COMPLETE. Gated on ALL 3 repair photos (Rule 1: no photos = no
+ *  completion = no payment). Booking row locked first so the gate reads the final committed set. */
+export async function completeRepair(userId: string, bookingId: string): Promise<{ id: string; state: 'REPAIR_COMPLETE' }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'REPAIR_IN_PROGRESS');
+  await prisma.$transaction(async (tx) => {
+    await tx.booking.update({ where: { id: bookingId }, data: { repairCompletedAt: new Date() } });
+    const activePhotos = await tx.photoEvidence.findMany({
+      where: { bookingId, deletedAt: null, kind: { in: [...REPAIR_KINDS] } },
+      select: { id: true, kind: true },
+    });
+    const slots = new Set(activePhotos.map((p) => p.kind));
+    if (!REPAIR_KINDS.every((k) => slots.has(k))) {
+      throw new UnprocessableError('3 repair photos required (old part removed, new packaging, installed)');
+    }
+    await transitionBooking(tx, booking, 'REPAIR_COMPLETE', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { photoIds: activePhotos.map((p) => p.id) });
+  });
+  return { id: bookingId, state: 'REPAIR_COMPLETE' };
+}
+
 /** One owner for the R2 key shape: sign BUILDS with this prefix, confirm VERIFIES against it —
  *  a change to the layout cannot drift between the two (B5's repair kinds reuse both paths). */
 function photoKeyPrefix(bookingId: string, kind: string): string {
   return `jobs/${bookingId}/${kind}-`;
 }
 
-/** Presign a photo upload slot. ARRIVED-only (the on-site diagnosis window). */
+/** Presign a photo upload slot. Window is determined by kind (DIAGNOSIS_* in ARRIVED, REPAIR_* in REPAIR_IN_PROGRESS). */
 export async function signPhotoUpload(userId: string, bookingId: string, body: SignPhotoBody): Promise<{ url: string; key: string; expiresAt: string }> {
   const tech = await requireTechnician(userId);
-  await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
+  await ownAssignedBookingOrThrow(tech.id, bookingId, PHOTO_WINDOW[body.kind]);
   const key = `${photoKeyPrefix(bookingId, body.kind)}${randomUUID()}.jpg`;
   const { url, expiresAt } = await photoStorage.presignUpload(key, body.contentLengthBytes);
   return { url, key, expiresAt: expiresAt.toISOString() };
@@ -261,16 +281,16 @@ export async function signPhotoUpload(userId: string, bookingId: string, body: S
  *  booking-scoped key, replace-by-soft-delete per (booking, kind), audited in-tx. */
 export async function confirmPhoto(userId: string, bookingId: string, body: ConfirmPhotoBody): Promise<{ id: string; kind: ConfirmPhotoBody['kind']; capturedAt: string }> {
   const tech = await requireTechnician(userId);
-  await ownAssignedBookingOrThrow(tech.id, bookingId, 'ARRIVED');
+  await ownAssignedBookingOrThrow(tech.id, bookingId, PHOTO_WINDOW[body.kind]);
   // Key must match this booking AND this slot — sign bakes the kind into the key, so a single
   // uploaded object cannot be confirmed into BOTH slots (2 photos means two DISTINCT photos).
   if (!body.key.startsWith(photoKeyPrefix(bookingId, body.kind))) throw new UnprocessableError('Key does not belong to this booking and slot');
   if (!(await photoStorage.objectExists(body.key))) throw new UnprocessableError('Upload not found — PUT the photo to the signed URL first');
 
   const created = await prisma.$transaction(async (tx) => {
-    // Re-assert ARRIVED inside the tx (same freeze idiom as the cart): a concurrent diagnose must
-    // not race a photo replacement in — the photos counted by the gate are the ones that stay.
-    await assertStillInState(tx, bookingId, 'ARRIVED', 'Photos can only be confirmed while on-site — the booking has moved on');
+    // Re-assert the capture window inside the tx (same freeze idiom as the cart): a concurrent
+    // transition must not race a photo replacement in — the photos counted by the gate are the ones that stay.
+    await assertStillInState(tx, bookingId, PHOTO_WINDOW[body.kind], 'Photos can only be confirmed during their capture window — the booking has moved on');
     // Retake = replace: soft-delete the previous active row for this slot (evidence trail kept).
     const replaced = await tx.photoEvidence.updateMany({ where: { bookingId, kind: body.kind, deletedAt: null }, data: { deletedAt: new Date() } });
     const row = await tx.photoEvidence.create({

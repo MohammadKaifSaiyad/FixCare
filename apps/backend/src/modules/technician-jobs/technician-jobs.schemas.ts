@@ -14,12 +14,22 @@ export type DiagnoseBody = z.infer<typeof diagnoseBody>;
 export const addPartBody = z.object({ partsCatalogId: z.string().min(1), qty: z.number().int().min(1).max(99) }).strict();
 export type AddPartBody = z.infer<typeof addPartBody>;
 
-// The named slots the DIAGNOSIS gate requires — the single source of truth for both the request
-// validation below and the gate's DB filter in the service. Deliberately NOT z.nativeEnum(PhotoKind):
-// when B5 adds REPAIR_* values, the diagnosis-window endpoints must keep accepting ONLY these two
-// (B5 adds its own REPAIR_KINDS + window).
+// The named slots each gate requires — single source of truth for request validation, the gates'
+// DB filters, AND the per-kind capture window. B6+ additions extend these lists, nothing else.
 export const DIAGNOSIS_KINDS = ['DIAGNOSIS_OVERVIEW', 'DIAGNOSIS_CLOSEUP'] as const;
-export const photoKind = z.enum(DIAGNOSIS_KINDS);
+export const REPAIR_KINDS = ['REPAIR_OLD_PART', 'REPAIR_NEW_PACKAGING', 'REPAIR_INSTALLED'] as const;
+export const photoKind = z.enum([...DIAGNOSIS_KINDS, ...REPAIR_KINDS]);
+export type PhotoKindValue = z.infer<typeof photoKind>;
+
+// Which booking state each kind may be captured in: diagnosis photos during the on-site ARRIVED
+// window; repair photos while the repair is running. Sign/confirm gate + freeze on this.
+export const PHOTO_WINDOW: Record<PhotoKindValue, 'ARRIVED' | 'REPAIR_IN_PROGRESS'> = {
+  DIAGNOSIS_OVERVIEW: 'ARRIVED',
+  DIAGNOSIS_CLOSEUP: 'ARRIVED',
+  REPAIR_OLD_PART: 'REPAIR_IN_PROGRESS',
+  REPAIR_NEW_PACKAGING: 'REPAIR_IN_PROGRESS',
+  REPAIR_INSTALLED: 'REPAIR_IN_PROGRESS',
+};
 
 // contentLengthBytes is signed into the presigned PUT — this IS the 1MB cap (jpeg-only is pinned
 // server-side; the client never chooses the Content-Type).

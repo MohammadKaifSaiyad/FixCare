@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { ValidationError, ForbiddenError } from '../../shared/errors.js';
-import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart, signPhotoUpload, confirmPhoto, partsNeeded, partsAcquired, startRepair } from './technician-jobs.service.js';
+import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart, signPhotoUpload, confirmPhoto, partsNeeded, partsAcquired, startRepair, completeRepair } from './technician-jobs.service.js';
 import { arriveBody, diagnoseBody, addPartBody, signPhotoBody, confirmPhotoBody } from './technician-jobs.schemas.js';
 
 function requireTechnicianRole(req: { user?: { role: string } }): void {
@@ -76,6 +76,11 @@ export async function registerTechnicianJobRoutes(app: FastifyInstance) {
   app.post('/technician/jobs/:id/start-repair', { preHandler: [requireAuth] }, async (req, reply) => {
     requireTechnicianRole(req);
     return reply.send(await startRepair(req.user!.id, (req.params as { id: string }).id));
+  });
+
+  app.post('/technician/jobs/:id/complete-repair', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    return reply.send(await completeRepair(req.user!.id, (req.params as { id: string }).id));
   });
 
   app.post('/technician/jobs/:id/photos/sign', { preHandler: [requireAuth] }, async (req, reply) => {

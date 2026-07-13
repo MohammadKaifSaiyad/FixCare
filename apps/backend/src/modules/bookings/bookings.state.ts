@@ -45,6 +45,7 @@ const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
   PARTS_REQUESTED:       ['TECHNICIAN'],
   PARTS_ACQUIRED:        ['TECHNICIAN'],
   REPAIR_IN_PROGRESS:    ['TECHNICIAN'],
+  REPAIR_COMPLETE:       ['TECHNICIAN'],
 };
 
 export function actorAllowedFor(to: BookingState, kind: ActorKind): boolean {
