@@ -214,11 +214,13 @@ export async function removePart(userId: string, bookingId: string, partId: stri
 export async function partsNeeded(userId: string, bookingId: string): Promise<{ id: string; state: 'PARTS_REQUESTED' }> {
   const tech = await requireTechnician(userId);
   const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'CUSTOMER_APPROVED');
-  const partCount = await prisma.bookingPart.count({ where: { bookingId } });
-  if (partCount === 0) throw new UnprocessableError('No parts in the approved estimate — start the repair instead');
-  await prisma.$transaction((tx) =>
-    transitionBooking(tx, booking, 'PARTS_REQUESTED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { partCount }),
-  );
+  await prisma.$transaction(async (tx) => {
+    // Count inside the tx so the audit's partCount is exactly the gated set (the cart is frozen
+    // outside DIAGNOSED anyway, but the in-tx read keeps the gate and its evidence atomic).
+    const partCount = await tx.bookingPart.count({ where: { bookingId } });
+    if (partCount === 0) throw new UnprocessableError('No parts in the approved estimate — start the repair instead');
+    await transitionBooking(tx, booking, 'PARTS_REQUESTED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { partCount });
+  });
   return { id: bookingId, state: 'PARTS_REQUESTED' };
 }
 

@@ -64,8 +64,10 @@ describe('completion handshake (keystone #2)', () => {
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/request-completion-otp`, headers: auth(c.token) })).statusCode).toBe(409);
   });
 
-  it('verify guards: no code yet 409; wrong code 401; a re-mint replaces the old code', async () => {
+  it('verify guards: customer role 403; no code yet 409; wrong code 401; a re-mint replaces the old code', async () => {
     const { c, t, bookingId } = await repairCompleteBooking();
+    // the keystone endpoint is technician-only — the CUSTOMER cannot self-confirm (Rule 2)
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/confirm-completion`, headers: auth(c.token), payload: { code: '000000' } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/confirm-completion`, headers: auth(t.token), payload: { code: '000000' } })).statusCode).toBe(409); // no-code
     const first = (await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/request-completion-otp`, headers: auth(c.token) })).json().devOtp as string;
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/confirm-completion`, headers: auth(t.token), payload: { code: '000000' } })).statusCode).toBe(401); // invalid

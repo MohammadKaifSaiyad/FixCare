@@ -37,6 +37,13 @@ describe('ALLOWED_ACTORS', () => {
     expect(actorAllowedFor('REPAIR_IN_PROGRESS', 'TECHNICIAN')).toBe(true);
     expect(actorAllowedFor('REPAIR_IN_PROGRESS', 'CUSTOMER')).toBe(false);
   });
+  it('REPAIR_COMPLETE + CUSTOMER_CONFIRMED are technician-only (keystone #2 — the customer mints, never transitions)', () => {
+    expect(actorAllowedFor('REPAIR_COMPLETE', 'TECHNICIAN')).toBe(true);
+    expect(actorAllowedFor('REPAIR_COMPLETE', 'CUSTOMER')).toBe(false);
+    expect(actorAllowedFor('CUSTOMER_CONFIRMED', 'TECHNICIAN')).toBe(true);
+    expect(actorAllowedFor('CUSTOMER_CONFIRMED', 'CUSTOMER')).toBe(false);
+    expect(actorAllowedFor('CUSTOMER_CONFIRMED', 'ADMIN')).toBe(false);
+  });
   it('DEFAULT-DENY: still-unmapped to-states are rejected for every actor', () => {
     expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'TECHNICIAN')).toBe(false);
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(false);

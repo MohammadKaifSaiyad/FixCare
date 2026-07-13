@@ -48,7 +48,9 @@ describe('repair path', () => {
   it('direct path: CUSTOMER_APPROVED → REPAIR_IN_PROGRESS (no parts detour)', async () => {
     const { t, bookingId } = await approvedBooking(false);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/start-repair`, headers: auth(t.token) })).statusCode).toBe(200);
-    expect((await prisma.booking.findUnique({ where: { id: bookingId } }))!.state).toBe('REPAIR_IN_PROGRESS');
+    const row = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(row!.state).toBe('REPAIR_IN_PROGRESS');
+    expect(row!.repairStartedAt).not.toBeNull(); // set on the direct path too, not just the parts detour
   });
 
   it('parts-needed with an EMPTY cart → 422 (dishonest detour)', async () => {
