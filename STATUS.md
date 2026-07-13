@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-12_
+_Last updated: 2026-07-13_
 
 ---
 
@@ -12,42 +12,48 @@ _Last updated: 2026-07-12_
 **Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3** merged
 to `main`. **Booking module underway** — 7 sub-slices (B1 creation → B2 dispatch → B3 arrival handshake →
 B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); B2 split into B2a (dispatch, merged) /
-B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4 split into **B4a (merged)** /
-**B4b (R2 + 2 mandatory diagnosis photos, DONE on branch)**. Shared OTP primitive merged (PR #15).
+B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4a + B4b + shared OTP primitive
+merged (PRs #14/#15/#16). **B5 (repair path + completion handshake, DONE on branch)** — both keystones
+now exist end-to-end; next money-bearing slice is **B6 (payment)**.
 
 ## Active task
-**Booking Slice B4b** complete on `feature/booking-b4b-photos` — **R2 photo evidence + 2 mandatory
-diagnosis photos**. `shared/third-party/r2-storage.ts` PhotoStorage wrapper (otp-sender pattern: Dev
-stub + real R2 via `@aws-sdk/client-s3`; presigned PUT pins `image/jpeg` + the exact byte length —
-cryptographic 1MB cap — 24h expiry; HEAD `objectExists`; 15-min signed reads; typed error boundary;
-R2_* config keys optional until provisioned). `PhotoEvidence` slot model (`PhotoKind`
-DIAGNOSIS_OVERVIEW/CLOSEUP — B5 appends 3 REPAIR_*; one ACTIVE row per (booking,kind); retake =
-soft-delete + insert in-tx, evidence never destroyed; `PHOTO_UPLOADED` audit with `hasGeotag`, never
-coords). Tech `POST /technician/jobs/:id/photos/sign` + `POST .../photos` (ARRIVED-only,
-assigned-tech, booking-scoped keys, HEAD-verified — Golden Rule 1: evidence must EXIST, not be
-claimed; in-tx `assertStillInState('ARRIVED')` freeze guard). **Diagnosis gate:** ARRIVED→DIAGNOSED
-requires BOTH slots active (422 otherwise), read in-tx, `photoIds` in the transition audit evidence.
-Customer `GET /me/bookings(/:id)` + tech `/mine` DTOs carry `photos: [{kind, capturedAt, url}]`
-(15-min signed GETs; raw r2Key never leaves the API). Geotag optional (indoor GPS reality),
-`capturedAt` required. Compression is APP-side (<500KB; camera-only re-confirmed). **246 tests green,
-tsc clean.** Per-task spec+quality reviews all Approved (2 Important findings fixed in-branch: R2 SDK
-typed-boundary wrap; confirmPhoto TOCTOU freeze guard). Final gates: whole-branch review "With fixes"
-→ ALL FIXED (production-boot crash: R2 creds now checked lazily on first use, never at import — app
-boots before R2 is provisioned + boot test); prisma-migration-reviewer (uuid id fixed, PG16 pin
-confirmed); golden-rules CLEAN; fraud-vector — 1 gap fixed (slot-pinned keys: one uploaded object can
-no longer fill both diagnosis slots). `/code-review` DONE (race + drift fixes folded in). Pending PR → `main`.
-**B5 (completion handshake, keystone #2) is now FULLY unblocked** — OTP primitive ✅ + photo pipeline ✅
-(extend `PhotoKind` with REPAIR_*, reuse sign/confirm verbatim).
-Design: [`docs/designs/2026-07-11-booking-b4b-photos-design.md`]; plan:
-[`docs/plans/2026-07-11-booking-b4b-photos.md`].
+**Booking Slice B5** complete on `feature/booking-b5-completion` — **repair execution + completion
+handshake (keystone #2)**. Full technician-driven repair path: `parts-needed` (CUSTOMER_APPROVED→
+PARTS_REQUESTED, **empty cart → 422** — no dishonest detours; merchant procurement stays
+WhatsApp-manual, states tracked+audited only) → `parts-acquired` → `start-repair` (from
+CUSTOMER_APPROVED or PARTS_ACQUIRED; sets `repairStartedAt`) → `complete-repair`
+(REPAIR_IN_PROGRESS→REPAIR_COMPLETE, **3-repair-photo gate**: all REPAIR_* slots active, row-lock-
+first in-tx read, photoIds in audit evidence; sets `repairCompletedAt`). **PHOTO_WINDOW map** extends
+B4b verbatim: DIAGNOSIS_*→ARRIVED, REPAIR_*→REPAIR_IN_PROGRESS drive sign/confirm's state gate + the
+in-tx freeze — one enum extension, zero new storage code. **The keystone:** customer
+`POST /me/bookings/:id/request-completion-otp` (owner-404, REPAIR_COMPLETE-only 409, **throttled 3
+per 900s → 429** — real SMS in prod, devOtp in dev) mints a 6-digit single-use code to THEIR phone
+via `completion-code.ts` (thin otp-store wrapper, `completion:{bookingId}`); technician
+`POST /technician/jobs/:id/confirm-completion {code}` verifies (4-arm mapping: invalid/exhausted→401,
+no-code→409, single-use, re-mint replaces) → CUSTOMER_CONFIRMED + `confirmedAt` + `codeConfirmed`
+audit evidence. Rule 2 airtight: technician drives the transition ONLY with the customer's code —
+exact mirror of arrival. **OTP-store mint is now ONE atomic Lua script** (INCR+EXPIRE+limit+SET —
+the promised backlog item retired; existing suites passed unchanged as proof). Milestone columns +
+REPAIR_* enum migration on both DBs. B4a approve/decline token RESOLVED: deferred to B6 charge
+(decision doc updated); core-flow OTP digit counts corrected to 6. **260 tests green, tsc clean.**
+Per-task spec+quality reviews all Approved (keystone review: 19/19 spec points, two-sided property
+verified airtight). Pending final reviews → `/code-review` → PR → `main`.
+**CREATED → … → CUSTOMER_CONFIRMED is now fully drivable via the API — B6 (payment) has its gate.**
+Design: [`docs/designs/2026-07-12-booking-b5-completion-design.md`]; plan:
+[`docs/plans/2026-07-12-booking-b5-completion.md`].
 
 ## Last shipped
-- **Booking Slice B4b** (`apps/backend`, photo evidence): PhotoStorage R2 wrapper (presigned direct
-  PUT jpeg-only/1MB-signed/24h, HEAD verify, 15-min signed reads, Dev stub for tests, optional R2_*
-  keys); `PhotoEvidence` slot model + `PHOTO_UPLOADED` audit; sign/confirm endpoints (ARRIVED-only,
-  booking-scoped keys, HEAD-verified, retake = soft-delete replace, in-tx freeze guard); 2-photo gate
-  on ARRIVED→DIAGNOSED with photoIds in the audit evidence; photos in customer + technician DTOs.
-  246 tests. On branch.
+- **Booking Slice B5** (`apps/backend`, repair path + completion handshake): parts-needed/acquired +
+  start-repair + complete-repair (3-repair-photo gate); PHOTO_WINDOW per-kind capture windows;
+  completion OTP handshake (customer mint throttled 3/900s, technician entry, single-use 6-digit) →
+  CUSTOMER_CONFIRMED + confirmedAt; atomic Lua OTP mint (backlog retired); milestone columns +
+  REPAIR_* enum migration. Both keystones end-to-end. 260 tests. On branch.
+- **Booking Slice B4b** — **merged to `main`** (PR #16, squash `d225f10`): PhotoStorage R2 wrapper
+  (presigned direct PUT jpeg-only/1MB-signed/24h, HEAD verify, 15-min signed reads, Dev stub for
+  tests, optional R2_* keys, lazy-cred boot safety); `PhotoEvidence` slot model + `PHOTO_UPLOADED`
+  audit; sign/confirm endpoints (booking+slot-scoped keys, HEAD-verified, retake = soft-delete
+  replace, in-tx freeze guard); 2-photo gate on ARRIVED→DIAGNOSED with photoIds in the audit
+  evidence; photos in customer + technician DTOs. 246 tests.
 - **Shared OTP primitive** — **merged to `main`** (PR #15, squash `d8bdce8`): `shared/auth/otp-store.ts`
   — single audited single-use OTP store (mint/verify, SHA-256 hash at rest, attempt cap, single-use
   delete, generic typed payload, 4-arm status union, opt-in send throttle); `arrival-code.ts` + auth
@@ -138,10 +144,10 @@ Design: [`docs/designs/2026-07-11-booking-b4b-photos-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR + `/code-review` + merge** `feature/booking-b4b-photos` → `main`.
-2. **B5 — completion handshake (keystone #2)** — now FULLY unblocked: completion OTP via
-   `shared/auth/otp-store.ts` + 3 repair photos via `PhotoKind` REPAIR_* extension (sign/confirm
-   reused verbatim) → CUSTOMER_CONFIRMED. Wire the deferred B4a approve/decline token alongside.
+1. **Final reviews + `/code-review` + PR + merge** `feature/booking-b5-completion` → `main`.
+2. **B6 — payment**: Razorpay charge at CUSTOMER_CONFIRMED (order → payment → webhook →
+   PAYMENT_RECEIVED → CLOSED; Route splits later per vendor approval), cash-path decision,
+   **re-evaluate the customer confirmation token at the charge step** (B4a decision resolution).
    Provision the real Cloudflare R2 account + creds (R2_* env) before launch.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
