@@ -35,9 +35,9 @@ audit evidence. Rule 2 airtight: technician drives the transition ONLY with the 
 exact mirror of arrival. **OTP-store mint is now ONE atomic Lua script** (INCR+EXPIRE+limit+SET —
 the promised backlog item retired; existing suites passed unchanged as proof). Milestone columns +
 REPAIR_* enum migration on both DBs. B4a approve/decline token RESOLVED: deferred to B6 charge
-(decision doc updated); core-flow OTP digit counts corrected to 6. **260 tests green, tsc clean.**
+(decision doc updated); core-flow OTP digit counts corrected to 6. **261 tests green, tsc clean.**
 Per-task spec+quality reviews all Approved (keystone review: 19/19 spec points, two-sided property
-verified airtight). Pending final reviews → `/code-review` → PR → `main`.
+verified airtight). Final gates DONE (2 Importants + 2 minors fixed in e0de3bb; prisma CLEAN, golden-rules CLEAN, fraud-vector intact). Pending `/code-review` → PR → `main`. LAUNCH NOTE: completion mint 500s in prod until MSG91 DLT is live (Msg91OtpSender throws — same posture as auth OTP; not a B5 defect).
 **CREATED → … → CUSTOMER_CONFIRMED is now fully drivable via the API — B6 (payment) has its gate.**
 Design: [`docs/designs/2026-07-12-booking-b5-completion-design.md`]; plan:
 [`docs/plans/2026-07-12-booking-b5-completion.md`].
@@ -47,7 +47,7 @@ Design: [`docs/designs/2026-07-12-booking-b5-completion-design.md`]; plan:
   start-repair + complete-repair (3-repair-photo gate); PHOTO_WINDOW per-kind capture windows;
   completion OTP handshake (customer mint throttled 3/900s, technician entry, single-use 6-digit) →
   CUSTOMER_CONFIRMED + confirmedAt; atomic Lua OTP mint (backlog retired); milestone columns +
-  REPAIR_* enum migration. Both keystones end-to-end. 260 tests. On branch.
+  REPAIR_* enum migration. Both keystones end-to-end. 261 tests. On branch.
 - **Booking Slice B4b** — **merged to `main`** (PR #16, squash `d225f10`): PhotoStorage R2 wrapper
   (presigned direct PUT jpeg-only/1MB-signed/24h, HEAD verify, 15-min signed reads, Dev stub for
   tests, optional R2_* keys, lazy-cred boot safety); `PhotoEvidence` slot model + `PHOTO_UPLOADED`
