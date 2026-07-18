@@ -1,5 +1,5 @@
 import { prisma } from '../../shared/database/prisma.js';
-import { UnauthorizedError } from '../../shared/errors.js';
+import { ConflictError, UnauthorizedError } from '../../shared/errors.js';
 import { paymentGateway } from '../../shared/third-party/razorpay.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
 
@@ -46,12 +46,33 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
       return;
     }
     const booking = await prisma.booking.findUniqueOrThrow({ where: { id: payment.bookingId } });
-    await prisma.$transaction(async (tx) => {
-      await tx.payment.update({ where: { id: payment.id }, data: { status: 'CAPTURED', razorpayPaymentId: entity.id, capturedAt: new Date() } });
-      // transitionBooking's optimistic lock makes a concurrent duplicate a 409 → rollback; the
-      // status guard above catches the sequential duplicate. Either way: exactly one transition.
-      await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'razorpay-webhook' }, { razorpayPaymentId: entity.id, amountPaise: payment.amountPaise, method: 'UPI' });
-    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({ where: { id: payment.id }, data: { status: 'CAPTURED', razorpayPaymentId: entity.id, capturedAt: new Date() } });
+        // transitionBooking's optimistic lock (updateMany WHERE state) is the DB-level duplicate
+        // guard; the status check above catches the sequential duplicate before it.
+        await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'razorpay-webhook' }, { razorpayPaymentId: entity.id, amountPaise: payment.amountPaise, method: 'UPI' });
+      });
+    } catch (e) {
+      if (!(e instanceof ConflictError)) throw e;
+      // The booking already transitioned (e.g. the customer paid a SECOND order after the first
+      // failed gateway-side, and both captured — real money moved twice). Record this capture
+      // honestly and flag it LOUDLY: ops owes a refund (B7). Always-ACK so the gateway stops
+      // retrying — a 409 here caused a retry storm with no signal.
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({ where: { id: payment.id }, data: { status: 'CAPTURED', razorpayPaymentId: entity.id, capturedAt: new Date() } });
+        await tx.auditLog.create({
+          data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'duplicate_capture', bookingId: payment.bookingId, razorpayPaymentId: entity.id, amountPaise: payment.amountPaise } },
+        });
+      });
+    }
+    return;
+  }
+
+  if (event === 'payment.captured') {
+    // captured but the entity failed to parse — a capture we couldn't process deserves a
+    // distinct flag, not the generic 'ignored'.
+    await prisma.auditLog.create({ data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'malformed_captured' } } });
     return;
   }
 
@@ -60,7 +81,9 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
       // updateMany keyed on CREATED: a failed event for an already-captured/failed row is a no-op.
       await tx.payment.updateMany({
         where: { razorpayOrderId: entity.order_id, status: 'CREATED' },
-        data: { status: 'FAILED', failureReason: entity.error_description ?? 'payment failed' },
+        // gateway-controlled string, assumed non-PII; length-capped so a future gateway change
+        // can never persist runaway/user-supplied text (Rule 7 posture)
+        data: { status: 'FAILED', failureReason: (entity.error_description ?? 'payment failed').slice(0, 200) },
       });
       await tx.auditLog.create({ data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'payment_failed', orderId: entity.order_id } } });
     });
