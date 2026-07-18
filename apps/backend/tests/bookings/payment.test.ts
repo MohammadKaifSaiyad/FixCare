@@ -3,6 +3,9 @@ import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
 import { makeCustomer, makeTechnician, seedBookable, seedIssue, seedDiagnosisPhotos, seedRepairPhotos } from './helpers.js';
+import { paymentGateway, DevPaymentGateway } from '../../src/shared/third-party/razorpay.js';
+
+const gw = paymentGateway as DevPaymentGateway;
 
 const app = await buildApp();
 afterAll(() => app.close());
@@ -82,5 +85,71 @@ describe('POST /me/bookings/:id/pay', () => {
     const other = await makeCustomer();
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${confirmed.bookingId}/pay`, headers: auth(other.token) })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${confirmed.bookingId}/pay`, headers: auth(confirmed.t.token) })).statusCode).toBe(403);
+  });
+});
+
+/** Build a Razorpay-shaped payment.captured body for an order. */
+function capturedEvent(orderId: string, amountPaise: number, paymentId = `pay_dev_${Math.random().toString(36).slice(2, 10)}`) {
+  return JSON.stringify({
+    event: 'payment.captured',
+    payload: { payment: { entity: { id: paymentId, order_id: orderId, amount: amountPaise, status: 'captured' } } },
+  });
+}
+function failedEvent(orderId: string) {
+  return JSON.stringify({
+    event: 'payment.failed',
+    payload: { payment: { entity: { id: `pay_dev_${Math.random().toString(36).slice(2, 10)}`, order_id: orderId, amount: 0, error_description: 'UPI declined' } } },
+  });
+}
+async function postWebhook(body: string, signature = gw.signPayload(body)) {
+  return app.inject({ method: 'POST', url: '/webhooks/razorpay', headers: { 'content-type': 'application/json', 'x-razorpay-signature': signature }, payload: body });
+}
+
+describe('POST /webhooks/razorpay', () => {
+  it('valid capture → Payment CAPTURED + PAYMENT_RECEIVED + evidence audit; duplicate delivery is a no-op', async () => {
+    const { c, bookingId } = await confirmedBooking();
+    const { orderId, amountPaise } = (await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay`, headers: auth(c.token) })).json();
+    const body = capturedEvent(orderId, amountPaise);
+    expect((await postWebhook(body)).statusCode).toBe(200);
+    const row = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(row!.state).toBe('PAYMENT_RECEIVED');
+    const payment = await prisma.payment.findFirst({ where: { bookingId } });
+    expect(payment!.status).toBe('CAPTURED');
+    expect(payment!.razorpayPaymentId).not.toBeNull();
+    expect(payment!.capturedAt).not.toBeNull();
+    const audit = await prisma.auditLog.findFirst({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'PAYMENT_RECEIVED' } } });
+    expect((audit!.metadata as { amountPaise: number }).amountPaise).toBe(amountPaise);
+    // duplicate delivery: still 200, still exactly ONE transition
+    expect((await postWebhook(body)).statusCode).toBe(200);
+    expect(await prisma.auditLog.count({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'PAYMENT_RECEIVED' } } })).toBe(1);
+  });
+
+  it('bad signature → 401 and NOTHING changes', async () => {
+    const { c, bookingId } = await confirmedBooking();
+    const { orderId, amountPaise } = (await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay`, headers: auth(c.token) })).json();
+    expect((await postWebhook(capturedEvent(orderId, amountPaise), 'deadbeef')).statusCode).toBe(401);
+    expect((await prisma.booking.findUnique({ where: { id: bookingId } }))!.state).toBe('CUSTOMER_CONFIRMED');
+  });
+
+  it('amount mismatch → flagged audit, NO transition, 200 (gateway stops retrying; ops investigates)', async () => {
+    const { c, bookingId } = await confirmedBooking();
+    const { orderId } = (await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay`, headers: auth(c.token) })).json();
+    expect((await postWebhook(capturedEvent(orderId, 1))).statusCode).toBe(200); // tampered/partial amount
+    expect((await prisma.booking.findUnique({ where: { id: bookingId } }))!.state).toBe('CUSTOMER_CONFIRMED');
+    const flagged = await prisma.auditLog.findFirst({ where: { action: 'PAYMENT_EVENT', metadata: { path: ['event'], equals: 'amount_mismatch' } } });
+    expect(flagged).not.toBeNull();
+  });
+
+  it('payment.failed → FAILED with reason; a re-pay issues a NEW order; unknown events → 200 ignored', async () => {
+    const { c, bookingId } = await confirmedBooking();
+    const first = (await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay`, headers: auth(c.token) })).json();
+    expect((await postWebhook(failedEvent(first.orderId))).statusCode).toBe(200);
+    const failed = await prisma.payment.findFirst({ where: { razorpayOrderId: first.orderId } });
+    expect(failed!.status).toBe('FAILED');
+    expect(failed!.failureReason).toBe('UPI declined');
+    const second = (await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay`, headers: auth(c.token) })).json();
+    expect(second.orderId).not.toBe(first.orderId);
+    expect(await prisma.payment.count({ where: { bookingId } })).toBe(2);
+    expect((await postWebhook(JSON.stringify({ event: 'refund.processed', payload: {} }))).statusCode).toBe(200);
   });
 });
