@@ -18,7 +18,16 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
   if (!signature || !paymentGateway.verifyWebhookSignature(rawBody, signature)) {
     throw new UnauthorizedError('Invalid webhook signature');
   }
-  const parsed = JSON.parse(rawBody) as { event?: string; payload?: { payment?: { entity?: RazorpayPaymentEntity } } };
+  let parsed: { event?: string; payload?: { payment?: { entity?: RazorpayPaymentEntity } } };
+  try {
+    parsed = JSON.parse(rawBody) as typeof parsed;
+  } catch {
+    // A valid signature with malformed JSON can only be a gateway/secret-holder bug — but a 500
+    // here would put the gateway into a permanent retry loop. Keep the always-ACK contract:
+    // flag it, return (route replies 200), ops investigates.
+    await prisma.auditLog.create({ data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'malformed_body' } } });
+    return;
+  }
   const event = parsed.event ?? 'unknown';
   const entity = parsed.payload?.payment?.entity;
 
