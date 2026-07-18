@@ -12,9 +12,13 @@ describe('ALLOWED_TRANSITIONS', () => {
   });
 
   it('terminal states have no outgoing transitions', () => {
-    for (const t of ['CLOSED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TECHNICIAN', 'DECLINED_BY_CUSTOMER'] as const) {
+    for (const t of ['CLOSED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TECHNICIAN'] as const) {
       expect(ALLOWED_TRANSITIONS[t]).toEqual([]);
     }
+  });
+
+  it('DECLINED_BY_CUSTOMER is NOT terminal since B6a — the locked visit fee is still owed', () => {
+    expect(ALLOWED_TRANSITIONS['DECLINED_BY_CUSTOMER']).toEqual(['PAYMENT_RECEIVED']);
   });
 
   it('cancel edges only exist before ARRIVED', () => {
