@@ -36,9 +36,9 @@ malformed-JSON-with-valid-signature always-ACKs (audit flag, no gateway retry lo
 audited B7 skeleton. `BookingDto.payment` (status/method/amount — no gateway ids). No charge-time
 OTP (B4a-token question CLOSED in the decision doc: completion OTP + UPI-app auth = the two
 confirmations). **All on Razorpay test keys — live keys swap in post-KYC with zero code change.**
-Tests green (payment.test.ts 9/9), tsc clean. Per-task reviews Approved (T3 guard-ordering + T4
+281/281 tests green, tsc clean. Per-task reviews Approved (T3 guard-ordering + T4
 malformed-JSON Importants fixed in-branch; rate-limit exemption deviation adjudicated APPROVED).
-Pending final reviews → `/code-review` → PR → `main`. **Next: B6b (cash path), B6c (settlement ledger).**
+Final gates DONE (duplicate-capture handling fixed in 435d6fe; prisma+golden-rules+fraud-vector clean). Pending `/code-review` → PR → `main`. **Next: B6b (cash path), B6c (settlement ledger).**
 Design: [`docs/designs/2026-07-18-booking-b6a-upi-payment-design.md`]; plan:
 [`docs/plans/2026-07-18-booking-b6a-upi-payment.md`].
 
