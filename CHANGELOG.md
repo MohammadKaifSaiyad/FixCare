@@ -40,7 +40,17 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 - **Decisions:** B4a approve/decline token RESOLVED — not bound to approve; the completion OTP is
   the customer's money-gating confirmation; B6 re-evaluates a token at the charge
   (decision doc updated). core-flow.md OTP digit counts corrected 4→6 (one shared primitive).
-- 260 tests (246 + 14 new), tsc clean. Subagent-driven; per-task spec+quality reviews all Approved
+- **Final gates + `/code-review`:** whole-branch review "With fixes" → both Importants fixed
+  (partsNeeded in-tx cart count; confirm-completion customer-403 test) + keystone actor-unit
+  assertions + direct-path timestamp assertion. prisma-migration-reviewer CLEAN; golden-rules CLEAN
+  (DevOtpSender dev-log accepted by design); fraud-vector — all documented blocks intact.
+  `/code-review` (8 angles) caught **one real money-display bug**: `computeEstimate`'s quoted set
+  was never extended for the B5 states, so the visit-fee credit silently VANISHED from the
+  customer's displayed total the moment the repair path started. Fixed with a `PRE_QUOTE_STATES`
+  list (new states keep the credit by default) + an invariance regression test across all 7
+  post-approval states. Also: `photoKeyPrefix` typed to `PhotoKindValue`; the deliberate
+  exhausted-fold difference between arrival/completion wrappers documented in both.
+- 262 tests (246 + 16 new), tsc clean. Subagent-driven; per-task spec+quality reviews all Approved
   (keystone review: 19/19 spec points, two-sided property verified airtight; two session-limit
   implementer stalls recovered by controller verification with zero rework).
 
