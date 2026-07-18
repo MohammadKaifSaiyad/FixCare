@@ -1,15 +1,20 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
-import { ForbiddenError, NotFoundError, UnprocessableError, ConflictError, UnauthorizedError } from '../../shared/errors.js';
+import { ForbiddenError, NotFoundError, UnprocessableError, ConflictError, UnauthorizedError, TooManyRequestsError } from '../../shared/errors.js';
 import { resolvePincode } from '../addresses/serviceability.service.js';
 import { generateBookingNumber } from './bookings.number.js';
 import { transitionBooking } from './bookings.state.js';
 import { verifyArrivalCode } from './arrival-code.js';
+import { mintCompletionCode } from './completion-code.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
 import { toBookingDto, toPhotoSummaries, type BookingDto } from './bookings.types.js';
 import { sumParts } from './estimate.js';
 import type { CreateBookingBody, ConfirmArrivalBody } from './bookings.schemas.js';
+import { config } from '../../shared/config.js';
+import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
+
+const otpSender = makeOtpSender();
 
 async function requireCustomer(userId: string): Promise<{ id: string }> {
   const c = await prisma.customer.findFirst({ where: { userId, deletedAt: null } });
@@ -194,4 +199,20 @@ export async function declineDiagnosis(userId: string, id: string): Promise<Book
     return { updated: row, parts: cart };
   });
   return toBookingDto(updated, undefined, parts);
+}
+
+/** Customer taps "confirm work completed" → mint the completion code and send it to THEIR phone.
+ *  The technician can only close the job by hearing this code from the customer (Rule 2). */
+export async function requestCompletionOtp(userId: string, id: string): Promise<{ ok: true; devOtp?: string }> {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await prisma.booking.findFirst({
+    where: { id, customerId, deletedAt: null },
+    include: { customer: { include: { user: true } } },
+  });
+  if (!booking) throw new NotFoundError('Booking not found');
+  if (booking.state !== 'REPAIR_COMPLETE') throw new ConflictError('Booking is not awaiting completion confirmation');
+  const r = await mintCompletionCode(id);
+  if (r.status === 'throttled') throw new TooManyRequestsError('Too many code requests. Try again later.');
+  await otpSender.send(booking.customer.user.phone, r.code);
+  return config.NODE_ENV === 'production' ? { ok: true } : { ok: true, devOtp: r.code };
 }

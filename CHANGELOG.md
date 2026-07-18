@@ -8,6 +8,52 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-13 — Booking slice B5 (repair execution + completion handshake — keystone #2)
+
+- **Both keystone interactions now exist end-to-end**: CREATED → … → CUSTOMER_CONFIRMED is fully
+  drivable via the API. B6 (payment) gates on CUSTOMER_CONFIRMED.
+- **Repair path (all technician-driven):** `POST /technician/jobs/:id/parts-needed`
+  (CUSTOMER_APPROVED→PARTS_REQUESTED; **empty cart → 422** — a parts detour with no approved parts is
+  dishonest state; merchant procurement stays WhatsApp-manual, tracked+audited only) →
+  `/parts-acquired` → `/start-repair` (from CUSTOMER_APPROVED or PARTS_ACQUIRED; `repairStartedAt`)
+  → `/complete-repair` (REPAIR_IN_PROGRESS→REPAIR_COMPLETE; **3-repair-photo gate** — all
+  `REPAIR_OLD_PART`/`REPAIR_NEW_PACKAGING`/`REPAIR_INSTALLED` slots active, row-lock-first in-tx
+  read, `photoIds` in the transition audit; `repairCompletedAt`).
+- **PHOTO_WINDOW map** — per-kind capture windows (DIAGNOSIS_*→ARRIVED, REPAIR_*→REPAIR_IN_PROGRESS)
+  drive B4b's sign/confirm state gate + in-tx freeze. One enum extension + one map; zero new storage
+  code. Diagnosis kinds still ARRIVED-only (proven by B4b's untouched suite).
+- **The completion handshake (core-flow.md:164-174 verbatim):** customer
+  `POST /me/bookings/:id/request-completion-otp` (owner-scoped 404, REPAIR_COMPLETE-only 409,
+  **throttled 3/900s → 429** — the mint sends a real SMS in prod; devOtp in dev) mints a 6-digit
+  single-use code (`completion:{bookingId}`, 10-min TTL, 5 attempts) delivered to the CUSTOMER's
+  phone; the customer reads it to the technician; technician
+  `POST /technician/jobs/:id/confirm-completion {code}` verifies (4-arm mapping:
+  invalid/exhausted→401, no-code→409 "ask the customer to request one"; single-use; re-mint
+  replaces) → CUSTOMER_CONFIRMED + `confirmedAt` + `{codeConfirmed: true}` audit evidence.
+  **Rule 2 airtight** — the technician drives the transition ONLY with the code minted to the
+  customer's phone (exact mirror of the arrival keystone, roles reversed). No code/phone in audit.
+- **OTP-store mint is now ONE atomic Lua script** (INCR + first-hit EXPIRE + limit check + SET) —
+  the "fix via Lua/MULTI when B5 touches the store" backlog item retired; both crash shapes closed;
+  existing otp-store/auth/arrival suites passed UNCHANGED as the behavior-preservation proof.
+- **Schema:** `PhotoKind` += 3 REPAIR_* values; `Booking` += `repairStartedAt`/`repairCompletedAt`/
+  `confirmedAt` (dispute Tier-1 keys off confirmedAt). Additive migration on both DBs.
+- **Decisions:** B4a approve/decline token RESOLVED — not bound to approve; the completion OTP is
+  the customer's money-gating confirmation; B6 re-evaluates a token at the charge
+  (decision doc updated). core-flow.md OTP digit counts corrected 4→6 (one shared primitive).
+- **Final gates + `/code-review`:** whole-branch review "With fixes" → both Importants fixed
+  (partsNeeded in-tx cart count; confirm-completion customer-403 test) + keystone actor-unit
+  assertions + direct-path timestamp assertion. prisma-migration-reviewer CLEAN; golden-rules CLEAN
+  (DevOtpSender dev-log accepted by design); fraud-vector — all documented blocks intact.
+  `/code-review` (8 angles) caught **one real money-display bug**: `computeEstimate`'s quoted set
+  was never extended for the B5 states, so the visit-fee credit silently VANISHED from the
+  customer's displayed total the moment the repair path started. Fixed with a `PRE_QUOTE_STATES`
+  list (new states keep the credit by default) + an invariance regression test across all 7
+  post-approval states. Also: `photoKeyPrefix` typed to `PhotoKindValue`; the deliberate
+  exhausted-fold difference between arrival/completion wrappers documented in both.
+- 262 tests (246 + 16 new), tsc clean. Subagent-driven; per-task spec+quality reviews all Approved
+  (keystone review: 19/19 spec points, two-sided property verified airtight; two session-limit
+  implementer stalls recovered by controller verification with zero rework).
+
 ## 2026-07-12 — Booking slice B4b (R2 photo evidence + 2 mandatory diagnosis photos)
 
 - **The photo-evidence pipeline exists** — the missing half of B5's dependencies (OTP primitive was

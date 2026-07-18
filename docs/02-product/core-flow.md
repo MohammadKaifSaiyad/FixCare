@@ -74,7 +74,7 @@ End-to-end journey for a single job, with fraud locks at each phase.
 Technician reaches location
   → Tap "Arrived" (GPS validated)
   → Customer scans technician's QR
-    OR enters 4-digit code technician shows
+    OR enters 6-digit code technician shows
   → Visit fee LOCKED
 ```
 
@@ -168,7 +168,7 @@ Technician buys from any local shop:
 ```
 Customer reviews final bill
   → Taps "Confirm work completed satisfactorily"
-  → 4-digit OTP sent to customer phone
+  → 6-digit OTP sent to customer phone <!-- 6-digit: one shared OTP primitive across auth/arrival/completion (B5 decision) -->
   → Customer reads OTP to technician
   → Technician enters OTP in technician app
   → ONLY THEN job marked complete + payment unlocked

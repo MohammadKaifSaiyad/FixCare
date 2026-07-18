@@ -22,6 +22,14 @@ describe('computeEstimate', () => {
     expect(computeEstimate({ laborPaise: 60000, visitFeePaise: 14900, state: 'CUSTOMER_APPROVED' }, []))
       .toMatchObject({ partsPaise: 0, visitFeeCreditPaise: 14900, totalPayablePaise: 45100 });
   });
+  it('the approved total NEVER drifts as the repair progresses (B5 states keep the credit)', () => {
+    // Golden Rule 4: the number the customer approved IS the price. Every post-quote state must
+    // show the same total — a booking mid-repair must not silently gain back the visit fee.
+    const approved = computeEstimate({ laborPaise: 60000, visitFeePaise: 14900, state: 'CUSTOMER_APPROVED' }, cart);
+    for (const state of ['PARTS_REQUESTED', 'PARTS_ACQUIRED', 'REPAIR_IN_PROGRESS', 'REPAIR_COMPLETE', 'CUSTOMER_CONFIRMED', 'PAYMENT_RECEIVED', 'CLOSED'] as const) {
+      expect(computeEstimate({ laborPaise: 60000, visitFeePaise: 14900, state }, cart)).toEqual(approved);
+    }
+  });
   it('DIAGNOSED: floors total at 0 when the visit fee exceeds labor+parts', () => {
     expect(computeEstimate({ laborPaise: 10000, visitFeePaise: 14900, state: 'DIAGNOSED' }, []).totalPayablePaise).toBe(0);
   });

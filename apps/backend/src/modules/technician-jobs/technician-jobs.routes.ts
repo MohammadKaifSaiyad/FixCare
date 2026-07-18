@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { ValidationError, ForbiddenError } from '../../shared/errors.js';
-import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart, signPhotoUpload, confirmPhoto } from './technician-jobs.service.js';
-import { arriveBody, diagnoseBody, addPartBody, signPhotoBody, confirmPhotoBody } from './technician-jobs.schemas.js';
+import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart, signPhotoUpload, confirmPhoto, partsNeeded, partsAcquired, startRepair, completeRepair, confirmCompletion } from './technician-jobs.service.js';
+import { arriveBody, diagnoseBody, addPartBody, signPhotoBody, confirmPhotoBody, confirmCompletionBody } from './technician-jobs.schemas.js';
 
 function requireTechnicianRole(req: { user?: { role: string } }): void {
   if (req.user?.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
@@ -63,6 +63,26 @@ export async function registerTechnicianJobRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
+  app.post('/technician/jobs/:id/parts-needed', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    return reply.send(await partsNeeded(req.user!.id, (req.params as { id: string }).id));
+  });
+
+  app.post('/technician/jobs/:id/parts-acquired', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    return reply.send(await partsAcquired(req.user!.id, (req.params as { id: string }).id));
+  });
+
+  app.post('/technician/jobs/:id/start-repair', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    return reply.send(await startRepair(req.user!.id, (req.params as { id: string }).id));
+  });
+
+  app.post('/technician/jobs/:id/complete-repair', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    return reply.send(await completeRepair(req.user!.id, (req.params as { id: string }).id));
+  });
+
   app.post('/technician/jobs/:id/photos/sign', { preHandler: [requireAuth] }, async (req, reply) => {
     requireTechnicianRole(req);
     const p = signPhotoBody.safeParse(req.body);
@@ -75,5 +95,12 @@ export async function registerTechnicianJobRoutes(app: FastifyInstance) {
     const p = confirmPhotoBody.safeParse(req.body);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     return reply.code(201).send(await confirmPhoto(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.post('/technician/jobs/:id/confirm-completion', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    const p = confirmCompletionBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await confirmCompletion(req.user!.id, (req.params as { id: string }).id, p.data));
   });
 }

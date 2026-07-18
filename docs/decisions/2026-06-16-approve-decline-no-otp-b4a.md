@@ -47,3 +47,14 @@ single-use OTP primitive is extracted (planned before B5, the completion handsha
 When the shared OTP primitive lands (pre-B5), and again when B6 introduces the charge.
 Until then this decision stands. See [[booking-zone-price-snapshot]] and the B4a design
 (`docs/designs/2026-06-14-booking-b4a-diagnosis-design.md`).
+
+---
+
+## Resolution (2026-07-13, B5)
+
+The customer confirmation token is NOT bound to approve/decline. B5's completion OTP is the
+customer's money-gating confirmation — payment cannot unlock without a code that only the
+customer's phone received. A second OTP at approve would double per-booking friction for a
+pre-payment action that already has actor separation and frozen-cart audit evidence.
+**B6 (the charge) re-evaluates binding a token at the charge step**, per this decision's
+original framing ("the charge-gating action").
