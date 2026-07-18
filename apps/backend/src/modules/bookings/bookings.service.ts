@@ -228,13 +228,17 @@ export async function initiatePayment(userId: string, id: string): Promise<{ ord
     include: { bookingParts: true },
   });
   if (!booking) throw new NotFoundError('Booking not found');
-  const amountPaise = chargeAmountFor(booking, booking.bookingParts); // 409s on non-payable states
 
+  // Existing-attempt guards FIRST: once the webhook advances the booking to PAYMENT_RECEIVED,
+  // chargeAmountFor would 409 with the wrong story ("not awaiting payment") — a stale client
+  // retrying /pay must hear "already paid", so the CAPTURED check must precede the state check.
   const existing = await prisma.payment.findFirst({ where: { bookingId: id, method: 'UPI' }, orderBy: { createdAt: 'desc' } });
   if (existing?.status === 'CAPTURED') throw new ConflictError('This booking is already paid');
   if (existing?.status === 'CREATED') {
     return { orderId: existing.razorpayOrderId, amountPaise: existing.amountPaise, keyId: config.RAZORPAY_KEY_ID ?? null };
   }
+
+  const amountPaise = chargeAmountFor(booking, booking.bookingParts); // 409s on non-payable states
 
   // Gateway order BEFORE the tx: an orphaned order from a tx failure is harmless (unpaid orders
   // expire gateway-side); a DB row without an order would be a broken checkout.
