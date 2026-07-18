@@ -1,4 +1,4 @@
-import type { Booking, BookingPart, PhotoEvidence } from '@prisma/client';
+import type { Booking, BookingPart, PhotoEvidence, Payment } from '@prisma/client';
 import { maskPhone } from '../../shared/utils/mask.js';
 import { computeEstimate, type Estimate } from './estimate.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
@@ -32,13 +32,19 @@ export interface BookingDto {
   estimate: Estimate;
   // Active photo evidence with SHORT-LIVED signed read URLs (15 min) — raw r2Key never leaves the API.
   photos: PhotoSummary[];
+  // Latest payment attempt (null before any). Gateway ids never leak here — the app gets what
+  // checkout needs from POST /pay, and everything else is internal evidence.
+  payment: PaymentSummary | null;
 }
+
+export interface PaymentSummary { status: Payment['status']; method: Payment['method']; amountPaise: number }
 
 export function toBookingDto(
   b: Booking,
   tech?: { name: string; phone: string },
   parts: BookingPart[] = [],
   photos: PhotoSummary[] = [],
+  payment: PaymentSummary | null = null,
 ): BookingDto {
   return {
     id: b.id,
@@ -56,5 +62,6 @@ export function toBookingDto(
     parts: parts.map((p) => ({ id: p.id, sku: p.sku, name: p.name, ceilingPricePaise: p.ceilingPricePaise, qty: p.qty })),
     estimate: computeEstimate(b, parts),
     photos,
+    payment,
   };
 }

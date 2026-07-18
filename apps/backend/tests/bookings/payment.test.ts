@@ -153,3 +153,21 @@ describe('POST /webhooks/razorpay', () => {
     expect((await postWebhook(JSON.stringify({ event: 'refund.processed', payload: {} }))).statusCode).toBe(200);
   });
 });
+
+describe('payment in the customer DTO', () => {
+  it('GET /me/bookings/:id shows the latest attempt (no gateway ids leaked)', async () => {
+    // Direct-seeded state (sanctioned fixture pattern): the full pay→webhook flow is already
+    // covered above — this test targets ONLY the DTO mapping, and the file's inject budget is
+    // tight against the process rate limiter.
+    const c = await makeCustomer();
+    const f = await seedBookable(c.customerId);
+    const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
+    await prisma.booking.update({ where: { id: booking.id }, data: { state: 'PAYMENT_RECEIVED' } });
+    await prisma.payment.create({ data: { bookingId: booking.id, method: 'UPI', status: 'CAPTURED', amountPaise: 45100, razorpayOrderId: `order_dev_dto_${Math.random().toString(36).slice(2, 8)}`, razorpayPaymentId: `pay_dev_dto_${Math.random().toString(36).slice(2, 8)}`, capturedAt: new Date() } });
+    const got = (await app.inject({ method: 'GET', url: `/me/bookings/${booking.id}`, headers: auth(c.token) })).json();
+    expect(got.state).toBe('PAYMENT_RECEIVED');
+    expect(got.payment).toEqual({ status: 'CAPTURED', method: 'UPI', amountPaise: 45100 });
+    expect(JSON.stringify(got.payment)).not.toContain('order_');
+    expect(JSON.stringify(got.payment)).not.toContain('pay_dev');
+  });
+});

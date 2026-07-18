@@ -99,10 +99,16 @@ export async function listBookings(userId: string): Promise<BookingDto[]> {
   const rows = await prisma.booking.findMany({
     where: { customerId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } } },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
   });
   return Promise.all(rows.map(async (b) =>
-    toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts, await toPhotoSummaries(b.photos)),
+    toBookingDto(
+      b,
+      b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined,
+      b.bookingParts,
+      await toPhotoSummaries(b.photos),
+      b.payments[0] ? { status: b.payments[0].status, method: b.payments[0].method, amountPaise: b.payments[0].amountPaise } : null,
+    ),
   ));
 }
 
@@ -111,10 +117,16 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } } },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
   });
   if (!b) throw new NotFoundError('Booking not found');
-  return toBookingDto(b, b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined, b.bookingParts, await toPhotoSummaries(b.photos));
+  return toBookingDto(
+    b,
+    b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined,
+    b.bookingParts,
+    await toPhotoSummaries(b.photos),
+    b.payments[0] ? { status: b.payments[0].status, method: b.payments[0].method, amountPaise: b.payments[0].amountPaise } : null,
+  );
 }
 
 export async function cancelBooking(userId: string, id: string): Promise<BookingDto> {
