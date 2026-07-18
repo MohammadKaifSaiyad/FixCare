@@ -15,7 +15,10 @@ export async function mintArrivalCode(bookingId: string): Promise<string> {
 export type ArrivalVerifyResult = 'ok' | 'invalid' | 'no-code';
 
 /** Verify (and on success consume) the arrival code. Tri-state: 'ok' | 'invalid' (wrong code,
- *  attempts remain) | 'no-code' (never minted, expired, exhausted, or already consumed). */
+ *  attempts remain) | 'no-code' (never minted, expired, exhausted, or already consumed).
+ *  NOTE the DELIBERATE difference from completion-code, which folds exhausted→'invalid' instead:
+ *  here the cheapest recovery for a dead code is the technician re-tapping Arrived (the caller
+ *  maps 'no-code' → 409 with that guidance). A future OTP wrapper must CHOOSE its fold. */
 export async function verifyArrivalCode(bookingId: string, code: string): Promise<ArrivalVerifyResult> {
   const r = await verifyOtp(key(bookingId), code, { maxAttempts: MAX_ATTEMPTS });
   switch (r.status) {

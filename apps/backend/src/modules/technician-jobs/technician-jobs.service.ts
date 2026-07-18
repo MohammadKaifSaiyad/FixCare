@@ -9,7 +9,7 @@ import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.typ
 import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
-import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody } from './technician-jobs.schemas.js';
+import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody } from './technician-jobs.schemas.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -267,7 +267,7 @@ export async function completeRepair(userId: string, bookingId: string): Promise
 
 /** One owner for the R2 key shape: sign BUILDS with this prefix, confirm VERIFIES against it —
  *  a change to the layout cannot drift between the two (B5's repair kinds reuse both paths). */
-function photoKeyPrefix(bookingId: string, kind: string): string {
+function photoKeyPrefix(bookingId: string, kind: PhotoKindValue): string {
   return `jobs/${bookingId}/${kind}-`;
 }
 

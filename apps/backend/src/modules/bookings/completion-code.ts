@@ -4,6 +4,7 @@ const TTL_SECONDS = 600;
 const MAX_ATTEMPTS = 5;
 // The mint sends a real SMS in production — throttle per booking so a tapping-happy customer
 // (or a client bug) can't flood SMS spend. 3 codes / 15 min covers every honest retry.
+// TODO: move to config once MSG91 is live and SMS spend is measurable (operational knob).
 const SEND_LIMIT = { max: 3, windowSeconds: 900 };
 const key = (bookingId: string) => `completion:${bookingId}`;
 
@@ -18,7 +19,11 @@ export type CompletionVerifyResult = 'ok' | 'invalid' | 'no-code';
 
 /** Verify (and on success consume) the completion code. 'invalid' covers wrong AND exhausted
  *  (→401 — a fresh code fixes both); 'no-code' covers never-minted AND expired (→409 — the
- *  customer simply requests a new one). Uses the store's 4-arm union directly. */
+ *  customer simply requests a new one). Uses the store's 4-arm union directly.
+ *  NOTE the DELIBERATE difference from arrival-code, which folds exhausted→'no-code' instead:
+ *  arrival's cheapest recovery is the technician re-tapping Arrived (409), while here exhausted
+ *  means the code was probed 5× — an auth signal (401), and a fresh customer mint fixes it.
+ *  A future OTP wrapper must CHOOSE its fold, not copy either file blindly. */
 export async function verifyCompletionCode(bookingId: string, code: string): Promise<CompletionVerifyResult> {
   const r = await verifyOtp(key(bookingId), code, { maxAttempts: MAX_ATTEMPTS });
   switch (r.status) {
