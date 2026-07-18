@@ -10,6 +10,8 @@ import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
 import { toBookingDto, toPhotoSummaries, type BookingDto } from './bookings.types.js';
 import { sumParts } from './estimate.js';
+import { chargeAmountFor } from './charge.js';
+import { paymentGateway } from '../../shared/third-party/razorpay.js';
 import type { CreateBookingBody, ConfirmArrivalBody } from './bookings.schemas.js';
 import { config } from '../../shared/config.js';
 import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
@@ -215,4 +217,33 @@ export async function requestCompletionOtp(userId: string, id: string): Promise<
   if (r.status === 'throttled') throw new TooManyRequestsError('Too many code requests. Try again later.');
   await otpSender.send(booking.customer.user.phone, r.code);
   return config.NODE_ENV === 'production' ? { ok: true } : { ok: true, devOtp: r.code };
+}
+
+/** Customer initiates the UPI charge. Idempotent: an open (CREATED) attempt returns the SAME
+ *  order — double-taps and app restarts never create duplicate gateway orders. */
+export async function initiatePayment(userId: string, id: string): Promise<{ orderId: string; amountPaise: number; keyId: string | null }> {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await prisma.booking.findFirst({
+    where: { id, customerId, deletedAt: null },
+    include: { bookingParts: true },
+  });
+  if (!booking) throw new NotFoundError('Booking not found');
+  const amountPaise = chargeAmountFor(booking, booking.bookingParts); // 409s on non-payable states
+
+  const existing = await prisma.payment.findFirst({ where: { bookingId: id, method: 'UPI' }, orderBy: { createdAt: 'desc' } });
+  if (existing?.status === 'CAPTURED') throw new ConflictError('This booking is already paid');
+  if (existing?.status === 'CREATED') {
+    return { orderId: existing.razorpayOrderId, amountPaise: existing.amountPaise, keyId: config.RAZORPAY_KEY_ID ?? null };
+  }
+
+  // Gateway order BEFORE the tx: an orphaned order from a tx failure is harmless (unpaid orders
+  // expire gateway-side); a DB row without an order would be a broken checkout.
+  const { orderId } = await paymentGateway.createOrder(amountPaise, id);
+  await prisma.$transaction(async (tx) => {
+    await tx.payment.create({ data: { bookingId: id, method: 'UPI', amountPaise, razorpayOrderId: orderId } });
+    await tx.auditLog.create({
+      data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { bookingId: id, event: 'order_created', amountPaise } },
+    });
+  });
+  return { orderId, amountPaise, keyId: config.RAZORPAY_KEY_ID ?? null };
 }
