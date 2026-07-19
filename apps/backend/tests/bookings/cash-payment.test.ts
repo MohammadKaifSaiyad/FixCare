@@ -89,6 +89,14 @@ describe('POST /me/bookings/:id/pay-cash', () => {
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay-cash`, headers: auth(c.token) })).statusCode).toBe(200);
   });
 
+  it('a soft-deleted assigned technician → 422, no dead-end attempt row or OTP minted', async () => {
+    const { c, t, bookingId } = await cashReady();
+    await prisma.technician.update({ where: { id: t.technicianId }, data: { deletedAt: new Date() } });
+    const res = await app.inject({ method: 'POST', url: `/me/bookings/${bookingId}/pay-cash`, headers: auth(c.token) });
+    expect(res.statusCode).toBe(422); // capture could NEVER succeed (requireTechnician would 403) — fail at initiation instead
+    expect(await prisma.payment.count({ where: { bookingId } })).toBe(0);
+  });
+
   it('guards: already-paid 409 (any method), foreign customer 404, technician role 403; /pay (UPI) also 409s on a cash-paid booking', async () => {
     const { c, t, bookingId } = await cashReady();
     const other = await makeCustomer();

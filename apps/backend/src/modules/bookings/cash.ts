@@ -29,9 +29,12 @@ export async function verifyCashReceiptCode(bookingId: string, code: string): Pr
   const r = await verifyOtp<CashReceiptPayload>(key(bookingId), code, { maxAttempts: MAX_ATTEMPTS });
   switch (r.status) {
     case 'ok': {
-      // Malformed payload must fail auth, not crash (the OTP-primitive review lesson).
+      // Malformed payload must fail auth, not crash (the OTP-primitive review lesson). The amount
+      // must be a POSITIVE INTEGER: it drives a debt increment and a capture — a zero, negative,
+      // or float here (only reachable via a corrupted/foreign Redis write today, but this is a
+      // money boundary) would capture with no money moving or silently DECREMENT debt.
       const p = r.payload;
-      if (!p || typeof p.paymentId !== 'string' || typeof p.amountPaise !== 'number') return { status: 'invalid' };
+      if (!p || typeof p.paymentId !== 'string' || !Number.isInteger(p.amountPaise) || p.amountPaise <= 0) return { status: 'invalid' };
       return { status: 'ok', payload: p };
     }
     case 'invalid':

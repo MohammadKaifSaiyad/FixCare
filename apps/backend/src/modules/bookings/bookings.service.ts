@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type PaymentStatus, type PaymentMethod } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ForbiddenError, NotFoundError, UnprocessableError, ConflictError, UnauthorizedError, TooManyRequestsError } from '../../shared/errors.js';
 import { resolvePincode } from '../addresses/serviceability.service.js';
@@ -9,7 +9,7 @@ import { mintCompletionCode } from './completion-code.js';
 import { mintCashReceiptCode, cashCollectedLast24hPaise } from './cash.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
-import { toBookingDto, toPhotoSummaries, type BookingDto } from './bookings.types.js';
+import { toBookingDto, toPhotoSummaries, type BookingDto, type PaymentSummary } from './bookings.types.js';
 import { sumParts } from './estimate.js';
 import { chargeAmountFor } from './charge.js';
 import { paymentGateway } from '../../shared/third-party/razorpay.js';
@@ -94,13 +94,22 @@ export async function createBooking(userId: string, body: CreateBookingBody): Pr
   throw new Error('Could not generate a unique booking number');
 }
 
+/** Pick the payment the customer should see: the CAPTURED one if any, else the latest attempt.
+ *  take-1-latest alone is WRONG since B6b: a stale CASH CREATED attempt (created after the UPI
+ *  order) would mask a UPI capture — a PAID booking showing a pending payment. Attempts per
+ *  booking are bounded tiny, so fetching all and picking here is cheap. */
+function pickPaymentSummary(payments: { status: PaymentStatus; method: PaymentMethod; amountPaise: number }[]): PaymentSummary | null {
+  const p = payments.find((x) => x.status === 'CAPTURED') ?? payments[0];
+  return p ? { status: p.status, method: p.method, amountPaise: p.amountPaise } : null;
+}
+
 export async function listBookings(userId: string): Promise<BookingDto[]> {
   const { id: customerId } = await requireCustomer(userId);
   // include technician + cart so the list's estimate/diagnosis match the detail view (getBooking).
   const rows = await prisma.booking.findMany({
     where: { customerId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' } } },
   });
   return Promise.all(rows.map(async (b) =>
     toBookingDto(
@@ -108,7 +117,7 @@ export async function listBookings(userId: string): Promise<BookingDto[]> {
       b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined,
       b.bookingParts,
       await toPhotoSummaries(b.photos),
-      b.payments[0] ? { status: b.payments[0].status, method: b.payments[0].method, amountPaise: b.payments[0].amountPaise } : null,
+      pickPaymentSummary(b.payments),
     ),
   ));
 }
@@ -118,7 +127,7 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' } } },
   });
   if (!b) throw new NotFoundError('Booking not found');
   return toBookingDto(
@@ -126,7 +135,7 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
     b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined,
     b.bookingParts,
     await toPhotoSummaries(b.photos),
-    b.payments[0] ? { status: b.payments[0].status, method: b.payments[0].method, amountPaise: b.payments[0].amountPaise } : null,
+    pickPaymentSummary(b.payments),
   );
 }
 
@@ -290,8 +299,16 @@ export async function initiateCashPayment(userId: string, id: string): Promise<{
   if (amountPaise === 0) throw new UnprocessableError('Nothing is payable for this booking');
   if (!booking.technicianId) throw new ConflictError('Booking is not awaiting payment'); // unreachable in payable states; narrows the type
 
+  // Mirror confirm-cash's requireTechnician filters (deletedAt + VERIFIED): if the assigned
+  // technician can no longer capture, initiating would mint an OTP that can NEVER be entered —
+  // a dead-end the customer can't diagnose. Fail here with the UPI fallback instead.
+  const tech = await prisma.technician.findFirst({
+    where: { id: booking.technicianId, deletedAt: null, status: 'VERIFIED' },
+    select: { cashDebtPaise: true },
+  });
+  if (!tech) throw new UnprocessableError('Cash is unavailable for this booking — please pay by UPI');
+
   // UX-level gate checks — the ENFORCEMENT re-runs inside the capture tx post-lock (Task 3).
-  const tech = await prisma.technician.findUniqueOrThrow({ where: { id: booking.technicianId }, select: { cashDebtPaise: true } });
   if (tech.cashDebtPaise + amountPaise > config.CASH_DEBT_LIMIT_PAISE) {
     throw new UnprocessableError('Cash limit reached for this technician — please pay by UPI');
   }

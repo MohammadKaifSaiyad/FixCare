@@ -170,4 +170,5 @@ describe('payment in the customer DTO', () => {
     expect(JSON.stringify(got.payment)).not.toContain('order_');
     expect(JSON.stringify(got.payment)).not.toContain('pay_dev');
   });
+
 });
