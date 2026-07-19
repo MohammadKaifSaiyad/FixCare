@@ -17,41 +17,36 @@ B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4a/B4b/OTP
 ledger). **Money moves for the first time** — on Razorpay test keys until KYC.
 
 ## Active task
-**Booking Slice B6a** complete on `feature/booking-b6-payment` — **the UPI charge (first money
-movement)**. `Payment` attempt model (append-only evidence; `razorpayOrderId`/`razorpayPaymentId`
-unique idempotency anchors); `shared/third-party/razorpay.ts` PaymentGateway wrapper (Dev fake with
-`signPayload` test hook + real `razorpay` SDK, **lazy creds** — boots before KYC provisions keys;
-timing-safe HMAC verify). `chargeAmountFor` is the ONE amount source: CUSTOMER_CONFIRMED → the
-invariant-locked approved total; **DECLINED_BY_CUSTOMER → the locked visit fee** (graph opened
-DECLINED→PAYMENT_RECEIVED — no more free declined visits); else 409. Customer
-`POST /me/bookings/:id/pay` (owner-404, role-403; **idempotent** — an open CREATED attempt returns
-the SAME order; CAPTURED → 409 'already paid' checked BEFORE the state gate so stale retries hear
-the right story) → `{orderId, amountPaise, keyId}` for checkout. `POST /webhooks/razorpay`
-(**the HMAC signature over the raw body IS the auth** — scoped raw-body parser; route exempt from
-the global rate limiter so gateway deliveries never 429 into retry storms, Caddy is the DoS
-backstop): `payment.captured` → amount-verified (mismatch = flagged audit, NO transition, 200-ack)
-→ one tx {Payment→CAPTURED + PAYMENT_RECEIVED as SYSTEM with evidence}; duplicate deliveries no-op
-(status guard + optimistic lock); `payment.failed` → FAILED + re-pay issues a new order;
-malformed-JSON-with-valid-signature always-ACKs (audit flag, no gateway retry loop); refund.* =
-audited B7 skeleton. `BookingDto.payment` (status/method/amount — no gateway ids). No charge-time
-OTP (B4a-token question CLOSED in the decision doc: completion OTP + UPI-app auth = the two
-confirmations). **All on Razorpay test keys — live keys swap in post-KYC with zero code change.**
-284/284 tests green, tsc clean. Per-task reviews Approved (T3 guard-ordering + T4
-malformed-JSON Importants fixed in-branch; rate-limit exemption deviation adjudicated APPROVED).
-Final gates DONE (duplicate-capture handling fixed in 435d6fe; prisma+golden-rules+fraud-vector
-clean). `/code-review` DONE (79ea502): declined-then-paid estimate hole (declinedAt-aware
-cancelled branch), zero-amount-order 422 guard, webhook envelope/entity now Zod (killed a latent
-mass-FAIL where an entity missing order_id dropped the updateMany filter), hex-decoded signature
-compare, 'captured' PAYMENT_EVENT timeline row, SYSTEM-only actor unit test. **Awaiting PR →
-`main`. Next: B6b (cash path), B6c (settlement ledger — incl. zero-payable auto-settlement).**
-Design: [`docs/designs/2026-07-18-booking-b6a-upi-payment-design.md`]; plan:
-[`docs/plans/2026-07-18-booking-b6a-upi-payment.md`].
+**Booking Slice B6b** complete on `feature/booking-b6b-cash` — **the cash payment path**.
+`PaymentMethod.CASH` enum value; `Payment.razorpayOrderId` nullable (cash has no gateway order);
+`Technician.cashDebtPaise` (running platform debt balance); migration `payment_cash` on both DBs.
+Config: `CASH_DEBT_LIMIT_PAISE`=50000 (₹500 flat new-tech tier) + `CASH_VELOCITY_CAP_PAISE`=300000
+(24h trailing window). `ALLOWED_ACTORS.PAYMENT_RECEIVED` widened to SYSTEM + TECHNICIAN (cash:
+technician drives it ONLY with the receipt OTP minted to the customer — Golden Rule 2's second
+party). Customer `POST /me/bookings/:id/pay-cash`: any-method already-paid → 409;
+`chargeAmountFor` amount; zero-payable → 422; UX-level debt + velocity gates → 422; idempotent
+CASH attempt row; receipt OTP via `shared/auth/otp-store` (3/900s throttle → 429); `cash_initiated`
+audit in-tx. `/pay` (UPI) also widened to 409 'already paid' on any-method CAPTURED row.
+Technician `POST /technician/jobs/:id/confirm-cash`: OTP verify (payload pins paymentId + amount
+at initiation) → one tx: debt increment FIRST (row update = serializing lock) → both gates
+re-checked post-lock (enforcement) → Payment CAPTURED keyed on CREATED → PAYMENT_RECEIVED as
+TECHNICIAN with evidence → `cash_received` audit. Debt rollback on any failure. Response carries
+the running `cashDebtPaise` balance. 297/297 tests green, tsc clean. Per-task reviews all Approved
+(T3 re-review after concurrency model fix; Important guard-comment + distinct-422-messages fixed
+04c22ce). **Awaiting final reviews + `/code-review` + PR → `main`.**
+Design: [`docs/designs/2026-07-19-booking-b6b-cash-design.md`]; plan:
+[`docs/plans/2026-07-19-booking-b6b-cash.md`].
 
 ## Last shipped
-- **Booking Slice B6a** (`apps/backend`, UPI charge): Payment attempt model + PaymentGateway wrapper
-  (lazy-cred Razorpay, timing-safe HMAC); chargeAmountFor (approved total / declined visit fee);
-  idempotent pay endpoint; signature-authed amount-verified duplicate-safe webhook →
-  PAYMENT_RECEIVED as SYSTEM; payment in customer DTO. Test keys until KYC. On branch.
+- **Booking Slice B6b** (`apps/backend`, cash path): CASH payment method; receipt OTP handshake
+  (customer mints via shared primitive, technician enters); `Technician.cashDebtPaise` running
+  balance; UX-level + post-lock enforcement debt + velocity gates; idempotent CASH attempt;
+  PAYMENT_RECEIVED as TECHNICIAN with evidence; `cash_initiated`/`cash_received` audits. 297 tests.
+  On branch — pending final reviews + `/code-review` + PR.
+- **Booking Slice B6a** — **merged to `main`** (PR #18, squash `1123a6f`): Payment attempt model +
+  PaymentGateway wrapper (lazy-cred Razorpay, timing-safe HMAC); chargeAmountFor (approved total /
+  declined visit fee); idempotent pay endpoint; signature-authed amount-verified duplicate-safe
+  webhook → PAYMENT_RECEIVED as SYSTEM; payment in customer DTO. Test keys until KYC.
 - **Booking Slice B5** — **merged to `main`** (PR #17, squash `d2f54e5`): repair path
   (parts-needed/acquired + start-repair + complete-repair with the 3-repair-photo gate);
   PHOTO_WINDOW per-kind capture windows; completion OTP handshake (customer mint throttled 3/900s,
@@ -153,11 +148,11 @@ Design: [`docs/designs/2026-07-18-booking-b6a-upi-payment-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **Final reviews + `/code-review` + PR + merge** `feature/booking-b6-payment` → `main` (B6a).
-2. **B6b — cash path** (amount confirm + receipt OTP via the shared primitive + technician cash-debt
-   tracking + ₹3000/24h velocity cap), then **B6c — settlement ledger** (manual payouts until Route
-   approval; CLOSED wiring with the 48h dispute window). Apply for Razorpay KYC + Route NOW if not
-   already in flight. Provision the real Cloudflare R2 account + creds (R2_* env) before launch.
+1. **Final reviews + `/code-review` + PR + merge** `feature/booking-b6b-cash` → `main` (B6b).
+2. **B6c — settlement ledger** (manual payouts until Route approval; zero-payable auto-settlement;
+   CLOSED wiring with the 48h dispute window; cash repayment + accept-gate). Apply for Razorpay
+   KYC + Route NOW if not already in flight. Provision the real Cloudflare R2 account + creds
+   (R2_* env) before launch.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;

@@ -8,6 +8,36 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-19 — Booking slice B6b (cash payment path)
+
+- **`PaymentMethod.CASH`** added; `Payment.razorpayOrderId` made nullable (cash has no gateway
+  order); **`Technician.cashDebtPaise`** Int column tracks the running platform-debt balance.
+  Migration `payment_cash` applied on both DBs. Config keys: `CASH_DEBT_LIMIT_PAISE` (flat
+  ₹500 new-tech debt limit) + `CASH_VELOCITY_CAP_PAISE` (₹3000 24h trailing window).
+- **`ALLOWED_ACTORS.PAYMENT_RECEIVED`** widened: SYSTEM (UPI webhook) + TECHNICIAN (cash confirm).
+  Cash: the technician drives the PAYMENT_RECEIVED transition ONLY with a receipt OTP minted to
+  the customer — the two-sided confirmation (Golden Rule 2 mirror of B5's completion handshake).
+- **`POST /me/bookings/:id/pay-cash`** (customer): any-method already-CAPTURED → 409; `chargeAmountFor`
+  for the amount (same as UPI — CUSTOMER_CONFIRMED → approved total; DECLINED → visit fee); zero-payable
+  → 422; UX-level debt gate (running balance + new charge > debt limit → 422) + velocity gate (24h
+  trailing cash total > cap → 422); idempotent CASH attempt row (re-initiation returns the existing
+  CREATED row, skipping a second OTP send); receipt OTP minted via `shared/auth/otp-store` with
+  3/900s send throttle → 429 (payload pins paymentId + amount at initiation); `cash_initiated` audit
+  in-tx. `/pay` (UPI) also widened to 409 'already paid' on any-method CAPTURED row.
+- **`POST /technician/jobs/:id/confirm-cash`** (technician): OTP verify against the pinned payload →
+  confirmed paymentId + amount before the tx opens; one tx: debt increment FIRST (the `UPDATE
+  Technician SET cashDebtPaise += amount WHERE id = ?` is the serializing row lock) → both gates
+  re-checked post-lock (this is the enforcement read, not just UX) → Payment CAPTURED keyed on
+  CREATED → `transitionBooking(PAYMENT_RECEIVED, TECHNICIAN)` with evidence → `cash_received` audit.
+  Any failure rolls back the debt increment. Response carries the updated `cashDebtPaise` balance.
+- READ COMMITTED isolation assumption behind the in-tx velocity re-read documented; **OTP consumed
+  pre-tx** (verify consumes the code before the tx opens — fails-safe: a tx rollback cannot re-use
+  the code, the technician requests a fresh initiation).
+- Deferred by design: cash settlement / repayment + accept-gate + CLOSED (B6c), trust-ladder limits
+  (trust module), ₹20 UPI discount (pricing slice), mismatch auto-dispute (B7).
+- Per-task reviews all Approved (T3 re-review after concurrency model fix; guard-comment accuracy
+  + distinct 422 messages + test hardcode fixed in `04c22ce`). 297/297 tests green, tsc clean.
+
 ## 2026-07-19 — B6a `/code-review` pass (branch finalized, awaiting PR)
 
 - 6 finder angles → ~25 candidates → verified; 4 confirmed bugs fixed (`79ea502`), 284/284 green:
