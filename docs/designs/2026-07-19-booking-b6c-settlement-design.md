@@ -1,6 +1,6 @@
 # Booking B6c — Settlement Ledger + CLOSED Wiring (design)
 
-**Date:** 2026-07-20 · **Branch:** `feature/booking-b6c-settlement` · **Status:** approved
+**Date:** 2026-07-19 · **Branch:** `feature/booking-b6c-settlement` · **Status:** approved
 **Follows:** B6b (cash path, PR #19). **Precedes:** B7 (disputes).
 
 ## Goal
