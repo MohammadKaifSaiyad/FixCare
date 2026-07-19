@@ -251,6 +251,12 @@ export async function initiatePayment(userId: string, id: string): Promise<{ ord
   }
 
   const amountPaise = chargeAmountFor(booking, booking.bookingParts); // 409s on non-payable states
+  if (amountPaise === 0) {
+    // Nothing is owed (visit-fee credit covered the whole job). Razorpay rejects sub-₹1 orders,
+    // and a 0-amount Payment row would let a 0-amount capture "pay" the booking. Zero-payable
+    // settlement (auto-close without a charge) belongs to B6c with the CLOSED wiring.
+    throw new UnprocessableError('Nothing is payable for this booking');
+  }
 
   // Gateway order BEFORE the tx: an orphaned order from a tx failure is harmless (unpaid orders
   // expire gateway-side); a DB row without an order would be a broken checkout.

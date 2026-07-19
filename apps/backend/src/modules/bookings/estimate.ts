@@ -31,12 +31,15 @@ const PRE_QUOTE_STATES: readonly BookingState[] = ['CREATED', 'DISPATCHED', 'ACC
  *  - DECLINED_BY_CUSTOMER / CANCELLED_*: the repair will not happen, so nothing is payable for it
  *    (the visit fee that locked at ARRIVED is owed separately and is not modelled as an estimate). */
 export function computeEstimate(
-  booking: { laborPaise: number; visitFeePaise: number; state: BookingState },
+  booking: { laborPaise: number; visitFeePaise: number; state: BookingState; declinedAt?: Date | null },
   parts: { ceilingPricePaise: number; qty: number }[],
 ): Estimate {
   const partsPaise = sumParts(parts);
 
-  if (booking.state === 'DECLINED_BY_CUSTOMER' || booking.state === 'CANCELLED_BY_CUSTOMER' || booking.state === 'CANCELLED_BY_TECHNICIAN') {
+  // declinedAt matters beyond the DECLINED state itself: B6a lets a declined booking transition to
+  // PAYMENT_RECEIVED (visit-fee settlement). Without this check the state alone would flip the
+  // estimate back to the full quoted math on a booking whose repair never happened.
+  if (booking.state === 'DECLINED_BY_CUSTOMER' || booking.state === 'CANCELLED_BY_CUSTOMER' || booking.state === 'CANCELLED_BY_TECHNICIAN' || booking.declinedAt != null) {
     return { laborPaise: booking.laborPaise, partsPaise, visitFeeCreditPaise: 0, totalPayablePaise: 0 };
   }
 

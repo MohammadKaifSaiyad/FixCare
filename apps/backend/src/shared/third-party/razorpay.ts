@@ -17,9 +17,11 @@ function hmacHex(secret: string, rawBody: string): string {
 }
 
 function safeCompareHex(expected: string, given: string): boolean {
-  const a = Buffer.from(expected, 'utf8');
-  const b = Buffer.from(given, 'utf8');
-  if (a.length !== b.length) return false;
+  // Decode as HEX (not utf8): compares the 32 digest bytes, so signature casing can never matter.
+  // Invalid/odd-length hex decodes short → length mismatch → false (fail closed).
+  const a = Buffer.from(expected, 'hex');
+  const b = Buffer.from(given, 'hex');
+  if (a.length === 0 || a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
 

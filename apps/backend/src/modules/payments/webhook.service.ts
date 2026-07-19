@@ -1,14 +1,24 @@
+import { z } from 'zod';
 import { prisma } from '../../shared/database/prisma.js';
 import { ConflictError, UnauthorizedError } from '../../shared/errors.js';
 import { paymentGateway } from '../../shared/third-party/razorpay.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
 
-interface RazorpayPaymentEntity {
-  id: string;
-  order_id: string;
-  amount: number;
-  error_description?: string;
-}
+// Zod, not a cast (convention: all route inputs validated): a signed body is still EXTERNAL input.
+// amount must be an INTEGER — a float here would silently pass the paise equality check's shape.
+// An entity missing order_id must never reach payment.failed's updateMany: Prisma treats an
+// undefined filter value as "no filter", which would mass-FAIL every open payment.
+const paymentEntitySchema = z.object({
+  id: z.string().min(1),
+  order_id: z.string().min(1),
+  amount: z.number().int().nonnegative(),
+  error_description: z.string().optional(),
+});
+
+const envelopeSchema = z.object({
+  event: z.string().optional(),
+  payload: z.object({ payment: z.object({ entity: z.unknown() }).optional() }).optional(),
+});
 
 /** Handle one gateway webhook delivery. The SIGNATURE is the authentication (Rule 1: the
  *  gateway's signed word is the evidence money moved) — invalid/missing → 401, no detail.
@@ -18,9 +28,9 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
   if (!signature || !paymentGateway.verifyWebhookSignature(rawBody, signature)) {
     throw new UnauthorizedError('Invalid webhook signature');
   }
-  let parsed: { event?: string; payload?: { payment?: { entity?: RazorpayPaymentEntity } } };
+  let json: unknown;
   try {
-    parsed = JSON.parse(rawBody) as typeof parsed;
+    json = JSON.parse(rawBody);
   } catch {
     // A valid signature with malformed JSON can only be a gateway/secret-holder bug — but a 500
     // here would put the gateway into a permanent retry loop. Keep the always-ACK contract:
@@ -28,8 +38,16 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
     await prisma.auditLog.create({ data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'malformed_body' } } });
     return;
   }
-  const event = parsed.event ?? 'unknown';
-  const entity = parsed.payload?.payment?.entity;
+  const envelope = envelopeSchema.safeParse(json);
+  if (!envelope.success) {
+    await prisma.auditLog.create({ data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'malformed_body' } } });
+    return;
+  }
+  const event = envelope.data.event ?? 'unknown';
+  // Entity validated separately from the envelope so an unknown/refund event with a differently
+  // shaped payload still lands in the audited 'ignored' path, not malformed_body.
+  const entityParsed = paymentEntitySchema.safeParse(envelope.data.payload?.payment?.entity);
+  const entity = entityParsed.success ? entityParsed.data : undefined;
 
   if (event === 'payment.captured' && entity) {
     const payment = await prisma.payment.findUnique({ where: { razorpayOrderId: entity.order_id } });
@@ -52,6 +70,11 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
         // transitionBooking's optimistic lock (updateMany WHERE state) is the DB-level duplicate
         // guard; the status check above catches the sequential duplicate before it.
         await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'razorpay-webhook' }, { razorpayPaymentId: entity.id, amountPaise: payment.amountPaise, method: 'UPI' });
+        // PAYMENT_EVENT rows already cover order_created, payment_failed, and every anomaly —
+        // this completes the payment timeline so ops can query one action for the full history.
+        await tx.auditLog.create({
+          data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'captured', bookingId: payment.bookingId, orderId: entity.order_id, razorpayPaymentId: entity.id, amountPaise: payment.amountPaise } },
+        });
       });
     } catch (e) {
       if (!(e instanceof ConflictError)) throw e;
