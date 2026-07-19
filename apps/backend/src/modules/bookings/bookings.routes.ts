@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { ValidationError, ForbiddenError } from '../../shared/errors.js';
 import { createBookingBody, confirmArrivalBody } from './bookings.schemas.js';
-import { createBooking, listBookings, getBooking, cancelBooking, confirmArrival, approveDiagnosis, declineDiagnosis, requestCompletionOtp } from './bookings.service.js';
+import { createBooking, listBookings, getBooking, cancelBooking, confirmArrival, approveDiagnosis, declineDiagnosis, requestCompletionOtp, initiatePayment } from './bookings.service.js';
 
 function requireCustomerRole(req: { user?: { role: string } }): void {
   if (req.user?.role !== 'CUSTOMER') throw new ForbiddenError('Only customers can book');
@@ -51,5 +51,10 @@ export async function registerBookingRoutes(app: FastifyInstance) {
   app.post('/me/bookings/:id/request-completion-otp', { preHandler: [requireAuth] }, async (req, reply) => {
     requireCustomerRole(req); // service's requireCustomer also enforces this — kept here for the module's route-layer convention
     return reply.send(await requestCompletionOtp(req.user!.id, (req.params as { id: string }).id));
+  });
+
+  app.post('/me/bookings/:id/pay', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireCustomerRole(req);
+    return reply.send(await initiatePayment(req.user!.id, (req.params as { id: string }).id));
   });
 }

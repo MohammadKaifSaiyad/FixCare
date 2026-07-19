@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALLOWED_TRANSITIONS, isTransitionAllowed } from '../../src/modules/bookings/bookings.state.js';
+import { ALLOWED_TRANSITIONS, actorAllowedFor, isTransitionAllowed } from '../../src/modules/bookings/bookings.state.js';
 
 describe('ALLOWED_TRANSITIONS', () => {
   it('allows CREATED → CANCELLED_BY_CUSTOMER and CREATED → DISPATCHED', () => {
@@ -12,8 +12,20 @@ describe('ALLOWED_TRANSITIONS', () => {
   });
 
   it('terminal states have no outgoing transitions', () => {
-    for (const t of ['CLOSED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TECHNICIAN', 'DECLINED_BY_CUSTOMER'] as const) {
+    for (const t of ['CLOSED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TECHNICIAN'] as const) {
       expect(ALLOWED_TRANSITIONS[t]).toEqual([]);
+    }
+  });
+
+  it('DECLINED_BY_CUSTOMER is NOT terminal since B6a — the locked visit fee is still owed', () => {
+    expect(ALLOWED_TRANSITIONS['DECLINED_BY_CUSTOMER']).toEqual(['PAYMENT_RECEIVED']);
+  });
+
+  it('PAYMENT_RECEIVED is SYSTEM-only — no human actor (not even ADMIN) can mark money received', () => {
+    // Golden Rule 2: the webhook (gateway's signed word) is the only path to PAYMENT_RECEIVED.
+    expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(true);
+    for (const kind of ['CUSTOMER', 'TECHNICIAN', 'ADMIN'] as const) {
+      expect(actorAllowedFor('PAYMENT_RECEIVED', kind)).toBe(false);
     }
   });
 

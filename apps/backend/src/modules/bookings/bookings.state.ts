@@ -19,7 +19,7 @@ export const ALLOWED_TRANSITIONS: Record<BookingState, BookingState[]> = {
   CLOSED:                  [],
   CANCELLED_BY_CUSTOMER:   [],
   CANCELLED_BY_TECHNICIAN: [],
-  DECLINED_BY_CUSTOMER:    [],
+  DECLINED_BY_CUSTOMER:    ['PAYMENT_RECEIVED'], // the locked visit fee is still owed (B6a)
 };
 
 export function isTransitionAllowed(from: BookingState, to: BookingState): boolean {
@@ -47,6 +47,7 @@ const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
   REPAIR_IN_PROGRESS:    ['TECHNICIAN'],
   REPAIR_COMPLETE:       ['TECHNICIAN'],
   CUSTOMER_CONFIRMED:    ['TECHNICIAN'], // keystone #2 — the customer's code is the second party
+  PAYMENT_RECEIVED:      ['SYSTEM'], // the gateway's signed capture drives this — never a party
 };
 
 export function actorAllowedFor(to: BookingState, kind: ActorKind): boolean {

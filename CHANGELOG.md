@@ -8,6 +8,61 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-19 — B6a `/code-review` pass (branch finalized, awaiting PR)
+
+- 6 finder angles → ~25 candidates → verified; 4 confirmed bugs fixed (`79ea502`), 284/284 green:
+- **Declined-then-paid estimate hole** — the new `DECLINED_BY_CUSTOMER → PAYMENT_RECEIVED` edge
+  meant a settled declined booking left the estimate's cancelled branch and showed the FULL quoted
+  repair total again. Cancelled branch now also keys on `declinedAt` (+ regression test).
+- **Zero-amount order guard** — when the visit-fee credit covers the whole job the payable is 0;
+  `/pay` now 422s instead of creating a ₹0 gateway order (prod 500) or a 0-amount Payment row that a
+  0-amount capture could "pay" (Golden Rule 1). Zero-payable auto-settlement lands with B6c.
+- **Webhook body now Zod-validated** (envelope + payment entity, `amount` must be a nonneg int) —
+  was a TS cast. This killed a latent MASS-FAIL: an entity missing `order_id` made
+  `payment.failed`'s `updateMany` drop its `razorpayOrderId` filter (Prisma treats `undefined` as
+  no-filter) → every open payment would have been marked FAILED.
+- **Signature compare decodes hex** (was utf8 bytes of the hex string) — casing can never reject a
+  legitimate capture; invalid hex fails closed.
+- Hardening: `captured` PAYMENT_EVENT audit row in the capture tx (one queryable action now holds
+  the full payment timeline); unit test pinning PAYMENT_RECEIVED as SYSTEM-only (ADMIN denied).
+- Refuted (reasoning in the SDD ledger): webhook P2025 retry-loop (FK keeps the row), third-order
+  leak on FAILED rows (409s correctly), TOCTOU dangling CREATED (duplicate_capture flag is the
+  designed mitigation). Backlogged: `receivePayment()` cross-module seam (decide at B6b),
+  anomaly-flag helper, keystone-fixture dedup.
+
+## 2026-07-18 — Booking slice B6a (UPI charge — the first money movement)
+
+- **B6 split** into B6a (UPI charge) / B6b (cash path) / B6c (settlement ledger) — smallest
+  reviewable money surface first. B6a runs entirely on Razorpay TEST keys; live keys swap in
+  post-KYC with zero code change.
+- **`Payment` attempt model** — append-only evidence (no soft-delete; status = lifecycle);
+  `razorpayOrderId`/`razorpayPaymentId` unique = the idempotency anchors. `PAYMENT_EVENT` audit
+  action. Graph: `DECLINED_BY_CUSTOMER → PAYMENT_RECEIVED` opened (**declined visits now pay their
+  locked visit fee** — revenue leak closed); `PAYMENT_RECEIVED` is SYSTEM-only.
+- **PaymentGateway wrapper** (`shared/third-party/razorpay.ts`): Dev fake (deterministic orders +
+  `signPayload` hook so tests sign valid webhooks) + real `razorpay` SDK with LAZY creds (production
+  boots before KYC); timing-safe HMAC-SHA256 webhook verification; optional `RAZORPAY_*` config.
+- **`chargeAmountFor`** — the ONE amount source (Golden Rule 4, snapshots only):
+  CUSTOMER_CONFIRMED → the invariant-locked approved total; DECLINED_BY_CUSTOMER → `visitFeePaise`.
+- **`POST /me/bookings/:id/pay`** — idempotent (open CREATED attempt returns the SAME order;
+  CAPTURED → 409 'already paid', checked BEFORE the state gate so stale post-webhook retries hear
+  the right story); gateway order created before the DB tx (orphaned orders expire gateway-side).
+- **`POST /webhooks/razorpay`** — the HMAC signature over the RAW body IS the auth (scoped raw-body
+  parser; 401 on bad/missing). `payment.captured`: amount-verified (mismatch → flagged audit, NO
+  transition, 200-ack — a tampered/partial capture can never close a booking) → one tx
+  {Payment→CAPTURED + `transitionBooking(PAYMENT_RECEIVED, SYSTEM)` with evidence}; duplicates
+  no-op twice over (status guard + optimistic lock). `payment.failed` → FAILED + re-pay issues a
+  NEW order. Malformed-JSON-with-valid-signature always-ACKs (audit flag — no gateway retry loop).
+  `refund.*` = audited B7 skeleton. **Route exempt from the global rate limiter** (gateway
+  deliveries must never 429 into retry storms; the signature is the gate, Caddy is the DoS
+  backstop) — a plan deviation surfaced by the test run, adjudicated and approved in review.
+- `BookingDto.payment` `{status, method, amountPaise}` — gateway ids never leak to the app.
+- **B4a-token question CLOSED** (decision doc final entry): no charge-time OTP — the completion OTP
+  + the customer's UPI-app authorization are the two confirmations.
+- Subagent-driven with two controller-inline recoveries (session-limited implementers); per-task
+  reviews Approved; 2 Importants fixed in-branch (pay guard ordering; webhook malformed-JSON ACK)
+  + 1 Task-1 test escape (DECLINED no longer terminal in booking-state-unit).
+
 ## 2026-07-13 — Booking slice B5 (repair execution + completion handshake — keystone #2)
 
 - **Both keystone interactions now exist end-to-end**: CREATED → … → CUSTOMER_CONFIRMED is fully

@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-13_
+_Last updated: 2026-07-19_
 
 ---
 
@@ -12,42 +12,51 @@ _Last updated: 2026-07-13_
 **Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3** merged
 to `main`. **Booking module underway** — 7 sub-slices (B1 creation → B2 dispatch → B3 arrival handshake →
 B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); B2 split into B2a (dispatch, merged) /
-B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4a + B4b + shared OTP primitive
-merged (PRs #14/#15/#16). **B5 (repair path + completion handshake, DONE on branch)** — both keystones
-now exist end-to-end; next money-bearing slice is **B6 (payment)**.
+B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4a/B4b/OTP-primitive/B5 merged
+(PRs #14–#17). B6 split into **B6a (UPI charge, DONE on branch)** / B6b (cash path) / B6c (settlement
+ledger). **Money moves for the first time** — on Razorpay test keys until KYC.
 
 ## Active task
-**Booking Slice B5** complete on `feature/booking-b5-completion` — **repair execution + completion
-handshake (keystone #2)**. Full technician-driven repair path: `parts-needed` (CUSTOMER_APPROVED→
-PARTS_REQUESTED, **empty cart → 422** — no dishonest detours; merchant procurement stays
-WhatsApp-manual, states tracked+audited only) → `parts-acquired` → `start-repair` (from
-CUSTOMER_APPROVED or PARTS_ACQUIRED; sets `repairStartedAt`) → `complete-repair`
-(REPAIR_IN_PROGRESS→REPAIR_COMPLETE, **3-repair-photo gate**: all REPAIR_* slots active, row-lock-
-first in-tx read, photoIds in audit evidence; sets `repairCompletedAt`). **PHOTO_WINDOW map** extends
-B4b verbatim: DIAGNOSIS_*→ARRIVED, REPAIR_*→REPAIR_IN_PROGRESS drive sign/confirm's state gate + the
-in-tx freeze — one enum extension, zero new storage code. **The keystone:** customer
-`POST /me/bookings/:id/request-completion-otp` (owner-404, REPAIR_COMPLETE-only 409, **throttled 3
-per 900s → 429** — real SMS in prod, devOtp in dev) mints a 6-digit single-use code to THEIR phone
-via `completion-code.ts` (thin otp-store wrapper, `completion:{bookingId}`); technician
-`POST /technician/jobs/:id/confirm-completion {code}` verifies (4-arm mapping: invalid/exhausted→401,
-no-code→409, single-use, re-mint replaces) → CUSTOMER_CONFIRMED + `confirmedAt` + `codeConfirmed`
-audit evidence. Rule 2 airtight: technician drives the transition ONLY with the customer's code —
-exact mirror of arrival. **OTP-store mint is now ONE atomic Lua script** (INCR+EXPIRE+limit+SET —
-the promised backlog item retired; existing suites passed unchanged as proof). Milestone columns +
-REPAIR_* enum migration on both DBs. B4a approve/decline token RESOLVED: deferred to B6 charge
-(decision doc updated); core-flow OTP digit counts corrected to 6. **262 tests green, tsc clean.**
-Per-task spec+quality reviews all Approved (keystone review: 19/19 spec points, two-sided property
-verified airtight). Final gates DONE (2 Importants + 2 minors fixed in e0de3bb). `/code-review` DONE — 1 real bug fixed (25f466a: approved total drifted mid-repair; estimate quoted-set now PRE_QUOTE-driven + invariance test). Pending PR → `main`. LAUNCH NOTE: completion mint 500s in prod until MSG91 DLT is live (Msg91OtpSender throws — same posture as auth OTP; not a B5 defect).
-**CREATED → … → CUSTOMER_CONFIRMED is now fully drivable via the API — B6 (payment) has its gate.**
-Design: [`docs/designs/2026-07-12-booking-b5-completion-design.md`]; plan:
-[`docs/plans/2026-07-12-booking-b5-completion.md`].
+**Booking Slice B6a** complete on `feature/booking-b6-payment` — **the UPI charge (first money
+movement)**. `Payment` attempt model (append-only evidence; `razorpayOrderId`/`razorpayPaymentId`
+unique idempotency anchors); `shared/third-party/razorpay.ts` PaymentGateway wrapper (Dev fake with
+`signPayload` test hook + real `razorpay` SDK, **lazy creds** — boots before KYC provisions keys;
+timing-safe HMAC verify). `chargeAmountFor` is the ONE amount source: CUSTOMER_CONFIRMED → the
+invariant-locked approved total; **DECLINED_BY_CUSTOMER → the locked visit fee** (graph opened
+DECLINED→PAYMENT_RECEIVED — no more free declined visits); else 409. Customer
+`POST /me/bookings/:id/pay` (owner-404, role-403; **idempotent** — an open CREATED attempt returns
+the SAME order; CAPTURED → 409 'already paid' checked BEFORE the state gate so stale retries hear
+the right story) → `{orderId, amountPaise, keyId}` for checkout. `POST /webhooks/razorpay`
+(**the HMAC signature over the raw body IS the auth** — scoped raw-body parser; route exempt from
+the global rate limiter so gateway deliveries never 429 into retry storms, Caddy is the DoS
+backstop): `payment.captured` → amount-verified (mismatch = flagged audit, NO transition, 200-ack)
+→ one tx {Payment→CAPTURED + PAYMENT_RECEIVED as SYSTEM with evidence}; duplicate deliveries no-op
+(status guard + optimistic lock); `payment.failed` → FAILED + re-pay issues a new order;
+malformed-JSON-with-valid-signature always-ACKs (audit flag, no gateway retry loop); refund.* =
+audited B7 skeleton. `BookingDto.payment` (status/method/amount — no gateway ids). No charge-time
+OTP (B4a-token question CLOSED in the decision doc: completion OTP + UPI-app auth = the two
+confirmations). **All on Razorpay test keys — live keys swap in post-KYC with zero code change.**
+284/284 tests green, tsc clean. Per-task reviews Approved (T3 guard-ordering + T4
+malformed-JSON Importants fixed in-branch; rate-limit exemption deviation adjudicated APPROVED).
+Final gates DONE (duplicate-capture handling fixed in 435d6fe; prisma+golden-rules+fraud-vector
+clean). `/code-review` DONE (79ea502): declined-then-paid estimate hole (declinedAt-aware
+cancelled branch), zero-amount-order 422 guard, webhook envelope/entity now Zod (killed a latent
+mass-FAIL where an entity missing order_id dropped the updateMany filter), hex-decoded signature
+compare, 'captured' PAYMENT_EVENT timeline row, SYSTEM-only actor unit test. **Awaiting PR →
+`main`. Next: B6b (cash path), B6c (settlement ledger — incl. zero-payable auto-settlement).**
+Design: [`docs/designs/2026-07-18-booking-b6a-upi-payment-design.md`]; plan:
+[`docs/plans/2026-07-18-booking-b6a-upi-payment.md`].
 
 ## Last shipped
-- **Booking Slice B5** (`apps/backend`, repair path + completion handshake): parts-needed/acquired +
-  start-repair + complete-repair (3-repair-photo gate); PHOTO_WINDOW per-kind capture windows;
-  completion OTP handshake (customer mint throttled 3/900s, technician entry, single-use 6-digit) →
-  CUSTOMER_CONFIRMED + confirmedAt; atomic Lua OTP mint (backlog retired); milestone columns +
-  REPAIR_* enum migration. Both keystones end-to-end. 262 tests. On branch.
+- **Booking Slice B6a** (`apps/backend`, UPI charge): Payment attempt model + PaymentGateway wrapper
+  (lazy-cred Razorpay, timing-safe HMAC); chargeAmountFor (approved total / declined visit fee);
+  idempotent pay endpoint; signature-authed amount-verified duplicate-safe webhook →
+  PAYMENT_RECEIVED as SYSTEM; payment in customer DTO. Test keys until KYC. On branch.
+- **Booking Slice B5** — **merged to `main`** (PR #17, squash `d2f54e5`): repair path
+  (parts-needed/acquired + start-repair + complete-repair with the 3-repair-photo gate);
+  PHOTO_WINDOW per-kind capture windows; completion OTP handshake (customer mint throttled 3/900s,
+  technician entry, single-use 6-digit) → CUSTOMER_CONFIRMED + confirmedAt; atomic Lua OTP mint;
+  milestone columns + REPAIR_* enum migration. Both keystones end-to-end. 262 tests.
 - **Booking Slice B4b** — **merged to `main`** (PR #16, squash `d225f10`): PhotoStorage R2 wrapper
   (presigned direct PUT jpeg-only/1MB-signed/24h, HEAD verify, 15-min signed reads, Dev stub for
   tests, optional R2_* keys, lazy-cred boot safety); `PhotoEvidence` slot model + `PHOTO_UPLOADED`
@@ -144,11 +153,11 @@ Design: [`docs/designs/2026-07-12-booking-b5-completion-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **Final reviews + `/code-review` + PR + merge** `feature/booking-b5-completion` → `main`.
-2. **B6 — payment**: Razorpay charge at CUSTOMER_CONFIRMED (order → payment → webhook →
-   PAYMENT_RECEIVED → CLOSED; Route splits later per vendor approval), cash-path decision,
-   **re-evaluate the customer confirmation token at the charge step** (B4a decision resolution).
-   Provision the real Cloudflare R2 account + creds (R2_* env) before launch.
+1. **Final reviews + `/code-review` + PR + merge** `feature/booking-b6-payment` → `main` (B6a).
+2. **B6b — cash path** (amount confirm + receipt OTP via the shared primitive + technician cash-debt
+   tracking + ₹3000/24h velocity cap), then **B6c — settlement ledger** (manual payouts until Route
+   approval; CLOSED wiring with the 48h dispute window). Apply for Razorpay KYC + Route NOW if not
+   already in flight. Provision the real Cloudflare R2 account + creds (R2_* env) before launch.
 3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
    admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
    module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;

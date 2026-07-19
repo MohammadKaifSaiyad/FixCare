@@ -195,6 +195,7 @@ enum AuditAction {
   BOOKING_STATE_CHANGED
   DIAGNOSIS_UPDATED
   PHOTO_UPLOADED
+  PAYMENT_EVENT
 }
 
 // =============================================================================
@@ -337,6 +338,7 @@ model Booking {
   confirmedAt        DateTime? // completion OTP verified — dispute-resolution Tier-1 keys off this
   bookingParts       BookingPart[]
   photos             PhotoEvidence[]
+  payments           Payment[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
@@ -385,6 +387,36 @@ model PhotoEvidence {
   updatedAt  DateTime  @updatedAt
 
   @@index([bookingId, kind])
+}
+
+enum PaymentMethod {
+  UPI
+  // B6b appends: CASH
+}
+
+enum PaymentStatus {
+  CREATED // order created, awaiting the customer's UPI approval
+  CAPTURED // gateway confirmed capture — the money moved
+  FAILED // gateway reported failure — customer may retry (new order)
+}
+
+// Payment attempts are append-only EVIDENCE (no soft-delete; status is the lifecycle).
+// amountPaise snapshots the charge at order time — the ONLY amount we accept capture for.
+model Payment {
+  id                String        @id @default(uuid())
+  bookingId         String
+  booking           Booking       @relation(fields: [bookingId], references: [id])
+  method            PaymentMethod
+  status            PaymentStatus @default(CREATED)
+  amountPaise       Int
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?       @unique // set on capture; the webhook idempotency anchor
+  failureReason     String?
+  capturedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([bookingId])
 }
 
 model BookingPart {

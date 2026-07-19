@@ -22,6 +22,13 @@ describe('computeEstimate', () => {
     expect(computeEstimate({ laborPaise: 60000, visitFeePaise: 14900, state: 'CUSTOMER_APPROVED' }, []))
       .toMatchObject({ partsPaise: 0, visitFeeCreditPaise: 14900, totalPayablePaise: 45100 });
   });
+  it('a DECLINED booking stays 0-payable even after its visit-fee settlement (PAYMENT_RECEIVED)', () => {
+    // B6a opens DECLINED_BY_CUSTOMER → PAYMENT_RECEIVED; the state alone no longer identifies a
+    // declined booking, but declinedAt does — the repair total must never reappear.
+    const e = computeEstimate({ laborPaise: 60000, visitFeePaise: 14900, state: 'PAYMENT_RECEIVED', declinedAt: new Date() }, cart);
+    expect(e.totalPayablePaise).toBe(0);
+    expect(e.visitFeeCreditPaise).toBe(0);
+  });
   it('the approved total NEVER drifts as the repair progresses (B5 states keep the credit)', () => {
     // Golden Rule 4: the number the customer approved IS the price. Every post-quote state must
     // show the same total — a booking mid-repair must not silently gain back the visit fee.

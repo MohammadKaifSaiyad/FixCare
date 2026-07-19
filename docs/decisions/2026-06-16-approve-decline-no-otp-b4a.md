@@ -58,3 +58,11 @@ customer's phone received. A second OTP at approve would double per-booking fric
 pre-payment action that already has actor separation and frozen-cart audit evidence.
 **B6 (the charge) re-evaluates binding a token at the charge step**, per this decision's
 original framing ("the charge-gating action").
+
+---
+
+## Final (2026-07-18, B6a)
+
+No charge-time OTP. The completion OTP (B5) plus the customer's own UPI-app authorization are the
+two confirmations; a third adds friction without evidence value. Cash (B6b) has its own receipt
+OTP by design. This closes the question this document opened.
