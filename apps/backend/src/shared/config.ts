@@ -23,6 +23,10 @@ const ConfigSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  // Cash path (B6b). Flat new-technician debt limit — becomes a computed trust-ladder value when
+  // the trust module lands. Velocity cap is per-technician over a trailing 24h window.
+  CASH_DEBT_LIMIT_PAISE: z.coerce.number().int().positive().default(50000),
+  CASH_VELOCITY_CAP_PAISE: z.coerce.number().int().positive().default(300000),
   SEED_ADMIN_EMAIL: z.email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
 });

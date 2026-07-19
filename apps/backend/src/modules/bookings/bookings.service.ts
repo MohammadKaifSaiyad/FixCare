@@ -246,7 +246,7 @@ export async function initiatePayment(userId: string, id: string): Promise<{ ord
   // retrying /pay must hear "already paid", so the CAPTURED check must precede the state check.
   const existing = await prisma.payment.findFirst({ where: { bookingId: id, method: 'UPI' }, orderBy: { createdAt: 'desc' } });
   if (existing?.status === 'CAPTURED') throw new ConflictError('This booking is already paid');
-  if (existing?.status === 'CREATED') {
+  if (existing?.status === 'CREATED' && existing.razorpayOrderId) {
     return { orderId: existing.razorpayOrderId, amountPaise: existing.amountPaise, keyId: config.RAZORPAY_KEY_ID ?? null };
   }
 
