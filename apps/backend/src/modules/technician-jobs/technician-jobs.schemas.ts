@@ -52,3 +52,6 @@ export type ConfirmPhotoBody = z.infer<typeof confirmPhotoBody>;
 
 export const confirmCompletionBody = z.object({ code: z.string().length(6) }).strict();
 export type ConfirmCompletionBody = z.infer<typeof confirmCompletionBody>;
+
+export const confirmCashBody = z.object({ code: z.string().length(6) }).strict();
+export type ConfirmCashBody = z.infer<typeof confirmCashBody>;

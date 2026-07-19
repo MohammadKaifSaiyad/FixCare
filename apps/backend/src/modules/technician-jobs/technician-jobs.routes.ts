@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { ValidationError, ForbiddenError } from '../../shared/errors.js';
-import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart, signPhotoUpload, confirmPhoto, partsNeeded, partsAcquired, startRepair, completeRepair, confirmCompletion } from './technician-jobs.service.js';
-import { arriveBody, diagnoseBody, addPartBody, signPhotoBody, confirmPhotoBody, confirmCompletionBody } from './technician-jobs.schemas.js';
+import { listAvailableJobs, listMyJobs, acceptJob, skipJob, enRouteJob, arriveJob, diagnoseJob, addPart, removePart, signPhotoUpload, confirmPhoto, partsNeeded, partsAcquired, startRepair, completeRepair, confirmCompletion, confirmCashPayment } from './technician-jobs.service.js';
+import { arriveBody, diagnoseBody, addPartBody, signPhotoBody, confirmPhotoBody, confirmCompletionBody, confirmCashBody } from './technician-jobs.schemas.js';
 
 function requireTechnicianRole(req: { user?: { role: string } }): void {
   if (req.user?.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
@@ -102,5 +102,12 @@ export async function registerTechnicianJobRoutes(app: FastifyInstance) {
     const p = confirmCompletionBody.safeParse(req.body);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     return reply.send(await confirmCompletion(req.user!.id, (req.params as { id: string }).id, p.data));
+  });
+
+  app.post('/technician/jobs/:id/confirm-cash', { preHandler: [requireAuth] }, async (req, reply) => {
+    requireTechnicianRole(req);
+    const p = confirmCashBody.safeParse(req.body);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await confirmCashPayment(req.user!.id, (req.params as { id: string }).id, p.data));
   });
 }
