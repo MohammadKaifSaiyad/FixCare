@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-18_
+_Last updated: 2026-07-19_
 
 ---
 
@@ -36,9 +36,14 @@ malformed-JSON-with-valid-signature always-ACKs (audit flag, no gateway retry lo
 audited B7 skeleton. `BookingDto.payment` (status/method/amount — no gateway ids). No charge-time
 OTP (B4a-token question CLOSED in the decision doc: completion OTP + UPI-app auth = the two
 confirmations). **All on Razorpay test keys — live keys swap in post-KYC with zero code change.**
-281/281 tests green, tsc clean. Per-task reviews Approved (T3 guard-ordering + T4
+284/284 tests green, tsc clean. Per-task reviews Approved (T3 guard-ordering + T4
 malformed-JSON Importants fixed in-branch; rate-limit exemption deviation adjudicated APPROVED).
-Final gates DONE (duplicate-capture handling fixed in 435d6fe; prisma+golden-rules+fraud-vector clean). Pending `/code-review` → PR → `main`. **Next: B6b (cash path), B6c (settlement ledger).**
+Final gates DONE (duplicate-capture handling fixed in 435d6fe; prisma+golden-rules+fraud-vector
+clean). `/code-review` DONE (79ea502): declined-then-paid estimate hole (declinedAt-aware
+cancelled branch), zero-amount-order 422 guard, webhook envelope/entity now Zod (killed a latent
+mass-FAIL where an entity missing order_id dropped the updateMany filter), hex-decoded signature
+compare, 'captured' PAYMENT_EVENT timeline row, SYSTEM-only actor unit test. **Awaiting PR →
+`main`. Next: B6b (cash path), B6c (settlement ledger — incl. zero-payable auto-settlement).**
 Design: [`docs/designs/2026-07-18-booking-b6a-upi-payment-design.md`]; plan:
 [`docs/plans/2026-07-18-booking-b6a-upi-payment.md`].
 

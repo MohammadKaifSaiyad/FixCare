@@ -8,6 +8,28 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-19 — B6a `/code-review` pass (branch finalized, awaiting PR)
+
+- 6 finder angles → ~25 candidates → verified; 4 confirmed bugs fixed (`79ea502`), 284/284 green:
+- **Declined-then-paid estimate hole** — the new `DECLINED_BY_CUSTOMER → PAYMENT_RECEIVED` edge
+  meant a settled declined booking left the estimate's cancelled branch and showed the FULL quoted
+  repair total again. Cancelled branch now also keys on `declinedAt` (+ regression test).
+- **Zero-amount order guard** — when the visit-fee credit covers the whole job the payable is 0;
+  `/pay` now 422s instead of creating a ₹0 gateway order (prod 500) or a 0-amount Payment row that a
+  0-amount capture could "pay" (Golden Rule 1). Zero-payable auto-settlement lands with B6c.
+- **Webhook body now Zod-validated** (envelope + payment entity, `amount` must be a nonneg int) —
+  was a TS cast. This killed a latent MASS-FAIL: an entity missing `order_id` made
+  `payment.failed`'s `updateMany` drop its `razorpayOrderId` filter (Prisma treats `undefined` as
+  no-filter) → every open payment would have been marked FAILED.
+- **Signature compare decodes hex** (was utf8 bytes of the hex string) — casing can never reject a
+  legitimate capture; invalid hex fails closed.
+- Hardening: `captured` PAYMENT_EVENT audit row in the capture tx (one queryable action now holds
+  the full payment timeline); unit test pinning PAYMENT_RECEIVED as SYSTEM-only (ADMIN denied).
+- Refuted (reasoning in the SDD ledger): webhook P2025 retry-loop (FK keeps the row), third-order
+  leak on FAILED rows (409s correctly), TOCTOU dangling CREATED (duplicate_capture flag is the
+  designed mitigation). Backlogged: `receivePayment()` cross-module seam (decide at B6b),
+  anomaly-flag helper, keystone-fixture dedup.
+
 ## 2026-07-18 — Booking slice B6a (UPI charge — the first money movement)
 
 - **B6 split** into B6a (UPI charge) / B6b (cash path) / B6c (settlement ledger) — smallest
