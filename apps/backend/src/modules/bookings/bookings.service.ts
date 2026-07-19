@@ -302,6 +302,11 @@ export async function initiateCashPayment(userId: string, id: string): Promise<{
   // Reuse the open CASH attempt (idempotent like /pay — double-taps never duplicate rows).
   const payment = await prisma.$transaction(async (tx) => {
     const open = await tx.payment.findFirst({ where: { bookingId: id, method: 'CASH', status: 'CREATED' } });
+    // Reuse is deliberate on BOTH counts: no second cash_initiated audit (a re-mint is a UX retry,
+    // not a new financial act — one attempt, one event) and the OTP payload below re-pins the
+    // EXISTING row's amount, not the recomputed one. Both amounts are identical while payable
+    // states freeze the total; if a future slice lets the payable change post-initiation, the open
+    // attempt must be superseded (FAILED + new row), not reused.
     if (open) return open;
     const row = await tx.payment.create({ data: { bookingId: id, method: 'CASH', amountPaise } });
     await tx.auditLog.create({

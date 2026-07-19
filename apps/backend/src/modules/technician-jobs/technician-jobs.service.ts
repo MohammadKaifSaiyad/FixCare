@@ -352,6 +352,10 @@ export async function confirmCashPayment(userId: string, bookingId: string, body
     if (t.cashDebtPaise > config.CASH_DEBT_LIMIT_PAISE) {
       throw new UnprocessableError('Outstanding cash debt limit reached — please pay by UPI');
     }
+    // Assumes READ COMMITTED (Postgres default): the row lock above serializes same-technician
+    // captures, so this aggregate reads every PRIOR capture committed. Under REPEATABLE READ the
+    // re-read would see a stale snapshot and the cap could be jointly exceeded — do not change
+    // the DB isolation level without revisiting this.
     if ((await cashCollectedLast24hPaise(tx, tech.id)) + amountPaise > config.CASH_VELOCITY_CAP_PAISE) {
       throw new UnprocessableError('Daily cash collection limit reached — please pay by UPI');
     }
