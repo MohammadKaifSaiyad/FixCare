@@ -37,7 +37,7 @@ describe('POST /technician/jobs/:id/confirm-cash', () => {
     const { devOtp, amountPaise } = await initiate(c.token, bookingId);
     const res = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/confirm-cash`, headers: auth(t.token), payload: { code: devOtp } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise: 45100 });
+    expect(res.json()).toEqual({ id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise: amountPaise });
     const payment = await prisma.payment.findFirst({ where: { bookingId } });
     expect(payment!.status).toBe('CAPTURED');
     expect(payment!.capturedAt).not.toBeNull();

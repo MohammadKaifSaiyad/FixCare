@@ -350,15 +350,15 @@ export async function confirmCashPayment(userId: string, bookingId: string, body
       select: { cashDebtPaise: true },
     });
     if (t.cashDebtPaise > config.CASH_DEBT_LIMIT_PAISE) {
-      throw new UnprocessableError('Cash limit reached — please pay by UPI');
+      throw new UnprocessableError('Outstanding cash debt limit reached — please pay by UPI');
     }
     if ((await cashCollectedLast24hPaise(tx, tech.id)) + amountPaise > config.CASH_VELOCITY_CAP_PAISE) {
-      throw new UnprocessableError('Cash limit reached — please pay by UPI');
+      throw new UnprocessableError('Daily cash collection limit reached — please pay by UPI');
     }
     // Keyed on CREATED: a superseded/settled attempt can never capture twice.
     const updated = await tx.payment.updateMany({ where: { id: paymentId, status: 'CREATED' }, data: { status: 'CAPTURED', capturedAt: new Date() } });
     if (updated.count === 0) throw new ConflictError('This payment is no longer open');
-    // Optimistic lock inside: a late UPI capture racing this rolls the WHOLE tx back — no debt.
+    // Payment guard (CREATED status) + booking state guard: either race-loss rolls back the WHOLE tx including debt increment.
     await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { method: 'CASH', amountPaise, codeConfirmed: true });
     await tx.auditLog.create({
       data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { event: 'cash_received', bookingId, paymentId, amountPaise, technicianId: tech.id } },
