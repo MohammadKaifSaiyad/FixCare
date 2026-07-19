@@ -8,6 +8,32 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-19 — B6b final gates + `/code-review` pass (branch finalized, awaiting PR)
+
+- **Final gates:** opus whole-branch "Ready to merge" — cross-method money interleavings verified
+  both directions (UPI-wins → confirm-cash 409s with zero debt; cash-wins → late UPI webhook lands
+  in B6a's `duplicate_capture` machinery unchanged); concurrency sound under READ COMMITTED via the
+  increment-first row lock (assumption now documented in-code, `1a8a085`). prisma / golden-rules /
+  fraud-vector all clean; B6c carry-forwards logged (add `CHECK (cashDebtPaise >= 0)` WITH the
+  settlement decrement; `@@index([method,status,capturedAt])` on Payment pre-scale; debt-aging
+  >7d auto-restrict rule once settlement exists).
+- **`/code-review` (8 finder angles → verified → fixed in `a7e220e`), 304/304 green:**
+- **DTO capture-masking (CONFIRMED)** — a stale CASH CREATED attempt created after a UPI order
+  won the DTO's take-1-latest pick when the UPI webhook then captured: a PAID booking showed
+  `payment {status: CREATED, method: CASH}`. The DTO now prefers the CAPTURED payment, else the
+  latest attempt (+ regression tests in their own file).
+- **Deleted-technician dead-end (CONFIRMED)** — cash initiation didn't mirror confirm-cash's
+  `deletedAt`/VERIFIED filters, so a customer could mint a receipt OTP the capture endpoint would
+  reject forever. Initiation now 422s with the UPI fallback before creating anything.
+- **Payload positivity (hardened)** — `verifyCashReceiptCode` accepted zero/negative/float amounts
+  (unconstructible via the API today, but the value drives the debt increment); now a positive
+  integer or fail-closed invalid (+ unit tests).
+- Refuted with evidence in the ledger: TECHNICIAN actor bypass (all transitionBooking call sites
+  traced — only the OTP-gated path drives PAYMENT_RECEIVED), UPI-null-orderId second order
+  (unconstructible), OTP burn in the pre-tx race window (documented fails-safe trade-off).
+  Backlogged: orphaned CASH CREATED cleanup (B6c sweep), `cashDebtPaise` on the technician job
+  DTO (design deviation, folds into B6c), cleanup/dedup items.
+
 ## 2026-07-19 — Booking slice B6b (cash payment path)
 
 - **`PaymentMethod.CASH`** added; `Payment.razorpayOrderId` made nullable (cash has no gateway

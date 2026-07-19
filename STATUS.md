@@ -31,9 +31,13 @@ Technician `POST /technician/jobs/:id/confirm-cash`: OTP verify (payload pins pa
 at initiation) → one tx: debt increment FIRST (row update = serializing lock) → both gates
 re-checked post-lock (enforcement) → Payment CAPTURED keyed on CREATED → PAYMENT_RECEIVED as
 TECHNICIAN with evidence → `cash_received` audit. Debt rollback on any failure. Response carries
-the running `cashDebtPaise` balance. 297/297 tests green, tsc clean. Per-task reviews all Approved
-(T3 re-review after concurrency model fix; Important guard-comment + distinct-422-messages fixed
-04c22ce). **Awaiting final reviews + `/code-review` + PR → `main`.**
+the running `cashDebtPaise` balance. 304/304 tests green, tsc clean. Per-task reviews all Approved.
+Final gates DONE: opus whole-branch "Ready to merge" (cross-method interleavings + concurrency
+verified; hardening 1a8a085); prisma/golden-rules/fraud-vector clean (B6c carry-forwards logged in
+the SDD ledger: CHECK cashDebtPaise>=0 with the settlement decrement, Payment velocity index,
+debt-aging rule). `/code-review` DONE (a7e220e): DTO capture-masking fixed (CAPTURED wins over
+take-1-latest), deleted-technician initiation dead-end 422, payload positivity fail-closed.
+**Awaiting PR → `main`. Next: B6c (settlement ledger + CLOSED wiring).**
 Design: [`docs/designs/2026-07-19-booking-b6b-cash-design.md`]; plan:
 [`docs/plans/2026-07-19-booking-b6b-cash.md`].
 
@@ -41,8 +45,8 @@ Design: [`docs/designs/2026-07-19-booking-b6b-cash-design.md`]; plan:
 - **Booking Slice B6b** (`apps/backend`, cash path): CASH payment method; receipt OTP handshake
   (customer mints via shared primitive, technician enters); `Technician.cashDebtPaise` running
   balance; UX-level + post-lock enforcement debt + velocity gates; idempotent CASH attempt;
-  PAYMENT_RECEIVED as TECHNICIAN with evidence; `cash_initiated`/`cash_received` audits. 297 tests.
-  On branch — pending final reviews + `/code-review` + PR.
+  PAYMENT_RECEIVED as TECHNICIAN with evidence; `cash_initiated`/`cash_received` audits. 304 tests.
+  On branch — all gates passed, awaiting PR.
 - **Booking Slice B6a** — **merged to `main`** (PR #18, squash `1123a6f`): Payment attempt model +
   PaymentGateway wrapper (lazy-cred Razorpay, timing-safe HMAC); chargeAmountFor (approved total /
   declined visit fee); idempotent pay endpoint; signature-authed amount-verified duplicate-safe
