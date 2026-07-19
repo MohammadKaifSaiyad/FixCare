@@ -8,6 +8,62 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-19 — B6b final gates + `/code-review` pass (branch finalized, awaiting PR)
+
+- **Final gates:** opus whole-branch "Ready to merge" — cross-method money interleavings verified
+  both directions (UPI-wins → confirm-cash 409s with zero debt; cash-wins → late UPI webhook lands
+  in B6a's `duplicate_capture` machinery unchanged); concurrency sound under READ COMMITTED via the
+  increment-first row lock (assumption now documented in-code, `1a8a085`). prisma / golden-rules /
+  fraud-vector all clean; B6c carry-forwards logged (add `CHECK (cashDebtPaise >= 0)` WITH the
+  settlement decrement; `@@index([method,status,capturedAt])` on Payment pre-scale; debt-aging
+  >7d auto-restrict rule once settlement exists).
+- **`/code-review` (8 finder angles → verified → fixed in `a7e220e`), 304/304 green:**
+- **DTO capture-masking (CONFIRMED)** — a stale CASH CREATED attempt created after a UPI order
+  won the DTO's take-1-latest pick when the UPI webhook then captured: a PAID booking showed
+  `payment {status: CREATED, method: CASH}`. The DTO now prefers the CAPTURED payment, else the
+  latest attempt (+ regression tests in their own file).
+- **Deleted-technician dead-end (CONFIRMED)** — cash initiation didn't mirror confirm-cash's
+  `deletedAt`/VERIFIED filters, so a customer could mint a receipt OTP the capture endpoint would
+  reject forever. Initiation now 422s with the UPI fallback before creating anything.
+- **Payload positivity (hardened)** — `verifyCashReceiptCode` accepted zero/negative/float amounts
+  (unconstructible via the API today, but the value drives the debt increment); now a positive
+  integer or fail-closed invalid (+ unit tests).
+- Refuted with evidence in the ledger: TECHNICIAN actor bypass (all transitionBooking call sites
+  traced — only the OTP-gated path drives PAYMENT_RECEIVED), UPI-null-orderId second order
+  (unconstructible), OTP burn in the pre-tx race window (documented fails-safe trade-off).
+  Backlogged: orphaned CASH CREATED cleanup (B6c sweep), `cashDebtPaise` on the technician job
+  DTO (design deviation, folds into B6c), cleanup/dedup items.
+
+## 2026-07-19 — Booking slice B6b (cash payment path)
+
+- **`PaymentMethod.CASH`** added; `Payment.razorpayOrderId` made nullable (cash has no gateway
+  order); **`Technician.cashDebtPaise`** Int column tracks the running platform-debt balance.
+  Migration `payment_cash` applied on both DBs. Config keys: `CASH_DEBT_LIMIT_PAISE` (flat
+  ₹500 new-tech debt limit) + `CASH_VELOCITY_CAP_PAISE` (₹3000 24h trailing window).
+- **`ALLOWED_ACTORS.PAYMENT_RECEIVED`** widened: SYSTEM (UPI webhook) + TECHNICIAN (cash confirm).
+  Cash: the technician drives the PAYMENT_RECEIVED transition ONLY with a receipt OTP minted to
+  the customer — the two-sided confirmation (Golden Rule 2 mirror of B5's completion handshake).
+- **`POST /me/bookings/:id/pay-cash`** (customer): any-method already-CAPTURED → 409; `chargeAmountFor`
+  for the amount (same as UPI — CUSTOMER_CONFIRMED → approved total; DECLINED → visit fee); zero-payable
+  → 422; UX-level debt gate (running balance + new charge > debt limit → 422) + velocity gate (24h
+  trailing cash total > cap → 422); idempotent CASH attempt row (re-initiation returns the existing
+  CREATED row, skipping a second OTP send); receipt OTP minted via `shared/auth/otp-store` with
+  3/900s send throttle → 429 (payload pins paymentId + amount at initiation); `cash_initiated` audit
+  in-tx. `/pay` (UPI) also widened to 409 'already paid' on any-method CAPTURED row.
+- **`POST /technician/jobs/:id/confirm-cash`** (technician): OTP verify against the pinned payload →
+  confirmed paymentId + amount before the tx opens; one tx: debt increment FIRST (the `UPDATE
+  Technician SET cashDebtPaise += amount WHERE id = ?` is the serializing row lock) → both gates
+  re-checked post-lock (this is the enforcement read, not just UX) → Payment CAPTURED keyed on
+  CREATED → `transitionBooking(PAYMENT_RECEIVED, TECHNICIAN)` with evidence → `cash_received` audit.
+  Any failure rolls back the debt increment. Response carries the updated `cashDebtPaise` balance.
+- READ COMMITTED isolation assumption behind the in-tx velocity re-read documented; **OTP consumed
+  pre-tx** (verify consumes the code before the tx opens — fails-safe: a tx rollback cannot re-use
+  the code, the technician requests a fresh initiation).
+- Deferred by design: cash settlement / repayment + accept-gate + CLOSED (B6c), trust-ladder limits
+  (trust module), ₹20 UPI discount (pricing slice), mismatch auto-dispute (B7).
+- Per-task reviews all Approved (T3 re-review after concurrency model fix; guard-comment accuracy
+  + distinct 422 messages + test hardcode fixed in `04c22ce`). 297/297 tests green, tsc clean.
+
 ## 2026-07-19 — B6a `/code-review` pass (branch finalized, awaiting PR)
 
 - 6 finder angles → ~25 candidates → verified; 4 confirmed bugs fixed (`79ea502`), 284/284 green:

@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type PaymentStatus, type PaymentMethod } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ForbiddenError, NotFoundError, UnprocessableError, ConflictError, UnauthorizedError, TooManyRequestsError } from '../../shared/errors.js';
 import { resolvePincode } from '../addresses/serviceability.service.js';
@@ -6,9 +6,10 @@ import { generateBookingNumber } from './bookings.number.js';
 import { transitionBooking } from './bookings.state.js';
 import { verifyArrivalCode } from './arrival-code.js';
 import { mintCompletionCode } from './completion-code.js';
+import { mintCashReceiptCode, cashCollectedLast24hPaise } from './cash.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
-import { toBookingDto, toPhotoSummaries, type BookingDto } from './bookings.types.js';
+import { toBookingDto, toPhotoSummaries, type BookingDto, type PaymentSummary } from './bookings.types.js';
 import { sumParts } from './estimate.js';
 import { chargeAmountFor } from './charge.js';
 import { paymentGateway } from '../../shared/third-party/razorpay.js';
@@ -93,13 +94,22 @@ export async function createBooking(userId: string, body: CreateBookingBody): Pr
   throw new Error('Could not generate a unique booking number');
 }
 
+/** Pick the payment the customer should see: the CAPTURED one if any, else the latest attempt.
+ *  take-1-latest alone is WRONG since B6b: a stale CASH CREATED attempt (created after the UPI
+ *  order) would mask a UPI capture — a PAID booking showing a pending payment. Attempts per
+ *  booking are bounded tiny, so fetching all and picking here is cheap. */
+function pickPaymentSummary(payments: { status: PaymentStatus; method: PaymentMethod; amountPaise: number }[]): PaymentSummary | null {
+  const p = payments.find((x) => x.status === 'CAPTURED') ?? payments[0];
+  return p ? { status: p.status, method: p.method, amountPaise: p.amountPaise } : null;
+}
+
 export async function listBookings(userId: string): Promise<BookingDto[]> {
   const { id: customerId } = await requireCustomer(userId);
   // include technician + cart so the list's estimate/diagnosis match the detail view (getBooking).
   const rows = await prisma.booking.findMany({
     where: { customerId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' } } },
   });
   return Promise.all(rows.map(async (b) =>
     toBookingDto(
@@ -107,7 +117,7 @@ export async function listBookings(userId: string): Promise<BookingDto[]> {
       b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined,
       b.bookingParts,
       await toPhotoSummaries(b.photos),
-      b.payments[0] ? { status: b.payments[0].status, method: b.payments[0].method, amountPaise: b.payments[0].amountPaise } : null,
+      pickPaymentSummary(b.payments),
     ),
   ));
 }
@@ -117,7 +127,7 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' } } },
   });
   if (!b) throw new NotFoundError('Booking not found');
   return toBookingDto(
@@ -125,7 +135,7 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
     b.technician ? { name: b.technician.name, phone: b.technician.user.phone } : undefined,
     b.bookingParts,
     await toPhotoSummaries(b.photos),
-    b.payments[0] ? { status: b.payments[0].status, method: b.payments[0].method, amountPaise: b.payments[0].amountPaise } : null,
+    pickPaymentSummary(b.payments),
   );
 }
 
@@ -241,12 +251,13 @@ export async function initiatePayment(userId: string, id: string): Promise<{ ord
   });
   if (!booking) throw new NotFoundError('Booking not found');
 
-  // Existing-attempt guards FIRST: once the webhook advances the booking to PAYMENT_RECEIVED,
-  // chargeAmountFor would 409 with the wrong story ("not awaiting payment") — a stale client
-  // retrying /pay must hear "already paid", so the CAPTURED check must precede the state check.
-  const existing = await prisma.payment.findFirst({ where: { bookingId: id, method: 'UPI' }, orderBy: { createdAt: 'desc' } });
-  if (existing?.status === 'CAPTURED') throw new ConflictError('This booking is already paid');
-  if (existing?.status === 'CREATED') {
+  // Existing-attempt guards FIRST: once the booking is paid (either method), chargeAmountFor
+  // would 409 with the wrong story ("not awaiting payment") — a stale retry must hear "already
+  // paid". CAPTURED is method-agnostic: a cash-paid booking rejects /pay the same way.
+  const captured = await prisma.payment.findFirst({ where: { bookingId: id, status: 'CAPTURED' } });
+  if (captured) throw new ConflictError('This booking is already paid');
+  const existing = await prisma.payment.findFirst({ where: { bookingId: id, method: 'UPI', status: 'CREATED' }, orderBy: { createdAt: 'desc' } });
+  if (existing?.razorpayOrderId) {
     return { orderId: existing.razorpayOrderId, amountPaise: existing.amountPaise, keyId: config.RAZORPAY_KEY_ID ?? null };
   }
 
@@ -268,4 +279,63 @@ export async function initiatePayment(userId: string, id: string): Promise<{ ord
     });
   });
   return { orderId, amountPaise, keyId: config.RAZORPAY_KEY_ID ?? null };
+}
+
+/** Customer confirms "I will pay ₹X cash" → gates checked → CASH attempt + receipt OTP minted to
+ *  THEIR phone. The technician can only capture by hearing this code from the customer (Rule 2).
+ *  Idempotent on the attempt row; each call re-mints (send-throttled 3/900s). */
+export async function initiateCashPayment(userId: string, id: string): Promise<{ amountPaise: number; devOtp?: string }> {
+  const { id: customerId } = await requireCustomer(userId);
+  const booking = await prisma.booking.findFirst({
+    where: { id, customerId, deletedAt: null },
+    include: { bookingParts: true, customer: { include: { user: true } } },
+  });
+  if (!booking) throw new NotFoundError('Booking not found');
+
+  const captured = await prisma.payment.findFirst({ where: { bookingId: id, status: 'CAPTURED' } });
+  if (captured) throw new ConflictError('This booking is already paid');
+
+  const amountPaise = chargeAmountFor(booking, booking.bookingParts); // 409s on non-payable states
+  if (amountPaise === 0) throw new UnprocessableError('Nothing is payable for this booking');
+  if (!booking.technicianId) throw new ConflictError('Booking is not awaiting payment'); // unreachable in payable states; narrows the type
+
+  // Mirror confirm-cash's requireTechnician filters (deletedAt + VERIFIED): if the assigned
+  // technician can no longer capture, initiating would mint an OTP that can NEVER be entered —
+  // a dead-end the customer can't diagnose. Fail here with the UPI fallback instead.
+  const tech = await prisma.technician.findFirst({
+    where: { id: booking.technicianId, deletedAt: null, status: 'VERIFIED' },
+    select: { cashDebtPaise: true },
+  });
+  if (!tech) throw new UnprocessableError('Cash is unavailable for this booking — please pay by UPI');
+
+  // UX-level gate checks — the ENFORCEMENT re-runs inside the capture tx post-lock (Task 3).
+  if (tech.cashDebtPaise + amountPaise > config.CASH_DEBT_LIMIT_PAISE) {
+    throw new UnprocessableError('Cash limit reached for this technician — please pay by UPI');
+  }
+  if ((await cashCollectedLast24hPaise(prisma, booking.technicianId)) + amountPaise > config.CASH_VELOCITY_CAP_PAISE) {
+    throw new UnprocessableError('Cash limit reached for this technician — please pay by UPI');
+  }
+
+  // Reuse the open CASH attempt (idempotent like /pay — double-taps never duplicate rows).
+  const payment = await prisma.$transaction(async (tx) => {
+    const open = await tx.payment.findFirst({ where: { bookingId: id, method: 'CASH', status: 'CREATED' } });
+    // Reuse is deliberate on BOTH counts: no second cash_initiated audit (a re-mint is a UX retry,
+    // not a new financial act — one attempt, one event) and the OTP payload below re-pins the
+    // EXISTING row's amount, not the recomputed one. Both amounts are identical while payable
+    // states freeze the total; if a future slice lets the payable change post-initiation, the open
+    // attempt must be superseded (FAILED + new row), not reused.
+    if (open) return open;
+    const row = await tx.payment.create({ data: { bookingId: id, method: 'CASH', amountPaise } });
+    await tx.auditLog.create({
+      data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { bookingId: id, event: 'cash_initiated', amountPaise } },
+    });
+    return row;
+  });
+
+  const r = await mintCashReceiptCode(id, { paymentId: payment.id, amountPaise: payment.amountPaise });
+  if (r.status === 'throttled') throw new TooManyRequestsError('Too many code requests. Try again later.');
+  await otpSender.send(booking.customer.user.phone, r.code);
+  return config.NODE_ENV === 'production'
+    ? { amountPaise: payment.amountPaise }
+    : { amountPaise: payment.amountPaise, devOtp: r.code };
 }

@@ -9,7 +9,9 @@ import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.typ
 import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
-import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody } from './technician-jobs.schemas.js';
+import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody, type ConfirmCashBody } from './technician-jobs.schemas.js';
+import { verifyCashReceiptCode, cashCollectedLast24hPaise } from '../bookings/cash.js';
+import { config } from '../../shared/config.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -324,4 +326,48 @@ export async function confirmCompletion(userId: string, bookingId: string, body:
     await tx.booking.update({ where: { id: bookingId }, data: { confirmedAt: new Date() } });
   });
   return { id: bookingId, state: 'CUSTOMER_CONFIRMED' };
+}
+
+/** Cash receipt (B6b): CUSTOMER_CONFIRMED or DECLINED_BY_CUSTOMER → PAYMENT_RECEIVED. The
+ *  technician drives the transition but ONLY with the receipt code minted to the customer's phone
+ *  (Rule 2). The code is consumed BEFORE the tx (redis and Postgres can't share one) — if the tx
+ *  rolls back the customer re-initiates; fails SAFE, never a false capture (completion idiom).
+ *  Gates re-run INSIDE the tx: the debt increment locks the technician row first, so concurrent
+ *  captures serialize and the checks read a settled world (initiation-time checks are only UX). */
+export async function confirmCashPayment(userId: string, bookingId: string, body: ConfirmCashBody): Promise<{ id: string; state: 'PAYMENT_RECEIVED'; cashDebtPaise: number }> {
+  const tech = await requireTechnician(userId);
+  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, ['CUSTOMER_CONFIRMED', 'DECLINED_BY_CUSTOMER'] as const);
+  const r = await verifyCashReceiptCode(bookingId, body.code);
+  if (r.status === 'no-code') throw new ConflictError('No active code — ask the customer to start the cash payment');
+  if (r.status === 'invalid') throw new UnauthorizedError('Invalid or expired cash receipt code');
+  const { paymentId, amountPaise } = r.payload;
+
+  const cashDebtPaise = await prisma.$transaction(async (tx) => {
+    // Increment FIRST: the technician-row update is the lock serializing this technician's captures.
+    const t = await tx.technician.update({
+      where: { id: tech.id },
+      data: { cashDebtPaise: { increment: amountPaise } },
+      select: { cashDebtPaise: true },
+    });
+    if (t.cashDebtPaise > config.CASH_DEBT_LIMIT_PAISE) {
+      throw new UnprocessableError('Outstanding cash debt limit reached — please pay by UPI');
+    }
+    // Assumes READ COMMITTED (Postgres default): the row lock above serializes same-technician
+    // captures, so this aggregate reads every PRIOR capture committed. Under REPEATABLE READ the
+    // re-read would see a stale snapshot and the cap could be jointly exceeded — do not change
+    // the DB isolation level without revisiting this.
+    if ((await cashCollectedLast24hPaise(tx, tech.id)) + amountPaise > config.CASH_VELOCITY_CAP_PAISE) {
+      throw new UnprocessableError('Daily cash collection limit reached — please pay by UPI');
+    }
+    // Keyed on CREATED: a superseded/settled attempt can never capture twice.
+    const updated = await tx.payment.updateMany({ where: { id: paymentId, status: 'CREATED' }, data: { status: 'CAPTURED', capturedAt: new Date() } });
+    if (updated.count === 0) throw new ConflictError('This payment is no longer open');
+    // Payment guard (CREATED status) + booking state guard: either race-loss rolls back the WHOLE tx including debt increment.
+    await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { method: 'CASH', amountPaise, codeConfirmed: true });
+    await tx.auditLog.create({
+      data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { event: 'cash_received', bookingId, paymentId, amountPaise, technicianId: tech.id } },
+    });
+    return t.cashDebtPaise;
+  });
+  return { id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise };
 }

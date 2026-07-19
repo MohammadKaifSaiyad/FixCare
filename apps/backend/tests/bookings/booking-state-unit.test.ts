@@ -21,10 +21,12 @@ describe('ALLOWED_TRANSITIONS', () => {
     expect(ALLOWED_TRANSITIONS['DECLINED_BY_CUSTOMER']).toEqual(['PAYMENT_RECEIVED']);
   });
 
-  it('PAYMENT_RECEIVED is SYSTEM-only — no human actor (not even ADMIN) can mark money received', () => {
-    // Golden Rule 2: the webhook (gateway's signed word) is the only path to PAYMENT_RECEIVED.
+  it('PAYMENT_RECEIVED: SYSTEM (UPI webhook) + TECHNICIAN (cash receipt, customer OTP = 2nd party) only', () => {
+    // Golden Rule 2 both ways: the gateway's signed word OR the technician entering the code
+    // minted to the customer. CUSTOMER and ADMIN can never mark money received.
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(true);
-    for (const kind of ['CUSTOMER', 'TECHNICIAN', 'ADMIN'] as const) {
+    expect(actorAllowedFor('PAYMENT_RECEIVED', 'TECHNICIAN')).toBe(true);
+    for (const kind of ['CUSTOMER', 'ADMIN'] as const) {
       expect(actorAllowedFor('PAYMENT_RECEIVED', kind)).toBe(false);
     }
   });
