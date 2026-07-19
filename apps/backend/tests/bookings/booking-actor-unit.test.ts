@@ -44,10 +44,11 @@ describe('ALLOWED_ACTORS', () => {
     expect(actorAllowedFor('CUSTOMER_CONFIRMED', 'CUSTOMER')).toBe(false);
     expect(actorAllowedFor('CUSTOMER_CONFIRMED', 'ADMIN')).toBe(false);
   });
-  it('PAYMENT_RECEIVED is SYSTEM-only (the gateway drives it, never a party)', () => {
+  it('PAYMENT_RECEIVED: SYSTEM (UPI webhook) + TECHNICIAN (cash receipt with customer OTP = 2nd party)', () => {
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'SYSTEM')).toBe(true);
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'CUSTOMER')).toBe(false);
-    expect(actorAllowedFor('PAYMENT_RECEIVED', 'TECHNICIAN')).toBe(false);
+    expect(actorAllowedFor('PAYMENT_RECEIVED', 'TECHNICIAN')).toBe(true);
+    expect(actorAllowedFor('PAYMENT_RECEIVED', 'ADMIN')).toBe(false);
   });
   it('DEFAULT-DENY: still-unmapped to-states are rejected for every actor', () => {
     expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'TECHNICIAN')).toBe(false);
