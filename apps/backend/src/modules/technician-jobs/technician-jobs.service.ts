@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody, type ConfirmCashBody } from './technician-jobs.schemas.js';
 import { verifyCashReceiptCode, cashCollectedLast24hPaise } from '../bookings/cash.js';
 import { config } from '../../shared/config.js';
+import { recordCashCollected } from '../settlements/settlements.service.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -368,6 +369,7 @@ export async function confirmCashPayment(userId: string, bookingId: string, body
     await tx.auditLog.create({
       data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { event: 'cash_received', bookingId, paymentId, amountPaise, technicianId: tech.id } },
     });
+    await recordCashCollected(tx, { technicianId: tech.id, bookingId, amountPaise });
     return t.cashDebtPaise;
   });
   return { id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise };
