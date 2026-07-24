@@ -51,7 +51,9 @@ describe('ALLOWED_ACTORS', () => {
     expect(actorAllowedFor('PAYMENT_RECEIVED', 'ADMIN')).toBe(false);
   });
   it('DEFAULT-DENY: still-unmapped to-states are rejected for every actor', () => {
+    // CANCELLED_BY_TECHNICIAN remains unmapped (no cancel-by-tech flow yet). CLOSED is now mapped
+    // to SYSTEM by B6c (the settlement sweep) — asserted in booking-state-unit.test.ts.
     expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'TECHNICIAN')).toBe(false);
-    expect(actorAllowedFor('CLOSED', 'SYSTEM')).toBe(false); // B6c/B7 wires the dispute-window close
+    expect(actorAllowedFor('CANCELLED_BY_TECHNICIAN', 'ADMIN')).toBe(false);
   });
 });

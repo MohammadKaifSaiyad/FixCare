@@ -94,8 +94,9 @@ model Technician {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   deletedAt DateTime?
-  bookings  Booking[]
-  jobSkips  JobSkip[]
+  bookings       Booking[]
+  jobSkips       JobSkip[]
+  ledgerEntries  LedgerEntry[]
 }
 
 model Merchant {
@@ -200,6 +201,7 @@ enum AuditAction {
   DIAGNOSIS_UPDATED
   PHOTO_UPLOADED
   PAYMENT_EVENT
+  SETTLEMENT_EVENT
 }
 
 // =============================================================================
@@ -340,9 +342,12 @@ model Booking {
   repairStartedAt    DateTime?
   repairCompletedAt  DateTime?
   confirmedAt        DateTime? // completion OTP verified — dispute-resolution Tier-1 keys off this
+  paidAt   DateTime? // set by BOTH capture paths + the zero-payable chain; the close sweep keys on this
+  closedAt DateTime? // set by the settlement sweep at CLOSED
   bookingParts       BookingPart[]
   photos             PhotoEvidence[]
   payments           Payment[]
+  ledgerEntries      LedgerEntry[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
@@ -402,6 +407,7 @@ enum PaymentStatus {
   CREATED // order created, awaiting the customer's UPI approval
   CAPTURED // gateway confirmed capture — the money moved
   FAILED // gateway reported failure — customer may retry (new order)
+  // FAILED: UPI gateway failures AND cash attempts superseded at close (sweep marks stale CASH CREATED rows FAILED).
 }
 
 // Payment attempts are append-only EVIDENCE (no soft-delete; status is the lifecycle).
@@ -421,6 +427,34 @@ model Payment {
   updatedAt         DateTime      @updatedAt
 
   @@index([bookingId])
+  @@index([method, status, capturedAt]) // velocity aggregate runs inside the capture row-lock — must be an index scan
+}
+
+// Append-only settlement ledger (B6c) — NO updates, NO deletes, NO soft-delete: same evidence
+// posture as Payment. amountPaise is always POSITIVE; type carries the direction.
+// payable = ΣEARNING_CREDIT − ΣCASH_DEBT_OFFSET − ΣPAYOUT
+// debt    = ΣCASH_COLLECTED − ΣCASH_DEBT_OFFSET − ΣDEBT_REPAYMENT (= Technician.cashDebtPaise cache)
+model LedgerEntry {
+  id           String          @id @default(uuid())
+  technicianId String
+  technician   Technician      @relation(fields: [technicianId], references: [id])
+  bookingId    String? // null for payouts/repayments (no booking context)
+  booking      Booking?        @relation(fields: [bookingId], references: [id])
+  type         LedgerEntryType
+  amountPaise  Int
+  metadata     Json? // rate bps + base at close; actor for manual entries. Ids and paise only — no PII.
+  createdAt    DateTime        @default(now())
+
+  @@index([technicianId, createdAt])
+}
+
+enum LedgerEntryType {
+  EARNING_CREDIT
+  COMMISSION
+  CASH_COLLECTED
+  CASH_DEBT_OFFSET
+  PAYOUT
+  DEBT_REPAYMENT
 }
 
 model BookingPart {

@@ -364,6 +364,7 @@ export async function confirmCashPayment(userId: string, bookingId: string, body
     if (updated.count === 0) throw new ConflictError('This payment is no longer open');
     // Payment guard (CREATED status) + booking state guard: either race-loss rolls back the WHOLE tx including debt increment.
     await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { method: 'CASH', amountPaise, codeConfirmed: true });
+    await tx.booking.update({ where: { id: bookingId }, data: { paidAt: new Date() } }); // the close sweep (B6c) keys on this
     await tx.auditLog.create({
       data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { event: 'cash_received', bookingId, paymentId, amountPaise, technicianId: tech.id } },
     });

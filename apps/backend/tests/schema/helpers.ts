@@ -12,6 +12,6 @@ export const prisma = new PrismaClient({
 // Truncate all tables between tests. Add new tables here as later tasks add models.
 export async function resetDb() {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "Payment","PhotoEvidence","BookingPart","DiagnosedIssue","JobSkip","Booking","Address","PincodeZone","PartsCatalog","ServicePrice","Service","ServiceCategory","Zone","AuditLog","RefreshToken","Admin","Merchant","Technician","Customer","User" RESTART IDENTITY CASCADE;'
+    'TRUNCATE TABLE "LedgerEntry","Payment","PhotoEvidence","BookingPart","DiagnosedIssue","JobSkip","Booking","Address","PincodeZone","PartsCatalog","ServicePrice","Service","ServiceCategory","Zone","AuditLog","RefreshToken","Admin","Merchant","Technician","Customer","User" RESTART IDENTITY CASCADE;'
   );
 }
