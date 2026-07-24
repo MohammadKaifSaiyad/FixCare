@@ -58,6 +58,8 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   // B6c accept-gate (core-flow: "technician at cash debt limit → cannot accept"). Deferred from
   // B6b until settlement existed — auto-offset now gives a self-healing path out of the lockout.
   // Note: requireTechnician returns only {id, skills}, so cashDebtPaise is fetched separately here.
+  // Pre-tx check, UX friction ONLY — a concurrent settlement could flip this between the read and
+  // the accept tx. Deliberately NOT a financial invariant (no money moves in accept).
   const techRow = await prisma.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });
   if (techRow.cashDebtPaise >= config.CASH_DEBT_LIMIT_PAISE) {
     throw new UnprocessableError('Settle your cash debt to accept new jobs');
@@ -341,8 +343,12 @@ export async function confirmCompletion(userId: string, bookingId: string, body:
     // to charge — never show the customer a ₹0 pay screen. Same tx: a crash can't strand the
     // booking between the two states.
     const cart = await tx.bookingPart.findMany({ where: { bookingId } });
+    // Pass 'CUSTOMER_CONFIRMED' (the post-transition state) not booking.state — booking.state is
+    // still REPAIR_COMPLETE here, and computeEstimate applies the visit-fee credit only post-quote.
     const payable = computeEstimate({ laborPaise: booking.laborPaise, visitFeePaise: booking.visitFeePaise, state: 'CUSTOMER_CONFIRMED', declinedAt: booking.declinedAt }, cart).totalPayablePaise;
     if (payable > 0) return 'CUSTOMER_CONFIRMED' as const;
+    // { ...booking, state: 'CUSTOMER_CONFIRMED' } so the second optimistic lock (WHERE state=...)
+    // matches the row the first transition just committed in THIS tx — not the stale REPAIR_COMPLETE.
     await transitionBooking(tx, { ...booking, state: 'CUSTOMER_CONFIRMED' }, 'PAYMENT_RECEIVED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'zero-payable' }, { amountPaise: 0, reason: 'zero_payable' });
     await tx.booking.update({ where: { id: bookingId }, data: { paidAt: new Date() } });
     return 'PAYMENT_RECEIVED' as const;
