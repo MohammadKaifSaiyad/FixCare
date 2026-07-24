@@ -47,17 +47,19 @@ export async function settleClosableBookings(now: Date = new Date()): Promise<{ 
   for (const booking of due) {
     try {
       await prisma.$transaction(async (tx) => {
-        await transitionBooking(tx, booking, 'CLOSED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'settlement-sweep' });
         if (!booking.technicianId) throw new Error(`paid booking ${booking.id} has no technician`); // data invariant; fail this booking loudly
         const basePaise = booking.declinedAt != null ? booking.visitFeePaise : booking.laborPaise;
+        await transitionBooking(tx, booking, 'CLOSED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'settlement-sweep' });
         const { earningPaise, commissionPaise } = splitPaise(basePaise);
         const meta = { rateBps: config.COMMISSION_RATE_BPS, basePaise };
         await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'EARNING_CREDIT', amountPaise: earningPaise, metadata: meta } });
         await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'COMMISSION', amountPaise: commissionPaise, metadata: meta } });
         // Auto-net: the technician already HOLDS collected cash — earnings pay the debt down
-        // first; payouts only ever move the remainder. Row update = the serializing lock (B6b).
-        const tech = await tx.technician.findUniqueOrThrow({ where: { id: booking.technicianId }, select: { cashDebtPaise: true } });
-        const offset = Math.min(earningPaise, tech.cashDebtPaise);
+        // first; payouts only ever move the remainder. FOR UPDATE acquires the row lock BEFORE
+        // reading, serializing concurrent same-technician settlements across parallel sweep runners.
+        const [locked] = await tx.$queryRaw<{ cashDebtPaise: number }[]>`SELECT "cashDebtPaise" FROM "Technician" WHERE id = ${booking.technicianId} FOR UPDATE`;
+        const currentDebt = Number(locked?.cashDebtPaise ?? 0);
+        const offset = Math.min(earningPaise, currentDebt);
         if (offset > 0) {
           await tx.technician.update({ where: { id: booking.technicianId }, data: { cashDebtPaise: { decrement: offset } } });
           await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'CASH_DEBT_OFFSET', amountPaise: offset } });
@@ -70,8 +72,9 @@ export async function settleClosableBookings(now: Date = new Date()): Promise<{ 
         });
       });
       closed++;
-    } catch {
+    } catch (err) {
       skipped++; // raced (409) or data problem — next run retries; never abort the batch
+      console.error('settlement sweep error', { bookingId: booking.id }, err instanceof Error ? err.message : err);
     }
   }
   return { closed, skipped };
