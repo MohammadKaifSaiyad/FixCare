@@ -17,6 +17,7 @@ export async function startSettlementSweep(): Promise<() => Promise<void>> {
   // stop function needs no explicit disconnect.
   const connection = { url: config.REDIS_URL };
   const queue = new Queue(QUEUE, { connection });
+  queue.on('error', (err) => console.error('settlement sweep queue error:', err.message)); // narrow (boot-time) but same crash rule as the worker
   await queue.upsertJobScheduler(QUEUE, { every: config.SETTLEMENT_SWEEP_INTERVAL_MINUTES * 60_000 });
   const worker = new Worker(QUEUE, async () => { await settleClosableBookings(); }, { connection });
   worker.on('failed', (_job, err) => console.error('settlement sweep failed:', err.message));
