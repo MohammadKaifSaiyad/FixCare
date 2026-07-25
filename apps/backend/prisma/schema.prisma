@@ -439,13 +439,16 @@ model LedgerEntry {
   technicianId String
   technician   Technician      @relation(fields: [technicianId], references: [id])
   bookingId    String? // null for payouts/repayments (no booking context)
-  booking      Booking?        @relation(fields: [bookingId], references: [id])
+  // RESTRICT (not SET NULL): a hard-delete of a booking must never silently erase a financial
+  // entry's provenance — force the caller to unlink explicitly. Matches Payment's posture.
+  booking      Booking?        @relation(fields: [bookingId], references: [id], onDelete: Restrict)
   type         LedgerEntryType
   amountPaise  Int
   metadata     Json? // rate bps + base at close; actor for manual entries. Ids and paise only — no PII.
   createdAt    DateTime        @default(now())
 
-  @@index([technicianId, createdAt])
+  @@index([technicianId, createdAt]) // time-range sweeps / drill-down
+  @@index([technicianId, type]) // the balance groupBy (SUM by type WHERE technicianId)
 }
 
 enum LedgerEntryType {
