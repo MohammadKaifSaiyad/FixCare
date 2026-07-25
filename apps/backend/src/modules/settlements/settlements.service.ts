@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
+import { NotFoundError, ConflictError, ForbiddenError } from '../../shared/errors.js';
 
 const SWEEP_BATCH = 100;
 
@@ -78,4 +79,67 @@ export async function settleClosableBookings(now: Date = new Date()): Promise<{ 
     }
   }
   return { closed, skipped };
+}
+
+/** Technician dashboard balance. Payable derives from the ledger; debt is the cached column.
+ *  If the ledger-derived debt disagrees with the cache, flag it loudly (reconciliation) but
+ *  return the CACHED value — it is what the gates enforce. */
+export async function technicianBalance(userId: string): Promise<{ payablePaise: number; cashDebtPaise: number }> {
+  const tech = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
+  if (!tech) throw new ForbiddenError('Technician profile required');
+  const [payablePaise, ledgerDebt] = await Promise.all([
+    payableBalancePaise(prisma, tech.id),
+    debtBalancePaise(prisma, tech.id),
+  ]);
+  if (ledgerDebt !== tech.cashDebtPaise) {
+    // Pre-B6c cash captures wrote no CASH_COLLECTED entries, so a mismatch is expected for
+    // migrated technicians — flagged, not fatal. New activity keeps the two in lockstep.
+    await prisma.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'reconciliation_mismatch', technicianId: tech.id, cachedPaise: tech.cashDebtPaise, ledgerPaise: ledgerDebt } } });
+  }
+  return { payablePaise, cashDebtPaise: tech.cashDebtPaise };
+}
+
+async function technicianOrThrow(technicianId: string) {
+  const t = await prisma.technician.findFirst({ where: { id: technicianId, deletedAt: null } });
+  if (!t) throw new NotFoundError('Technician not found');
+  return t;
+}
+
+/** Manual payout record (until Razorpay Route): money the founder actually transferred. */
+export async function recordPayout(adminUserId: string, body: { technicianId: string; amountPaise: number }): Promise<{ id: string }> {
+  await technicianOrThrow(body.technicianId);
+  return prisma.$transaction(async (tx) => {
+    const payable = await payableBalancePaise(tx, body.technicianId);
+    if (body.amountPaise > payable) throw new ConflictError('Amount exceeds the payable balance');
+    const entry = await tx.ledgerEntry.create({ data: { technicianId: body.technicianId, type: 'PAYOUT', amountPaise: body.amountPaise } });
+    await tx.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'USER', actorId: adminUserId, metadata: { event: 'payout_recorded', technicianId: body.technicianId, amountPaise: body.amountPaise } } });
+    return { id: entry.id };
+  });
+}
+
+/** Manual cash-repayment record: the technician handed collected cash back to the platform. */
+export async function recordRepayment(adminUserId: string, body: { technicianId: string; amountPaise: number }): Promise<{ id: string }> {
+  await technicianOrThrow(body.technicianId);
+  return prisma.$transaction(async (tx) => {
+    // Row update first = the serializing lock (B6b idiom). Postgres raises the CHECK (>= 0) BEFORE
+    // any JS guard when the repayment exceeds the debt — catch it and speak 409, never a raw 500.
+    try {
+      await tx.technician.update({ where: { id: body.technicianId }, data: { cashDebtPaise: { decrement: body.amountPaise } }, select: { cashDebtPaise: true } });
+    } catch {
+      throw new ConflictError('Amount exceeds the outstanding debt');
+    }
+    const entry = await tx.ledgerEntry.create({ data: { technicianId: body.technicianId, type: 'DEBT_REPAYMENT', amountPaise: body.amountPaise } });
+    await tx.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'USER', actorId: adminUserId, metadata: { event: 'repayment_recorded', technicianId: body.technicianId, amountPaise: body.amountPaise } } });
+    return { id: entry.id };
+  });
+}
+
+/** Admin drill-down: balances + recent entries, newest first. */
+export async function getTechnicianSettlement(technicianId: string): Promise<{ payablePaise: number; cashDebtPaise: number; entries: { type: string; amountPaise: number; bookingId: string | null; createdAt: string }[] }> {
+  const t = await technicianOrThrow(technicianId);
+  const [payablePaise, rows] = await Promise.all([
+    payableBalancePaise(prisma, technicianId),
+    prisma.ledgerEntry.findMany({ where: { technicianId }, orderBy: { createdAt: 'desc' }, take: 50 }),
+  ]);
+  return { payablePaise, cashDebtPaise: t.cashDebtPaise, entries: rows.map((e) => ({ type: e.type, amountPaise: e.amountPaise, bookingId: e.bookingId, createdAt: e.createdAt.toISOString() })) };
 }
