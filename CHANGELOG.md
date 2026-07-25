@@ -8,6 +8,52 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-25 — Booking slice B6c (settlement ledger + CLOSED)
+
+- **Schema (all additive):** `LedgerEntry` model — append-only financial record with 6 action types
+  (`EARNING_CREDIT`, `COMMISSION`, `CASH_DEBT`, `SETTLEMENT_PAID`, `REPAYMENT`, `PLATFORM_ADJUSTMENT`);
+  FK to Booking + Technician; `amountPaise Int`. `Booking.paidAt` + `Booking.closedAt` nullable timestamp
+  columns. `SETTLEMENT_EVENT` audit action. `ALLOWED_ACTORS.CLOSED = [SYSTEM]` (the sweep is the sole
+  closer — no human can race it). `CHECK (cashDebtPaise >= 0)` on Technician (B6b carry-forward — ships
+  WITH the settlement decrement so the constraint is always satisfiable). `@@index([method,status,capturedAt])`
+  on Payment (B6b carry-forward). Config: `COMMISSION_RATE_BPS` / `DISPUTE_WINDOW_HOURS` /
+  `SETTLEMENT_SWEEP_INTERVAL_MINUTES` (all defaulted; `.env.example` updated).
+- **Settlement service** (`settlements.service.ts`): `splitPaise(total, bps)` → `{technicianPaise, commissionPaise}`
+  (integer-safe, BPS rounding); ledger-derived `getTechnicianBalance` (sum by action type, reconciliation flag
+  for unexpected divergence); `recordCashCollected` (writes `CASH_DEBT` + `EARNING_CREDIT` ledger rows inside
+  the existing `confirmCashPayment` tx — cash receipt immediately visible in the balance); `settleClosableBookings`
+  — idempotent sweep: locks each closable booking row (`FOR UPDATE`), auto-offsets cash debt against the ledger
+  credit before the payout, closes stale `CASH_CREATED` payment attempts, logs per-booking errors rather than
+  aborting the batch. Merchant-payout and DISPUTED flows deferred to B7 + post-Route-approval.
+- **Zero-payable short-circuit:** `confirmCompletion` now chains `CUSTOMER_CONFIRMED → PAYMENT_RECEIVED` as SYSTEM
+  when `chargeAmountFor` is 0 (visit-fee credit covers the whole job); the booking closes on the next sweep cycle.
+  This closes the B6a `/code-review` gap (a ₹0 gateway order could never be created anyway — the 422 guard
+  remains, but now the zero-payable path resolves cleanly end-to-end).
+- **Debt-limit accept-gate:** `acceptJob` 422s (before `DISPATCHED→ACCEPTED`) when the technician's
+  `cashDebtPaise` already meets or exceeds `CASH_DEBT_LIMIT_PAISE`. Prevents a tech from accepting more
+  work while carrying an unpaid balance beyond the flat tier limit.
+- **Endpoints:** `GET /technician/me/balance` (own ledger balance + `cashDebtPaise`); MANAGER+-only
+  `POST /admin/settlements/payouts` (record a manual bank transfer as `SETTLEMENT_PAID`; `CHECK→409` if
+  the payment would over-pay the payable); `POST /admin/settlements/repayments` (record a technician cash
+  repayment as `REPAYMENT`; same CHECK→409 guard — empirically `PrismaClientUnknownRequestError` in 6.19.3,
+  narrowed in the catch so only the constraint violation → 409 while P2025/transient errors re-throw);
+  `GET /admin/settlements/technicians/:id` (ledger history + balance for any technician).
+- **BullMQ settlement sweep — the codebase's first background work:** `shared/queue/settlement-sweep.ts`
+  creates a dedicated ioredis connection with `maxRetriesPerRequest: null` (BullMQ rejects the shared client's
+  value of 3; connection options passed as a plain object to avoid the peer-ioredis-version type mismatch).
+  `queue.upsertJobScheduler` fires every `SETTLEMENT_SWEEP_INTERVAL_MINUTES * 60_000 ms`. Worker calls
+  `settleClosableBookings`; `failed` events log to stderr. `startSettlementSweep()` is wired into `server.ts`
+  (NOT `app.ts` — tests import `app.ts` and must never boot BullMQ) with SIGTERM + SIGINT shutdown hooks.
+  B2b's accept-timer reuses this scaffolding.
+- **Deferred (recorded in SDD ledger):** merchant payouts (WhatsApp-manual until merchant module lands);
+  DISPUTED flows (customer raise + admin adjudication, B7); automated Razorpay Route splits (post-approval);
+  debt-aging >7d auto-restrict + cycling detection (fraud-defenses.md note); `cashDebtPaise` on the technician
+  job DTO; `cash_otp_resent` audit event; SIM-swap OTP-interception fraud note.
+- Per-task spec+quality reviews all Approved (T2 controller-inline revert of an unplanned enum-reorder
+  migration — tail-wags-dog; T3 zero-payable Important addressed as comment-only, accept-gate TOCTOU
+  is UX-not-financial; T4 session-limited implementer, controller recovered inline, re-review Approved
+  after CHECK→409 narrowing empirically verified). 323/323 tests, tsc clean.
+
 ## 2026-07-19 — B6b final gates + `/code-review` pass (branch finalized, awaiting PR)
 
 - **Final gates:** opus whole-branch "Ready to merge" — cross-method money interleavings verified
