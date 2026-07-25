@@ -60,6 +60,15 @@ describe('admin settlements', () => {
     }
   });
 
+  it('repayment EXACTLY equal to debt succeeds (debt → 0) — the CHECK-narrowed catch does not swallow the boundary', async () => {
+    const t = await seeded(); // debt 20000
+    const admin = await makeAdminToken();
+    const res = await app.inject({ method: 'POST', url: '/admin/settlements/repayments', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise: 20000 } });
+    expect(res.statusCode).toBe(201);
+    expect((await prisma.technician.findUnique({ where: { id: t.technicianId } }))!.cashDebtPaise).toBe(0);
+    expect(await prisma.ledgerEntry.count({ where: { type: 'DEBT_REPAYMENT' } })).toBe(1);
+  });
+
   it('GET /admin/settlements/technicians/:id returns balances + entries newest-first', async () => {
     const t = await seeded();
     const admin = await makeAdminToken();

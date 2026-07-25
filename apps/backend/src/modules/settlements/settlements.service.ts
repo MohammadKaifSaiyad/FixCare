@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
@@ -109,6 +109,9 @@ async function technicianOrThrow(technicianId: string) {
 export async function recordPayout(adminUserId: string, body: { technicianId: string; amountPaise: number }): Promise<{ id: string }> {
   await technicianOrThrow(body.technicianId);
   return prisma.$transaction(async (tx) => {
+    // Lock the technician row BEFORE reading the ledger payable: unlike cashDebtPaise, payable has
+    // no CHECK backstop, so two concurrent payouts must not each pass the guard and jointly overdraw.
+    await tx.$queryRaw`SELECT id FROM "Technician" WHERE id = ${body.technicianId} FOR UPDATE`;
     const payable = await payableBalancePaise(tx, body.technicianId);
     if (body.amountPaise > payable) throw new ConflictError('Amount exceeds the payable balance');
     const entry = await tx.ledgerEntry.create({ data: { technicianId: body.technicianId, type: 'PAYOUT', amountPaise: body.amountPaise } });
@@ -122,11 +125,14 @@ export async function recordRepayment(adminUserId: string, body: { technicianId:
   await technicianOrThrow(body.technicianId);
   return prisma.$transaction(async (tx) => {
     // Row update first = the serializing lock (B6b idiom). Postgres raises the CHECK (>= 0) BEFORE
-    // any JS guard when the repayment exceeds the debt — catch it and speak 409, never a raw 500.
+    // any JS guard when the repayment exceeds the debt. Prisma surfaces that pg 23514 as an
+    // UNKNOWN request error (verified: Known errors like P2025 and connection failures are distinct
+    // classes) — narrow the catch to it so only "over-debt" becomes 409; real outages re-throw → 500.
     try {
       await tx.technician.update({ where: { id: body.technicianId }, data: { cashDebtPaise: { decrement: body.amountPaise } }, select: { cashDebtPaise: true } });
-    } catch {
-      throw new ConflictError('Amount exceeds the outstanding debt');
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientUnknownRequestError) throw new ConflictError('Amount exceeds the outstanding debt');
+      throw e;
     }
     const entry = await tx.ledgerEntry.create({ data: { technicianId: body.technicianId, type: 'DEBT_REPAYMENT', amountPaise: body.amountPaise } });
     await tx.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'USER', actorId: adminUserId, metadata: { event: 'repayment_recorded', technicianId: body.technicianId, amountPaise: body.amountPaise } } });
