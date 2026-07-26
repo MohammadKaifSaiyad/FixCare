@@ -202,6 +202,7 @@ enum AuditAction {
   PHOTO_UPLOADED
   PAYMENT_EVENT
   SETTLEMENT_EVENT
+  DISPUTE_EVENT
 }
 
 // =============================================================================
@@ -348,6 +349,7 @@ model Booking {
   photos             PhotoEvidence[]
   payments           Payment[]
   ledgerEntries      LedgerEntry[]
+  disputes           Dispute[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
@@ -421,6 +423,7 @@ model Payment {
   amountPaise       Int
   razorpayOrderId   String?       @unique // null for CASH attempts — only UPI rows carry a gateway order
   razorpayPaymentId String?       @unique // set on capture; the webhook idempotency anchor
+  razorpayRefundId  String?       @unique // set when a refund is confirmed by webhook — refund idempotency anchor
   failureReason     String?
   capturedAt        DateTime?
   createdAt         DateTime      @default(now())
@@ -458,6 +461,36 @@ enum LedgerEntryType {
   CASH_DEBT_OFFSET
   PAYOUT
   DEBT_REPAYMENT
+  DISPUTE_REVERSAL
+}
+
+model Dispute {
+  id               String          @id @default(uuid())
+  bookingId        String
+  booking          Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  raisedByUserId   String
+  reason           String // customer free text (Zod-capped ≤ 500) — assumed non-PII; NEVER copied into audit metadata
+  status           DisputeStatus   @default(OPEN)
+  outcome          DisputeOutcome? // set at resolution
+  refundPaise      Int? // customer refund at resolution; null/0 for FAVOR_TECHNICIAN
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([bookingId])
+  @@index([status]) // admin OPEN queue
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum DisputeOutcome {
+  FAVOR_CUSTOMER
+  FAVOR_TECHNICIAN
+  PARTIAL
 }
 
 model BookingPart {

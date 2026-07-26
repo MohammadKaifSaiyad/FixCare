@@ -48,7 +48,8 @@ const ALLOWED_ACTORS: Partial<Record<BookingState, ActorKind[]>> = {
   REPAIR_COMPLETE:       ['TECHNICIAN'],
   CUSTOMER_CONFIRMED:    ['TECHNICIAN'], // keystone #2 — the customer's code is the second party
   PAYMENT_RECEIVED:      ['SYSTEM', 'TECHNICIAN'], // UPI: the gateway's signed capture (SYSTEM). Cash (B6b): the technician — but only with the receipt code minted to the CUSTOMER (Rule 2's second party).
-  CLOSED:                ['SYSTEM'], // settlement sweep after the 48h dispute window (B6c); B7 adds ADMIN dispute closes
+  DISPUTED:              ['CUSTOMER'], // B7: the customer raises within the 48h window
+  CLOSED:                ['SYSTEM', 'ADMIN'], // SYSTEM = settlement sweep (B6c); ADMIN = dispute resolution (B7)
 };
 
 export function actorAllowedFor(to: BookingState, kind: ActorKind): boolean {
