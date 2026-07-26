@@ -14,7 +14,7 @@ function future() { return new Date(Date.now() + 86_400_000).toISOString(); }
 const H49 = 49 * 3600_000;
 
 /** Direct-seed a PAYMENT_RECEIVED booking paid `paidAgoMs` ago. labor 60000, visitFee 14900. */
-async function paidBooking(opts?: { paidAgoMs?: number; declined?: boolean; cashDebtPaise?: number; method?: 'UPI' | 'CASH' }) {
+async function paidBooking(opts?: { paidAgoMs?: number; declined?: boolean; cashDebtPaise?: number; method?: 'UPI' | 'CASH'; laborPaise?: number }) {
   const c = await makeCustomer();
   const f = await seedBookable(c.customerId);
   const t = await makeTechnician(['AC']);
@@ -26,6 +26,7 @@ async function paidBooking(opts?: { paidAgoMs?: number; declined?: boolean; cash
       state: 'PAYMENT_RECEIVED', technicianId: t.technicianId,
       paidAt: new Date(Date.now() - (opts?.paidAgoMs ?? H49)),
       ...(opts?.declined ? { declinedAt: new Date() } : {}),
+      ...(opts?.laborPaise != null ? { laborPaise: opts.laborPaise } : {}),
     },
   });
   await prisma.payment.create({ data: { bookingId: booking.id, method: opts?.method ?? 'UPI', status: 'CAPTURED', amountPaise: 45100, capturedAt: new Date(), ...(opts?.method !== 'CASH' ? { razorpayOrderId: `order_dev_swp_${Math.random().toString(36).slice(2, 8)}` } : {}) } });
@@ -65,11 +66,21 @@ describe('settleClosableBookings', () => {
     expect(await payableBalancePaise(prisma, t.technicianId)).toBe(11920); // floor(14900 × 0.8)
   });
 
-  it('leaves bookings inside the 48h window untouched (boundary: exactly 48h stays open)', async () => {
-    await paidBooking({ paidAgoMs: 47 * 3600_000 });
-    await paidBooking({ paidAgoMs: 48 * 3600_000 }); // exactly at the boundary — paidAt <= now − 48h is FALSE only when strictly newer; use < cutoff semantics: paidAt must be <= cutoff... see service comment; this one CLOSES
+  it('closes at EXACTLY 48h (inclusive lte cutoff); a booking 47h old stays open', async () => {
+    await paidBooking({ paidAgoMs: 47 * 3600_000 }); // inside the window — stays open
+    await paidBooking({ paidAgoMs: 48 * 3600_000 }); // paidAt <= (now − 48h) is true at the boundary — CLOSES
     const r = await settleClosableBookings();
     expect(r.closed).toBe(1);
+  });
+
+  it('a zero-payable booking CLOSEs but writes NO zero-amount ledger rows (amountPaise stays positive)', async () => {
+    // labor 0 → split is {0,0}; the always-positive invariant means no EARNING_CREDIT/COMMISSION row.
+    const { t, bookingId } = await paidBooking({ laborPaise: 0 });
+    const r = await settleClosableBookings();
+    expect(r.closed).toBe(1);
+    expect((await prisma.booking.findUnique({ where: { id: bookingId } }))!.state).toBe('CLOSED');
+    expect(await prisma.ledgerEntry.count({ where: { bookingId } })).toBe(0);
+    expect(await payableBalancePaise(prisma, t.technicianId)).toBe(0);
   });
 
   it('auto-offsets cash debt: earning > debt → debt 0, remainder payable; ledger shows the pairing', async () => {

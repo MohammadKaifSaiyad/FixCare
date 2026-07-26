@@ -54,14 +54,16 @@ describe('zero-payable auto-settlement at completion', () => {
 });
 
 describe('accept-gate at the debt limit', () => {
-  it('a technician AT the limit cannot accept (422); an offset below the limit unlocks accepting', async () => {
+  it('OVER the limit cannot accept (422); AT exactly the limit CAN (matches the capture gate boundary)', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const t = await makeTechnician(['AC']);
-    await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: config.CASH_DEBT_LIMIT_PAISE } });
+    await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: config.CASH_DEBT_LIMIT_PAISE + 1 } });
     const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) })).statusCode).toBe(422);
-    await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: config.CASH_DEBT_LIMIT_PAISE - 1 } });
+    // Exactly at the limit MUST pass: the initiate + capture gates both allow debt to reach exactly
+    // the limit (> not >=), so a technician who just captured to exactly the limit must not be locked out.
+    await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: config.CASH_DEBT_LIMIT_PAISE } });
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) })).statusCode).toBe(200);
   });
 });

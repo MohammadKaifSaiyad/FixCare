@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient, type LedgerEntryType } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
@@ -13,17 +13,23 @@ export function splitPaise(basePaise: number): { earningPaise: number; commissio
   return { earningPaise, commissionPaise: basePaise - earningPaise };
 }
 
+/** One groupBy → per-type sum map. The lookup key is LedgerEntryType (not string) so a typo can't
+ *  compile to a silent 0. Callers that need BOTH balances share ONE query — and, run inside a tx,
+ *  a consistent snapshot (so payable and debt can't be read from two different moments). */
+async function sumLedgerByType(db: Prisma.TransactionClient | PrismaClient, technicianId: string): Promise<(t: LedgerEntryType) => number> {
+  const sums = await db.ledgerEntry.groupBy({ by: ['type'], _sum: { amountPaise: true }, where: { technicianId } });
+  return (t: LedgerEntryType) => sums.find((s) => s.type === t)?._sum.amountPaise ?? 0;
+}
+
 /** payable = earnings − offsets − payouts. Derived from the ledger alone (reconcilable). */
 export async function payableBalancePaise(db: Prisma.TransactionClient | PrismaClient, technicianId: string): Promise<number> {
-  const sums = await db.ledgerEntry.groupBy({ by: ['type'], _sum: { amountPaise: true }, where: { technicianId } });
-  const get = (t: string) => sums.find((s) => s.type === t)?._sum.amountPaise ?? 0;
+  const get = await sumLedgerByType(db, technicianId);
   return get('EARNING_CREDIT') - get('CASH_DEBT_OFFSET') - get('PAYOUT');
 }
 
 /** debt = collected − offsets − repayments. Must equal the cached Technician.cashDebtPaise. */
 export async function debtBalancePaise(db: Prisma.TransactionClient | PrismaClient, technicianId: string): Promise<number> {
-  const sums = await db.ledgerEntry.groupBy({ by: ['type'], _sum: { amountPaise: true }, where: { technicianId } });
-  const get = (t: string) => sums.find((s) => s.type === t)?._sum.amountPaise ?? 0;
+  const get = await sumLedgerByType(db, technicianId);
   return get('CASH_COLLECTED') - get('CASH_DEBT_OFFSET') - get('DEBT_REPAYMENT');
 }
 
@@ -53,13 +59,17 @@ export async function settleClosableBookings(now: Date = new Date()): Promise<{ 
         await transitionBooking(tx, booking, 'CLOSED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'settlement-sweep' });
         const { earningPaise, commissionPaise } = splitPaise(basePaise);
         const meta = { rateBps: config.COMMISSION_RATE_BPS, basePaise };
-        await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'EARNING_CREDIT', amountPaise: earningPaise, metadata: meta } });
-        await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'COMMISSION', amountPaise: commissionPaise, metadata: meta } });
+        // amountPaise is "always POSITIVE" — a zero-priced service (catalog allows 0 labor/visit fee)
+        // would otherwise write 0-amount rows that corrupt the invariant and could break a future
+        // Route transfer. Skip the entry when its amount is 0; the booking still CLOSEs.
+        if (earningPaise > 0) await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'EARNING_CREDIT', amountPaise: earningPaise, metadata: meta } });
+        if (commissionPaise > 0) await tx.ledgerEntry.create({ data: { technicianId: booking.technicianId, bookingId: booking.id, type: 'COMMISSION', amountPaise: commissionPaise, metadata: meta } });
         // Auto-net: the technician already HOLDS collected cash — earnings pay the debt down
         // first; payouts only ever move the remainder. FOR UPDATE acquires the row lock BEFORE
         // reading, serializing concurrent same-technician settlements across parallel sweep runners.
         const [locked] = await tx.$queryRaw<{ cashDebtPaise: number }[]>`SELECT "cashDebtPaise" FROM "Technician" WHERE id = ${booking.technicianId} FOR UPDATE`;
-        const currentDebt = Number(locked?.cashDebtPaise ?? 0);
+        if (!locked) throw new Error(`technician ${booking.technicianId} vanished mid-settlement`); // fail LOUD (→ skipped) rather than silently skip the debt offset
+        const currentDebt = Number(locked.cashDebtPaise);
         const offset = Math.min(earningPaise, currentDebt);
         if (offset > 0) {
           await tx.technician.update({ where: { id: booking.technicianId }, data: { cashDebtPaise: { decrement: offset } } });
@@ -87,16 +97,25 @@ export async function settleClosableBookings(now: Date = new Date()): Promise<{ 
 export async function technicianBalance(userId: string): Promise<{ payablePaise: number; cashDebtPaise: number }> {
   const tech = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
   if (!tech) throw new ForbiddenError('Technician profile required');
-  const [payablePaise, ledgerDebt] = await Promise.all([
-    payableBalancePaise(prisma, tech.id),
-    debtBalancePaise(prisma, tech.id),
-  ]);
-  if (ledgerDebt !== tech.cashDebtPaise) {
+  // ONE snapshot: the cached column and both ledger balances must be read from the SAME moment,
+  // or a concurrent capture/settlement committing mid-read fires a FALSE reconciliation mismatch.
+  const { cashDebtPaise, payablePaise, ledgerDebt } = await prisma.$transaction(async (tx) => {
+    const row = await tx.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });
+    const get = await sumLedgerByType(tx, tech.id);
+    return {
+      cashDebtPaise: row.cashDebtPaise,
+      payablePaise: get('EARNING_CREDIT') - get('CASH_DEBT_OFFSET') - get('PAYOUT'),
+      ledgerDebt: get('CASH_COLLECTED') - get('CASH_DEBT_OFFSET') - get('DEBT_REPAYMENT'),
+    };
+  });
+  if (ledgerDebt !== cashDebtPaise) {
     // Pre-B6c cash captures wrote no CASH_COLLECTED entries, so a mismatch is expected for
-    // migrated technicians — flagged, not fatal. New activity keeps the two in lockstep.
-    await prisma.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'reconciliation_mismatch', technicianId: tech.id, cachedPaise: tech.cashDebtPaise, ledgerPaise: ledgerDebt } } });
+    // migrated technicians — flagged, not fatal. Best-effort: a failed flag write must NOT 500 a
+    // read whose balance computed fine (the flag is diagnostic, not the response).
+    await prisma.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'reconciliation_mismatch', technicianId: tech.id, cachedPaise: cashDebtPaise, ledgerPaise: ledgerDebt } } })
+      .catch((e) => console.error('reconciliation flag write failed', { technicianId: tech.id }, e instanceof Error ? e.message : e));
   }
-  return { payablePaise, cashDebtPaise: tech.cashDebtPaise };
+  return { payablePaise, cashDebtPaise };
 }
 
 async function technicianOrThrow(technicianId: string) {

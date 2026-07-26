@@ -61,7 +61,10 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   // Pre-tx check, UX friction ONLY — a concurrent settlement could flip this between the read and
   // the accept tx. Deliberately NOT a financial invariant (no money moves in accept).
   const techRow = await prisma.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });
-  if (techRow.cashDebtPaise >= config.CASH_DEBT_LIMIT_PAISE) {
+  // `>` not `>=`: the cash gates (initiate + capture) both ALLOW debt to land at EXACTLY the limit,
+  // so accept must too — otherwise one legitimate capture to exactly the limit locks the technician
+  // out of the next job the platform's own capture gate said they could take.
+  if (techRow.cashDebtPaise > config.CASH_DEBT_LIMIT_PAISE) {
     throw new UnprocessableError('Settle your cash debt to accept new jobs');
   }
 
