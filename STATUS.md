@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-25_
+_Last updated: 2026-07-26_
 
 ---
 
@@ -18,8 +18,8 @@ ledger). **Money moves for the first time** — on Razorpay test keys until KYC.
 
 ## Active task
 **Booking Slice B6c** complete on `feature/booking-b6c-settlement` — **settlement ledger + CLOSED**.
-`LedgerEntry` (append-only, 6 action types: EARNING_CREDIT / COMMISSION / CASH_DEBT / SETTLEMENT_PAID /
-REPAYMENT / PLATFORM_ADJUSTMENT); `Booking.paidAt` + `Booking.closedAt`; `SETTLEMENT_EVENT` audit action;
+`LedgerEntry` (append-only, 6 types: EARNING_CREDIT / COMMISSION / CASH_COLLECTED / CASH_DEBT_OFFSET /
+PAYOUT / DEBT_REPAYMENT); `Booking.paidAt` + `Booking.closedAt`; `SETTLEMENT_EVENT` audit action;
 `CHECK (cashDebtPaise >= 0)` (B6b carry-forward); `@@index([method,status,capturedAt])` on Payment.
 `ALLOWED_ACTORS.CLOSED = [SYSTEM]`. Config: `COMMISSION_RATE_BPS`=2000 / `DISPUTE_WINDOW_HOURS`=48 /
 `SETTLEMENT_SWEEP_INTERVAL_MINUTES`=15. Settlement service: `splitPaise` (80/20), ledger-derived balances,
@@ -31,21 +31,24 @@ accept-gate (422 before DISPATCHED→ACCEPTED when `cashDebtPaise` exceeds limit
 via `queue.upsertJobScheduler`; worker calls `settleClosableBookings`; `startSettlementSweep()` wired into
 `server.ts` with a graceful SIGTERM/SIGINT shutdown hook. Endpoints: `GET /technician/me/balance`;
 `POST /admin/settlements/payouts` + `/repayments` (MANAGER+, CHECK→409); `GET /admin/settlements/technicians/:id`.
-323/323 tests green, tsc clean, server boots clean. Awaiting PR → `main`.
+324/324 tests green, tsc clean, server boots clean. Final gates DONE: opus whole-branch "Ready to
+merge" (ledger↔cache reconciliation invariant holds on all 3 debt paths; money conserved; paidAt on
+every PAYMENT_RECEIVED path; DISPUTED excluded from sweep); prisma/golden-rules/fraud-vector clean
+(FK RESTRICT + [technicianId,type] index folded in). `/code-review` DONE (6915507): accept-gate
+boundary (`>` matches capture), zero-amount ledger guard, balance snapshot-consistency + best-effort
+flag. **Awaiting PR → `main`. Next: B7 (disputes) / B2b (accept-timer, BullMQ now exists).**
 Design: [`docs/designs/2026-07-19-booking-b6c-settlement-design.md`]; plan:
 [`docs/plans/2026-07-19-booking-b6c-settlement.md`].
 
 ## Last shipped
 - **Booking Slice B6c** (`apps/backend`, settlement ledger + CLOSED): append-only `LedgerEntry`;
-  `paidAt`/`closedAt` on Booking; 48h dispute-window sweep closes PAYMENT_RECEIVED bookings to CLOSED;
-  zero-payable short-circuit; debt-limit accept-gate; balance + payout + repayment + technician-settlement
-  admin endpoints; BullMQ sweep scheduling (codebase's first background work). 323 tests. On branch —
-  awaiting PR.
-- **Booking Slice B6b** (`apps/backend`, cash path): CASH payment method; receipt OTP handshake
-  (customer mints via shared primitive, technician enters); `Technician.cashDebtPaise` running
-  balance; UX-level + post-lock enforcement debt + velocity gates; idempotent CASH attempt;
-  PAYMENT_RECEIVED as TECHNICIAN with evidence; `cash_initiated`/`cash_received` audits. 304 tests.
-  On branch — all gates passed, awaiting PR.
+  `paidAt`/`closedAt` on Booking; 48h dispute-window sweep closes PAYMENT_RECEIVED bookings to CLOSED
+  with the 80/20 split + cash-debt auto-offset; zero-payable short-circuit; debt-limit accept-gate;
+  balance + payout + repayment + technician-settlement admin endpoints; BullMQ sweep scheduling
+  (codebase's first background work). 324 tests. On branch — all gates passed, awaiting PR.
+- **Booking Slice B6b** — **merged to `main`** (PR #19, squash `9fa2088`): cash path — CASH payment
+  method; receipt OTP handshake; `Technician.cashDebtPaise` running balance; debt + velocity gates;
+  idempotent CASH attempt; PAYMENT_RECEIVED as TECHNICIAN with evidence. 304 tests.
 - **Booking Slice B6a** — **merged to `main`** (PR #18, squash `1123a6f`): Payment attempt model +
   PaymentGateway wrapper (lazy-cred Razorpay, timing-safe HMAC); chargeAmountFor (approved total /
   declined visit fee); idempotent pay endpoint; signature-authed amount-verified duplicate-safe

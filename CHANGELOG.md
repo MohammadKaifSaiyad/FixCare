@@ -8,10 +8,34 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-26 — B6c final gates + `/code-review` pass (branch finalized, awaiting PR)
+
+- **Final gates:** opus whole-branch "Ready to merge" — the ledger↔cache reconciliation invariant
+  (`cashDebtPaise` == Σ CASH_COLLECTED − Σ CASH_DEBT_OFFSET − Σ DEBT_REPAYMENT) holds on all three
+  debt paths (each mutates cache + ledger in ONE tx); money conserved (split sums exact, offset moves
+  `min(earning,debt)` from both payable and debt); `paidAt` on all three PAYMENT_RECEIVED paths so no
+  booking strands; DISPUTED excluded from the sweep. prisma/golden-rules/fraud-vector clean — folded
+  in the prisma WARNs (`LedgerEntry.bookingId` FK → RESTRICT, `@@index([technicianId, type])`).
+- **`/code-review` (8 finder angles → verified → fixed in `6915507`), 324/324 green:**
+- **Gate boundary mismatch** — the accept-gate blocked at `>= limit` while the initiate/capture gates
+  allow debt to land at *exactly* the limit (`> limit`); a technician who captured cash to exactly the
+  limit was then locked out of the next job the platform just permitted. Accept-gate now uses `>`.
+- **Zero-amount ledger rows** — a zero-priced service (catalog Zod allows `min(0)`) made `splitPaise`
+  return `{0,0}`, writing zero-amount EARNING_CREDIT/COMMISSION rows that violate the always-positive
+  invariant. The sweep now skips zero-amount entries (the booking still CLOSEs).
+- **Balance snapshot + best-effort flag** — `technicianBalance` read the cache column and the ledger in
+  two separate queries, firing FALSE reconciliation flags when a capture committed mid-read; now one
+  snapshot transaction. The reconciliation audit write is best-effort so a transient DB error can't
+  500 a balance that computed fine. Also: fail loud (not silent-skip) if a FOR-UPDATE'd technician row
+  vanishes mid-settlement; `sumLedgerByType` helper (one groupBy, enum-typed key).
+- Backlogged: `splitPaise` → `currency.ts` + `assertValidPaise`, `:id` UUID Zod (module-wide),
+  reconciliation-spam cooldown, SETTLEMENT_EVENT shape union, a `shared/queue` factory for B2b's
+  accept-timer.
+
 ## 2026-07-25 — Booking slice B6c (settlement ledger + CLOSED)
 
-- **Schema (all additive):** `LedgerEntry` model — append-only financial record with 6 action types
-  (`EARNING_CREDIT`, `COMMISSION`, `CASH_DEBT`, `SETTLEMENT_PAID`, `REPAYMENT`, `PLATFORM_ADJUSTMENT`);
+- **Schema (all additive):** `LedgerEntry` model — append-only financial record with 6 types
+  (`EARNING_CREDIT`, `COMMISSION`, `CASH_COLLECTED`, `CASH_DEBT_OFFSET`, `PAYOUT`, `DEBT_REPAYMENT`);
   FK to Booking + Technician; `amountPaise Int`. `Booking.paidAt` + `Booking.closedAt` nullable timestamp
   columns. `SETTLEMENT_EVENT` audit action. `ALLOWED_ACTORS.CLOSED = [SYSTEM]` (the sweep is the sole
   closer — no human can race it). `CHECK (cashDebtPaise >= 0)` on Technician (B6b carry-forward — ships
