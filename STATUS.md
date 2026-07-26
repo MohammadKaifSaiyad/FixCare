@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-19_
+_Last updated: 2026-07-26_
 
 ---
 
@@ -17,36 +17,38 @@ B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4a/B4b/OTP
 ledger). **Money moves for the first time** — on Razorpay test keys until KYC.
 
 ## Active task
-**Booking Slice B6b** complete on `feature/booking-b6b-cash` — **the cash payment path**.
-`PaymentMethod.CASH` enum value; `Payment.razorpayOrderId` nullable (cash has no gateway order);
-`Technician.cashDebtPaise` (running platform debt balance); migration `payment_cash` on both DBs.
-Config: `CASH_DEBT_LIMIT_PAISE`=50000 (₹500 flat new-tech tier) + `CASH_VELOCITY_CAP_PAISE`=300000
-(24h trailing window). `ALLOWED_ACTORS.PAYMENT_RECEIVED` widened to SYSTEM + TECHNICIAN (cash:
-technician drives it ONLY with the receipt OTP minted to the customer — Golden Rule 2's second
-party). Customer `POST /me/bookings/:id/pay-cash`: any-method already-paid → 409;
-`chargeAmountFor` amount; zero-payable → 422; UX-level debt + velocity gates → 422; idempotent
-CASH attempt row; receipt OTP via `shared/auth/otp-store` (3/900s throttle → 429); `cash_initiated`
-audit in-tx. `/pay` (UPI) also widened to 409 'already paid' on any-method CAPTURED row.
-Technician `POST /technician/jobs/:id/confirm-cash`: OTP verify (payload pins paymentId + amount
-at initiation) → one tx: debt increment FIRST (row update = serializing lock) → both gates
-re-checked post-lock (enforcement) → Payment CAPTURED keyed on CREATED → PAYMENT_RECEIVED as
-TECHNICIAN with evidence → `cash_received` audit. Debt rollback on any failure. Response carries
-the running `cashDebtPaise` balance. 304/304 tests green, tsc clean. Per-task reviews all Approved.
-Final gates DONE: opus whole-branch "Ready to merge" (cross-method interleavings + concurrency
-verified; hardening 1a8a085); prisma/golden-rules/fraud-vector clean (B6c carry-forwards logged in
-the SDD ledger: CHECK cashDebtPaise>=0 with the settlement decrement, Payment velocity index,
-debt-aging rule). `/code-review` DONE (a7e220e): DTO capture-masking fixed (CAPTURED wins over
-take-1-latest), deleted-technician initiation dead-end 422, payload positivity fail-closed.
-**Awaiting PR → `main`. Next: B6c (settlement ledger + CLOSED wiring).**
-Design: [`docs/designs/2026-07-19-booking-b6b-cash-design.md`]; plan:
-[`docs/plans/2026-07-19-booking-b6b-cash.md`].
+**Booking Slice B6c** complete on `feature/booking-b6c-settlement` — **settlement ledger + CLOSED**.
+`LedgerEntry` (append-only, 6 types: EARNING_CREDIT / COMMISSION / CASH_COLLECTED / CASH_DEBT_OFFSET /
+PAYOUT / DEBT_REPAYMENT); `Booking.paidAt` + `Booking.closedAt`; `SETTLEMENT_EVENT` audit action;
+`CHECK (cashDebtPaise >= 0)` (B6b carry-forward); `@@index([method,status,capturedAt])` on Payment.
+`ALLOWED_ACTORS.CLOSED = [SYSTEM]`. Config: `COMMISSION_RATE_BPS`=2000 / `DISPUTE_WINDOW_HOURS`=48 /
+`SETTLEMENT_SWEEP_INTERVAL_MINUTES`=15. Settlement service: `splitPaise` (80/20), ledger-derived balances,
+`recordCashCollected` wired into `confirmCashPayment` tx, `settleClosableBookings` idempotent 48h-close sweep
+(FOR-UPDATE-locked cash-debt auto-offset + stale-CASH-CREATED cleanup + error-per-booking logging). Zero-payable
+chain at `confirmCompletion` (CUSTOMER_CONFIRMED→PAYMENT_RECEIVED as SYSTEM when nothing owed). Debt-limit
+accept-gate (422 before DISPATCHED→ACCEPTED when `cashDebtPaise` exceeds limit). **BullMQ settlement sweep
+(the codebase's first background work):** `shared/queue/settlement-sweep.ts` schedules a repeating job every 15 min
+via `queue.upsertJobScheduler`; worker calls `settleClosableBookings`; `startSettlementSweep()` wired into
+`server.ts` with a graceful SIGTERM/SIGINT shutdown hook. Endpoints: `GET /technician/me/balance`;
+`POST /admin/settlements/payouts` + `/repayments` (MANAGER+, CHECK→409); `GET /admin/settlements/technicians/:id`.
+324/324 tests green, tsc clean, server boots clean. Final gates DONE: opus whole-branch "Ready to
+merge" (ledger↔cache reconciliation invariant holds on all 3 debt paths; money conserved; paidAt on
+every PAYMENT_RECEIVED path; DISPUTED excluded from sweep); prisma/golden-rules/fraud-vector clean
+(FK RESTRICT + [technicianId,type] index folded in). `/code-review` DONE (6915507): accept-gate
+boundary (`>` matches capture), zero-amount ledger guard, balance snapshot-consistency + best-effort
+flag. **Awaiting PR → `main`. Next: B7 (disputes) / B2b (accept-timer, BullMQ now exists).**
+Design: [`docs/designs/2026-07-19-booking-b6c-settlement-design.md`]; plan:
+[`docs/plans/2026-07-19-booking-b6c-settlement.md`].
 
 ## Last shipped
-- **Booking Slice B6b** (`apps/backend`, cash path): CASH payment method; receipt OTP handshake
-  (customer mints via shared primitive, technician enters); `Technician.cashDebtPaise` running
-  balance; UX-level + post-lock enforcement debt + velocity gates; idempotent CASH attempt;
-  PAYMENT_RECEIVED as TECHNICIAN with evidence; `cash_initiated`/`cash_received` audits. 304 tests.
-  On branch — all gates passed, awaiting PR.
+- **Booking Slice B6c** (`apps/backend`, settlement ledger + CLOSED): append-only `LedgerEntry`;
+  `paidAt`/`closedAt` on Booking; 48h dispute-window sweep closes PAYMENT_RECEIVED bookings to CLOSED
+  with the 80/20 split + cash-debt auto-offset; zero-payable short-circuit; debt-limit accept-gate;
+  balance + payout + repayment + technician-settlement admin endpoints; BullMQ sweep scheduling
+  (codebase's first background work). 324 tests. On branch — all gates passed, awaiting PR.
+- **Booking Slice B6b** — **merged to `main`** (PR #19, squash `9fa2088`): cash path — CASH payment
+  method; receipt OTP handshake; `Technician.cashDebtPaise` running balance; debt + velocity gates;
+  idempotent CASH attempt; PAYMENT_RECEIVED as TECHNICIAN with evidence. 304 tests.
 - **Booking Slice B6a** — **merged to `main`** (PR #18, squash `1123a6f`): Payment attempt model +
   PaymentGateway wrapper (lazy-cred Razorpay, timing-safe HMAC); chargeAmountFor (approved total /
   declined visit fee); idempotent pay endpoint; signature-authed amount-verified duplicate-safe
@@ -152,15 +154,12 @@ Design: [`docs/designs/2026-07-19-booking-b6b-cash-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **Final reviews + `/code-review` + PR + merge** `feature/booking-b6b-cash` → `main` (B6b).
-2. **B6c — settlement ledger** (manual payouts until Route approval; zero-payable auto-settlement;
-   CLOSED wiring with the 48h dispute window; cash repayment + accept-gate). Apply for Razorpay
-   KYC + Route NOW if not already in flight. Provision the real Cloudflare R2 account + creds
-   (R2_* env) before launch.
-3. Hardening backlog (see deferred): rate-limit `/auth/refresh` + `/admin/auth/login`;
-   admin-login timing-oracle dummy-verify; MSG91 wiring once DLT approved; **catalog
-   module-wide hardening** (TOCTOU pre-checks; shared paise validator; `ServicePrice.deletedAt`;
-   Zone-soft-delete → orphaned PincodeZone guard).
+1. **B7 — disputes** (DISPUTED state, customer-raise window, admin adjudication, partial refunds via
+   B6a's `refund.*` webhook skeleton). The 48h dispute window is already enforced by the B6c sweep.
+2. **B2b — accept-timer** (30-sec unclaimed-job re-broadcast; BullMQ infra NOW EXISTS — reuse the
+   `shared/queue/` scaffolding from B6c). Apply for Razorpay KYC + Route NOW if not in flight.
+3. **Flutter customer app** (Month 5 start): booking creation flow + live status polling + payment UI.
+   Provision Cloudflare R2 account + creds (`R2_*` env) before launch.
 
 ## Deferred follow-ups (carry forward)
 - **Auth rate-limiting hardening pass:** tighter per-IP/email limit + lockout on

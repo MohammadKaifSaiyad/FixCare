@@ -42,6 +42,10 @@ describe('POST /technician/jobs/:id/confirm-cash', () => {
     expect(payment!.status).toBe('CAPTURED');
     expect(payment!.capturedAt).not.toBeNull();
     expect((await prisma.technician.findUnique({ where: { id: t.technicianId } }))!.cashDebtPaise).toBe(amountPaise);
+    // B6c: the capture also writes a CASH_COLLECTED ledger entry in the SAME tx, so the ledger-derived
+    // debt stays in lockstep with the cached column (the reconciliation invariant).
+    const collected = await prisma.ledgerEntry.findFirst({ where: { bookingId, type: 'CASH_COLLECTED' } });
+    expect(collected!.amountPaise).toBe(amountPaise);
     const transition = await prisma.auditLog.findFirst({ where: { action: 'BOOKING_STATE_CHANGED', metadata: { path: ['to'], equals: 'PAYMENT_RECEIVED' } } });
     expect((transition!.metadata as { method: string }).method).toBe('CASH');
     const received = await prisma.auditLog.findFirst({ where: { action: 'PAYMENT_EVENT', metadata: { path: ['event'], equals: 'cash_received' } } });

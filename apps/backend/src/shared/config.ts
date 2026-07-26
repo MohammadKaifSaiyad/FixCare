@@ -27,6 +27,11 @@ const ConfigSchema = z.object({
   // the trust module lands. Velocity cap is per-technician over a trailing 24h window.
   CASH_DEBT_LIMIT_PAISE: z.coerce.number().int().positive().default(50000),
   CASH_VELOCITY_CAP_PAISE: z.coerce.number().int().positive().default(300000),
+  // Settlement (B6c). Commission in basis points (2000 = 20% platform / 80% technician —
+  // pricing-model.md split table). Sweep closes PAYMENT_RECEIVED bookings paid > window ago.
+  COMMISSION_RATE_BPS: z.coerce.number().int().min(0).max(10000).default(2000),
+  DISPUTE_WINDOW_HOURS: z.coerce.number().int().positive().default(48),
+  SETTLEMENT_SWEEP_INTERVAL_MINUTES: z.coerce.number().int().positive().default(15),
   SEED_ADMIN_EMAIL: z.email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
 });

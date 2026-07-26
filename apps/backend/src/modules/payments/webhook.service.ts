@@ -70,6 +70,7 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
         // transitionBooking's optimistic lock (updateMany WHERE state) is the DB-level duplicate
         // guard; the status check above catches the sequential duplicate before it.
         await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'razorpay-webhook' }, { razorpayPaymentId: entity.id, amountPaise: payment.amountPaise, method: 'UPI' });
+        await tx.booking.update({ where: { id: payment.bookingId }, data: { paidAt: new Date() } }); // the close sweep (B6c) keys on this
         // PAYMENT_EVENT rows already cover order_created, payment_failed, and every anomaly —
         // this completes the payment timeline so ops can query one action for the full history.
         await tx.auditLog.create({

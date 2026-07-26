@@ -12,6 +12,8 @@ import { randomUUID } from 'node:crypto';
 import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody, type ConfirmCashBody } from './technician-jobs.schemas.js';
 import { verifyCashReceiptCode, cashCollectedLast24hPaise } from '../bookings/cash.js';
 import { config } from '../../shared/config.js';
+import { recordCashCollected } from '../settlements/settlements.service.js';
+import { computeEstimate } from '../bookings/estimate.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -53,6 +55,18 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   if (!booking) throw new NotFoundError('Job not found');
   if (booking.state !== 'DISPATCHED' || booking.technicianId) throw new ConflictError('This job is no longer available');
   if (!tech.skills.includes(booking.service.requiredSkill)) throw new ForbiddenError('You are not skilled for this job');
+  // B6c accept-gate (core-flow: "technician at cash debt limit → cannot accept"). Deferred from
+  // B6b until settlement existed — auto-offset now gives a self-healing path out of the lockout.
+  // Note: requireTechnician returns only {id, skills}, so cashDebtPaise is fetched separately here.
+  // Pre-tx check, UX friction ONLY — a concurrent settlement could flip this between the read and
+  // the accept tx. Deliberately NOT a financial invariant (no money moves in accept).
+  const techRow = await prisma.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });
+  // `>` not `>=`: the cash gates (initiate + capture) both ALLOW debt to land at EXACTLY the limit,
+  // so accept must too — otherwise one legitimate capture to exactly the limit locks the technician
+  // out of the next job the platform's own capture gate said they could take.
+  if (techRow.cashDebtPaise > config.CASH_DEBT_LIMIT_PAISE) {
+    throw new UnprocessableError('Settle your cash debt to accept new jobs');
+  }
 
   await prisma.$transaction(async (tx) => {
     // transitionBooking does the optimistic-locked DISPATCHED→ACCEPTED + audit; concurrent loser gets count===0 → ConflictError (409)
@@ -310,22 +324,39 @@ export async function confirmPhoto(userId: string, bookingId: string, body: Conf
   return { id: created.id, kind: body.kind, capturedAt: created.capturedAt.toISOString() };
 }
 
-/** REPAIR_COMPLETE → CUSTOMER_CONFIRMED (keystone #2). The technician drives the transition but
- *  ONLY with the code minted to the customer's phone — no single-party path (Rule 2).
+/** REPAIR_COMPLETE → CUSTOMER_CONFIRMED (keystone #2), and zero-payable chain → PAYMENT_RECEIVED.
+ *  The technician drives the transition but ONLY with the code minted to the customer's phone —
+ *  no single-party path (Rule 2).
  *  NOTE: a correct code is consumed BEFORE the tx (redis and Postgres can't share one); if the tx
  *  rolled back the customer just re-requests — fails SAFE, never a false CUSTOMER_CONFIRMED
- *  (same accepted trade-off as the arrival handshake). */
-export async function confirmCompletion(userId: string, bookingId: string, body: ConfirmCompletionBody): Promise<{ id: string; state: 'CUSTOMER_CONFIRMED' }> {
+ *  (same accepted trade-off as the arrival handshake).
+ *  B6c zero-payable chain: when the visit-fee credit covers the whole job there is nothing to
+ *  charge — never show the customer a ₹0 pay screen. The second transition runs in the SAME tx
+ *  so a crash can't strand the booking between the two states. */
+export async function confirmCompletion(userId: string, bookingId: string, body: ConfirmCompletionBody): Promise<{ id: string; state: 'CUSTOMER_CONFIRMED' | 'PAYMENT_RECEIVED' }> {
   const tech = await requireTechnician(userId);
   const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'REPAIR_COMPLETE');
   const result = await verifyCompletionCode(bookingId, body.code);
   if (result === 'no-code') throw new ConflictError('No active code — ask the customer to request one');
   if (result === 'invalid') throw new UnauthorizedError('Invalid or expired completion code');
-  await prisma.$transaction(async (tx) => {
+  const finalState = await prisma.$transaction(async (tx) => {
     await transitionBooking(tx, booking, 'CUSTOMER_CONFIRMED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { codeConfirmed: true });
     await tx.booking.update({ where: { id: bookingId }, data: { confirmedAt: new Date() } });
+    // Zero-payable chain (B6c): when the visit-fee credit covers the whole job there is nothing
+    // to charge — never show the customer a ₹0 pay screen. Same tx: a crash can't strand the
+    // booking between the two states.
+    const cart = await tx.bookingPart.findMany({ where: { bookingId } });
+    // Pass 'CUSTOMER_CONFIRMED' (the post-transition state) not booking.state — booking.state is
+    // still REPAIR_COMPLETE here, and computeEstimate applies the visit-fee credit only post-quote.
+    const payable = computeEstimate({ laborPaise: booking.laborPaise, visitFeePaise: booking.visitFeePaise, state: 'CUSTOMER_CONFIRMED', declinedAt: booking.declinedAt }, cart).totalPayablePaise;
+    if (payable > 0) return 'CUSTOMER_CONFIRMED' as const;
+    // { ...booking, state: 'CUSTOMER_CONFIRMED' } so the second optimistic lock (WHERE state=...)
+    // matches the row the first transition just committed in THIS tx — not the stale REPAIR_COMPLETE.
+    await transitionBooking(tx, { ...booking, state: 'CUSTOMER_CONFIRMED' }, 'PAYMENT_RECEIVED', { type: 'SYSTEM', kind: 'SYSTEM', id: 'zero-payable' }, { amountPaise: 0, reason: 'zero_payable' });
+    await tx.booking.update({ where: { id: bookingId }, data: { paidAt: new Date() } });
+    return 'PAYMENT_RECEIVED' as const;
   });
-  return { id: bookingId, state: 'CUSTOMER_CONFIRMED' };
+  return { id: bookingId, state: finalState };
 }
 
 /** Cash receipt (B6b): CUSTOMER_CONFIRMED or DECLINED_BY_CUSTOMER → PAYMENT_RECEIVED. The
@@ -364,9 +395,11 @@ export async function confirmCashPayment(userId: string, bookingId: string, body
     if (updated.count === 0) throw new ConflictError('This payment is no longer open');
     // Payment guard (CREATED status) + booking state guard: either race-loss rolls back the WHOLE tx including debt increment.
     await transitionBooking(tx, booking, 'PAYMENT_RECEIVED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { method: 'CASH', amountPaise, codeConfirmed: true });
+    await tx.booking.update({ where: { id: bookingId }, data: { paidAt: new Date() } }); // the close sweep (B6c) keys on this
     await tx.auditLog.create({
       data: { action: 'PAYMENT_EVENT', actorType: 'USER', actorId: userId, metadata: { event: 'cash_received', bookingId, paymentId, amountPaise, technicianId: tech.id } },
     });
+    await recordCashCollected(tx, { technicianId: tech.id, bookingId, amountPaise });
     return t.cashDebtPaise;
   });
   return { id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise };

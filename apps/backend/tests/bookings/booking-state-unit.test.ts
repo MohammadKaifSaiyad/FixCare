@@ -31,6 +31,13 @@ describe('ALLOWED_TRANSITIONS', () => {
     }
   });
 
+  it('CLOSED is SYSTEM-only — the settlement sweep drives it (B7 adds ADMIN for dispute closes)', () => {
+    expect(actorAllowedFor('CLOSED', 'SYSTEM')).toBe(true);
+    for (const kind of ['CUSTOMER', 'TECHNICIAN', 'ADMIN'] as const) {
+      expect(actorAllowedFor('CLOSED', kind)).toBe(false);
+    }
+  });
+
   it('cancel edges only exist before ARRIVED', () => {
     expect(ALLOWED_TRANSITIONS['EN_ROUTE']).toContain('CANCELLED_BY_CUSTOMER');
     expect(ALLOWED_TRANSITIONS['ARRIVED']).not.toContain('CANCELLED_BY_CUSTOMER');
