@@ -26,7 +26,9 @@ export async function raiseDispute(userId: string, bookingId: string, body: Rais
       await tx.auditLog.create({ data: { action: 'DISPUTE_EVENT', actorType: 'USER', actorId: userId, metadata: { event: 'raised', bookingId, disputeId: dispute.id } } });
     });
   } catch (e) {
-    if (e instanceof Error && /Dispute_one_open_per_booking|unique/i.test(e.message)) throw new ConflictError('A dispute is already open for this booking');
+    // Match ONLY the one-open-per-booking index — a broad /unique/ would misattribute any future
+    // unique violation in this tx to "dispute already open".
+    if (e instanceof Error && /Dispute_one_open_per_booking/i.test(e.message)) throw new ConflictError('A dispute is already open for this booking');
     throw e;
   }
   return { id: bookingId, state: 'DISPUTED' };
