@@ -19,7 +19,7 @@ import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
 
 const otpSender = makeOtpSender();
 
-async function requireCustomer(userId: string): Promise<{ id: string }> {
+export async function requireCustomer(userId: string): Promise<{ id: string }> {
   const c = await prisma.customer.findFirst({ where: { userId, deletedAt: null } });
   if (!c) throw new ForbiddenError('Only customers can book');
   return { id: c.id };
