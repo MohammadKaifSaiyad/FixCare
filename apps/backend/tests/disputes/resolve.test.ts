@@ -339,6 +339,21 @@ describe('POST /admin/disputes/:id/resolve — state guards', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('CONCURRENT resolves: exactly ONE succeeds, the other 409s — no double-refund, one set of ledger rows', async () => {
+    const { disputeId, adminToken } = await disputedBooking({ method: 'UPI' });
+    // Two admins (or a double-submit) hit resolve at once. The atomic OPEN→RESOLVED claim gates
+    // the gateway refund: only one call gets past it, so the refund fires exactly once.
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'POST', url: `/admin/disputes/${disputeId}/resolve`, headers: auth(adminToken), payload: { outcome: 'FAVOR_CUSTOMER', refundPaise: CHARGE, reason: 'race a' } }),
+      app.inject({ method: 'POST', url: `/admin/disputes/${disputeId}/resolve`, headers: auth(adminToken), payload: { outcome: 'FAVOR_CUSTOMER', refundPaise: CHARGE, reason: 'race b' } }),
+    ]);
+    const codes = [a.statusCode, b.statusCode].sort();
+    expect(codes).toEqual([200, 409]); // exactly one wins
+    const booking = await prisma.dispute.findUnique({ where: { id: disputeId } });
+    // exactly one reversal entry for the one booking (no double-refund ledger trail)
+    expect(await prisma.ledgerEntry.count({ where: { bookingId: booking!.bookingId, type: 'DISPUTE_REVERSAL' } })).toBe(1);
+  });
 });
 
 describe('POST /admin/disputes/:id/resolve — RBAC', () => {

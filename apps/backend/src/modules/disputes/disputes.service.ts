@@ -74,25 +74,30 @@ export async function resolveDispute(
   const retained = Math.max(0, base - refundPaise);
   const { earningPaise, commissionPaise } = splitPaise(retained);
 
-  // Issue the gateway refund BEFORE the transaction (mirror B6a's createOrder-before-tx pattern).
-  // A gateway failure must not leave a half-closed dispute with DB side effects committed.
-  // Cash → no gateway call; dispute is recorded as manually handled.
+  // CLAIM the dispute atomically BEFORE the gateway call: flip OPEN→RESOLVED conditioned on
+  // status='OPEN'. Two concurrent resolves (double-submit, retry, two admins) would otherwise
+  // both pass the read-only status check and each fire a REAL, non-transactional gateway refund
+  // — the booking's optimistic lock keeps the DB consistent but the money already left twice.
+  // count===0 means another resolve won the race → 409, and NO gateway refund fires here.
+  const claim = await prisma.dispute.updateMany({
+    where: { id: disputeId, status: 'OPEN' },
+    data: { status: 'RESOLVED', outcome: body.outcome, refundPaise, resolvedByUserId: adminUserId, resolvedAt: new Date() },
+  });
+  if (claim.count === 0) throw new ConflictError('Dispute is already resolved');
+
+  // Issue the gateway refund AFTER the claim, BEFORE the ledger tx (mirror B6a's
+  // createOrder-before-tx pattern). A gateway failure must not leave a half-closed dispute with
+  // ledger side effects committed. Cash → no gateway call; recorded as manually handled.
   let refundId: string | null = null;
   if (refundPaise > 0 && captured.method === 'UPI' && captured.razorpayPaymentId) {
     refundId = (await paymentGateway.refund(captured.razorpayPaymentId, refundPaise)).refundId;
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.dispute.update({
-      where: { id: disputeId },
-      data: {
-        status: 'RESOLVED',
-        outcome: body.outcome,
-        refundPaise,
-        resolvedByUserId: adminUserId,
-        resolvedAt: new Date(),
-      },
-    });
+    // The dispute was already claimed RESOLVED above (the concurrency backstop) — the tx now only
+    // books the ledger + closes the booking. If this tx rolls back the dispute stays RESOLVED with
+    // no ledger; that fails SAFE (no double payout) and is recoverable by ops, same accepted
+    // tradeoff as B6a's orphaned-order-after-gateway-success.
 
     // Ledger entries: skip zero-amount rows (B6c invariant).
     if (earningPaise > 0) {
@@ -136,7 +141,8 @@ export async function resolveDispute(
       const [locked] = await tx.$queryRaw<{ cashDebtPaise: number }[]>`
         SELECT "cashDebtPaise" FROM "Technician" WHERE id = ${booking.technicianId} FOR UPDATE
       `;
-      if (locked) {
+      if (!locked) throw new Error(`technician ${booking.technicianId} vanished mid-resolution`); // fail LOUD (roll back), parity with the sweep — never silently skip the offset
+      {
         const currentDebt = Number(locked.cashDebtPaise);
         const offset = Math.min(earningPaise, currentDebt);
         if (offset > 0) {
