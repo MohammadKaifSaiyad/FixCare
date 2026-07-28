@@ -1,9 +1,11 @@
 import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
-import { NotFoundError, ConflictError } from '../../shared/errors.js';
+import { NotFoundError, ConflictError, UnprocessableError } from '../../shared/errors.js';
 import { requireCustomer } from '../bookings/bookings.service.js';
 import { transitionBooking } from '../bookings/bookings.state.js';
-import type { RaiseDisputeBody } from './disputes.schemas.js';
+import { splitPaise } from '../settlements/settlements.service.js';
+import { paymentGateway } from '../../shared/third-party/razorpay.js';
+import type { RaiseDisputeBody, ResolveDisputeBody } from './disputes.schemas.js';
 
 /** Customer raises a dispute on a paid booking within the 48h window → PAYMENT_RECEIVED → DISPUTED.
  *  The B6c sweep only closes PAYMENT_RECEIVED, so a DISPUTED booking's payout is held automatically. */
@@ -32,4 +34,206 @@ export async function raiseDispute(userId: string, bookingId: string, body: Rais
     throw e;
   }
   return { id: bookingId, state: 'DISPUTED' };
+}
+
+/** Admin resolves a dispute: writes ledger entries, optionally calls gateway refund (UPI only),
+ *  auto-offsets cash debt, transitions booking to CLOSED, writes DISPUTE_EVENT audit.
+ *
+ *  SINGLE-REVERSAL CONTRACT: this function writes the ONE DISPUTE_REVERSAL for BOTH UPI and cash.
+ *  The refund.processed webhook (Task 3) only confirms the refund by setting razorpayRefundId +
+ *  writing a refund_confirmed audit — it never writes a second ledger entry.
+ *  Conservation: retained + refund == base (exactly; proven by tests). */
+export async function resolveDispute(
+  adminUserId: string,
+  disputeId: string,
+  body: ResolveDisputeBody,
+): Promise<{ id: string; state: 'CLOSED'; outcome: string; refundPaise: number }> {
+  const dispute = await prisma.dispute.findUnique({ where: { id: disputeId }, include: { booking: true } });
+  if (!dispute) throw new NotFoundError('Dispute not found');
+  if (dispute.status !== 'OPEN') throw new ConflictError('Dispute is already resolved');
+
+  const booking = dispute.booking;
+  const captured = await prisma.payment.findFirst({ where: { bookingId: booking.id, status: 'CAPTURED' } });
+  if (!captured) throw new ConflictError('No captured payment for this booking');
+  const charge = captured.amountPaise;
+
+  // Validate refund amount against outcome + the real captured charge.
+  const refundPaise = body.refundPaise ?? 0;
+  if (body.outcome === 'FAVOR_TECHNICIAN' && refundPaise !== 0) {
+    throw new UnprocessableError('FAVOR_TECHNICIAN takes no refund');
+  }
+  if (body.outcome === 'FAVOR_CUSTOMER' && refundPaise !== charge) {
+    throw new UnprocessableError('FAVOR_CUSTOMER must refund the full captured charge');
+  }
+  if (body.outcome === 'PARTIAL' && !(refundPaise >= 1 && refundPaise < charge)) {
+    throw new UnprocessableError('PARTIAL refund must be between 1 and the captured charge (exclusive)');
+  }
+
+  // base: if the customer declined the diagnosis, tech only earns the visit fee; otherwise labor.
+  const base = booking.declinedAt != null ? booking.visitFeePaise : booking.laborPaise;
+  const retained = Math.max(0, base - refundPaise);
+  const { earningPaise, commissionPaise } = splitPaise(retained);
+
+  // Issue the gateway refund BEFORE the transaction (mirror B6a's createOrder-before-tx pattern).
+  // A gateway failure must not leave a half-closed dispute with DB side effects committed.
+  // Cash → no gateway call; dispute is recorded as manually handled.
+  let refundId: string | null = null;
+  if (refundPaise > 0 && captured.method === 'UPI' && captured.razorpayPaymentId) {
+    refundId = (await paymentGateway.refund(captured.razorpayPaymentId, refundPaise)).refundId;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: 'RESOLVED',
+        outcome: body.outcome,
+        refundPaise,
+        resolvedByUserId: adminUserId,
+        resolvedAt: new Date(),
+      },
+    });
+
+    // Ledger entries: skip zero-amount rows (B6c invariant).
+    if (earningPaise > 0) {
+      await tx.ledgerEntry.create({
+        data: {
+          technicianId: booking.technicianId!,
+          bookingId: booking.id,
+          type: 'EARNING_CREDIT',
+          amountPaise: earningPaise,
+          metadata: { source: 'dispute_resolution', outcome: body.outcome },
+        },
+      });
+    }
+    if (commissionPaise > 0) {
+      await tx.ledgerEntry.create({
+        data: {
+          technicianId: booking.technicianId!,
+          bookingId: booking.id,
+          type: 'COMMISSION',
+          amountPaise: commissionPaise,
+          metadata: { source: 'dispute_resolution', outcome: body.outcome },
+        },
+      });
+    }
+    // SINGLE-REVERSAL: write DISPUTE_REVERSAL once here for BOTH UPI and cash.
+    // For UPI the gateway call has already happened above; the webhook later only sets razorpayRefundId.
+    if (refundPaise > 0) {
+      await tx.ledgerEntry.create({
+        data: {
+          technicianId: booking.technicianId!,
+          bookingId: booking.id,
+          type: 'DISPUTE_REVERSAL',
+          amountPaise: refundPaise,
+          metadata: { outcome: body.outcome, method: captured.method },
+        },
+      });
+    }
+
+    // Auto-offset cash debt against the credited earning (FOR-UPDATE-locked, B6c idiom).
+    if (earningPaise > 0) {
+      const [locked] = await tx.$queryRaw<{ cashDebtPaise: number }[]>`
+        SELECT "cashDebtPaise" FROM "Technician" WHERE id = ${booking.technicianId} FOR UPDATE
+      `;
+      if (locked) {
+        const currentDebt = Number(locked.cashDebtPaise);
+        const offset = Math.min(earningPaise, currentDebt);
+        if (offset > 0) {
+          await tx.technician.update({
+            where: { id: booking.technicianId! },
+            data: { cashDebtPaise: { decrement: offset } },
+          });
+          await tx.ledgerEntry.create({
+            data: {
+              technicianId: booking.technicianId!,
+              bookingId: booking.id,
+              type: 'CASH_DEBT_OFFSET',
+              amountPaise: offset,
+            },
+          });
+        }
+      }
+    }
+
+    await transitionBooking(
+      tx,
+      booking,
+      'CLOSED',
+      { type: 'USER', kind: 'ADMIN', id: adminUserId },
+      { source: 'dispute_resolution', outcome: body.outcome, refundPaise },
+    );
+    await tx.booking.update({ where: { id: booking.id }, data: { closedAt: new Date() } });
+
+    // Audit log — no PII, integer paise only.
+    await tx.auditLog.create({
+      data: {
+        action: 'DISPUTE_EVENT',
+        actorType: 'USER',
+        actorId: adminUserId,
+        metadata: {
+          event: 'resolved',
+          disputeId,
+          bookingId: booking.id,
+          outcome: body.outcome,
+          refundPaise,
+          refundId, // null for cash or FAVOR_TECHNICIAN; non-null for UPI refund
+          method: captured.method,
+        },
+      },
+    });
+  });
+
+  return { id: booking.id, state: 'CLOSED', outcome: body.outcome, refundPaise };
+}
+
+/** Case file DTO for admin drill-down — no raw user objects, no PII. */
+export async function getDispute(disputeId: string): Promise<{
+  id: string;
+  bookingId: string;
+  status: string;
+  outcome: string | null;
+  refundPaise: number | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}> {
+  const dispute = await prisma.dispute.findUnique({ where: { id: disputeId } });
+  if (!dispute) throw new NotFoundError('Dispute not found');
+  return {
+    id: dispute.id,
+    bookingId: dispute.bookingId,
+    status: dispute.status,
+    outcome: dispute.outcome ?? null,
+    refundPaise: dispute.refundPaise ?? null,
+    resolvedAt: dispute.resolvedAt?.toISOString() ?? null,
+    createdAt: dispute.createdAt.toISOString(),
+  };
+}
+
+/** Admin list of disputes, optionally filtered by status. Newest first. */
+export async function listDisputes(status?: 'OPEN' | 'RESOLVED'): Promise<{
+  disputes: {
+    id: string;
+    bookingId: string;
+    status: string;
+    outcome: string | null;
+    refundPaise: number | null;
+    createdAt: string;
+  }[];
+}> {
+  const rows = await prisma.dispute.findMany({
+    where: status ? { status } : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  return {
+    disputes: rows.map((d) => ({
+      id: d.id,
+      bookingId: d.bookingId,
+      status: d.status,
+      outcome: d.outcome ?? null,
+      refundPaise: d.refundPaise ?? null,
+      createdAt: d.createdAt.toISOString(),
+    })),
+  };
 }
