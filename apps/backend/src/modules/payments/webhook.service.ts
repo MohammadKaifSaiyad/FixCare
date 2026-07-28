@@ -15,9 +15,21 @@ const paymentEntitySchema = z.object({
   error_description: z.string().optional(),
 });
 
+// Refund entity shape mirrors Razorpay's refund object. payment_id is mandatory:
+// a refund missing it cannot be linked to a payment and must never reach the findUnique.
+const refundEntitySchema = z.object({
+  id: z.string().min(1),
+  payment_id: z.string().min(1),
+  amount: z.number().int().nonnegative(),
+  notes: z.unknown().optional(),
+});
+
 const envelopeSchema = z.object({
   event: z.string().optional(),
-  payload: z.object({ payment: z.object({ entity: z.unknown() }).optional() }).optional(),
+  payload: z.object({
+    payment: z.object({ entity: z.unknown() }).optional(),
+    refund: z.object({ entity: z.unknown() }).optional(),
+  }).optional(),
 });
 
 /** Handle one gateway webhook delivery. The SIGNATURE is the authentication (Rule 1: the
@@ -44,10 +56,12 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
     return;
   }
   const event = envelope.data.event ?? 'unknown';
-  // Entity validated separately from the envelope so an unknown/refund event with a differently
+  // Entity validated separately from the envelope so an unknown event with a differently
   // shaped payload still lands in the audited 'ignored' path, not malformed_body.
   const entityParsed = paymentEntitySchema.safeParse(envelope.data.payload?.payment?.entity);
   const entity = entityParsed.success ? entityParsed.data : undefined;
+  const refundEntityParsed = refundEntitySchema.safeParse(envelope.data.payload?.refund?.entity);
+  const refundEntity = refundEntityParsed.success ? refundEntityParsed.data : undefined;
 
   if (event === 'payment.captured' && entity) {
     const payment = await prisma.payment.findUnique({ where: { razorpayOrderId: entity.order_id } });
@@ -114,6 +128,60 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
     return;
   }
 
-  // Unknown / refund.* (B7 skeleton): acknowledge + audit, take no action.
+  // refund.processed — record the gateway's confirmation that a refund landed.
+  // IMPORTANT: This handler does NOT write a DISPUTE_REVERSAL ledger entry.
+  // The ledger entry is written by the resolution path (Task 4) when the admin decides the
+  // outcome. This webhook only anchors idempotency (razorpayRefundId) and audits confirmation.
+  // Writing the reversal here would create a double-entry: resolution already debited the earning.
+  if (event === 'refund.processed' && refundEntity) {
+    const payment = await prisma.payment.findUnique({ where: { razorpayPaymentId: refundEntity.payment_id } });
+    if (!payment) {
+      // The refund references a payment we don't know about — flag for ops, always-ACK.
+      await prisma.auditLog.create({
+        data: { action: 'DISPUTE_EVENT', actorType: 'SYSTEM', metadata: { event: 'unknown_refund', gatewayPaymentId: refundEntity.payment_id, refundId: refundEntity.id } },
+      });
+      return;
+    }
+    if (payment.razorpayRefundId) return; // duplicate delivery — refundId already anchored, no-op
+    const booking = await prisma.booking.findUniqueOrThrow({ where: { id: payment.bookingId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.update({ where: { id: payment.id }, data: { razorpayRefundId: refundEntity.id } });
+      await tx.auditLog.create({
+        data: {
+          action: 'DISPUTE_EVENT',
+          actorType: 'SYSTEM',
+          metadata: {
+            event: 'refund_confirmed',
+            bookingId: booking.id,
+            refundId: refundEntity.id,
+            amountPaise: refundEntity.amount,
+          },
+        },
+      });
+    });
+    return;
+  }
+
+  // refund.failed — the gateway could not execute the refund; flag it for ops to retry manually.
+  // No state change, no ledger entry. The resolution stays in place; ops initiates a new refund.
+  if (event === 'refund.failed' && refundEntity) {
+    const payment = await prisma.payment.findUnique({ where: { razorpayPaymentId: refundEntity.payment_id } });
+    const bookingId = payment?.bookingId ?? null;
+    await prisma.auditLog.create({
+      data: {
+        action: 'DISPUTE_EVENT',
+        actorType: 'SYSTEM',
+        metadata: {
+          event: 'refund_failed',
+          bookingId,
+          refundId: refundEntity.id,
+          amountPaise: refundEntity.amount,
+        },
+      },
+    });
+    return;
+  }
+
+  // Unknown events: acknowledge + audit, take no action.
   await prisma.auditLog.create({ data: { action: 'PAYMENT_EVENT', actorType: 'SYSTEM', metadata: { event: 'ignored', type: event } } });
 }

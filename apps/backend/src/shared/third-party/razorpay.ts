@@ -8,6 +8,8 @@ export interface PaymentGateway {
   createOrder(amountPaise: number, receipt: string): Promise<{ orderId: string }>;
   /** HMAC-SHA256 of the RAW request body with the webhook secret; timing-safe compare. */
   verifyWebhookSignature(rawBody: string, signature: string): boolean;
+  /** Refund a captured payment (full or partial), amountPaise. Returns the gateway refund id. */
+  refund(paymentId: string, amountPaise: number): Promise<{ refundId: string }>;
 }
 
 const DEV_WEBHOOK_SECRET = 'dev-webhook-secret';
@@ -32,6 +34,9 @@ export class DevPaymentGateway implements PaymentGateway {
   }
   verifyWebhookSignature(rawBody: string, signature: string): boolean {
     return safeCompareHex(hmacHex(DEV_WEBHOOK_SECRET, rawBody), signature);
+  }
+  async refund(_paymentId: string, _amountPaise: number): Promise<{ refundId: string }> {
+    return { refundId: `rfnd_dev_${randomUUID().slice(0, 12)}` };
   }
   /** Test hook: sign a payload the way the gateway would. */
   signPayload(rawBody: string): string {
@@ -66,6 +71,15 @@ export class RazorpayGateway implements PaymentGateway {
   verifyWebhookSignature(rawBody: string, signature: string): boolean {
     const { webhookSecret } = this.rz();
     return safeCompareHex(hmacHex(webhookSecret, rawBody), signature);
+  }
+  async refund(paymentId: string, amountPaise: number): Promise<{ refundId: string }> {
+    const { client } = this.rz();
+    try {
+      const r = await client.payments.refund(paymentId, { amount: amountPaise });
+      return { refundId: r.id };
+    } catch {
+      throw new Error('Razorpay refund failed'); // typed boundary: never leak raw SDK errors
+    }
   }
 }
 
