@@ -15,7 +15,7 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   null/0 for FAVOR_TECHNICIAN), `reason` (customer free text, capped ≤500, **never copied into audit
   metadata or the customer DTO**), `raisedByUserId`, `resolvedByUserId`/`resolvedAt`. FK to Booking
   (`onDelete: Restrict`); `@@index([bookingId])` + `@@index([status])` (admin OPEN queue).
-- **Raise-dispute** (`POST /me/bookings/:id/dispute`, customer): `PAYMENT_RECEIVED → DISPUTED` as
+- **Raise-dispute** (`POST /me/bookings/:id/raise-dispute`, customer): `PAYMENT_RECEIVED → DISPUTED` as
   CUSTOMER; the payout is held — `DISPUTED` is excluded from the B6c settlement sweep so a disputed
   booking can never auto-close out from under an open dispute.
 - **Refund plumbing:** gateway wrapper gained a `refund` method (real Razorpay refund call, wrapped

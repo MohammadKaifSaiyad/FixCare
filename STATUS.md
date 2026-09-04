@@ -19,7 +19,7 @@ keys until KYC.
 ## Active task
 **Booking Slice B7** complete on `feature/booking-b7-disputes` — **disputes: raise, hold, resolve, refund,
 reversal**. `Dispute` model (OPEN/RESOLVED, outcome FAVOR_CUSTOMER/FAVOR_TECHNICIAN/PARTIAL, `refundPaise`,
-`reason` internal-only). Customer `POST /me/bookings/:id/dispute` (PAYMENT_RECEIVED→DISPUTED, payout held —
+`reason` internal-only). Customer `POST /me/bookings/:id/raise-dispute` (PAYMENT_RECEIVED→DISPUTED, payout held —
 excluded from the B6c settlement sweep). Admin `POST /admin/disputes/:id/resolve` (MANAGER+, OPEN→RESOLVED
 atomic claim gates the gateway refund so a double-submit can't double-refund; outcome ledger — FAVOR_CUSTOMER/
 PARTIAL write a real refund via the gateway's `refund` method + `LedgerEntry` reversal, FAVOR_TECHNICIAN credits
