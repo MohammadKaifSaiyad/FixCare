@@ -69,14 +69,18 @@ export async function resolveDispute(
     throw new UnprocessableError('PARTIAL refund must be between 1 and the captured charge (exclusive)');
   }
 
-  // Retention keys off the CAPTURED CHARGE (what the customer actually paid), NOT labor — so a
-  // full refund (technician at fault) leaves retained 0 and credits the technician nothing, per
-  // dispute-resolution.md ("at fault → deduct from payout"). Keying off labor would credit the
-  // tech the visit-fee slice even on a full refund, and — with parts, where charge > labor — could
-  // drive retained negative. charge already nets the visit-fee credit and includes parts, so
-  // retained + refund == charge holds exactly for every outcome.
-  const retained = charge - refundPaise; // refund is bounded 0..charge above, so retained is 0..charge
-  const { earningPaise, commissionPaise } = splitPaise(retained);
+  // The technician's earning base is LABOR only (pricing-model.md: tech earns 80% of labor; parts
+  // are the merchant's, never the technician's — so we must NOT split the parts-inclusive charge).
+  // On a dispute the labor is prorated by how much the customer RETAINED of what they paid:
+  //   retainedLaborPaise = round(laborPaise × (charge − refund) / charge)
+  //   - FAVOR_TECHNICIAN (refund 0)      → full labor → matches the B6c sweep exactly (no penalty for winning)
+  //   - FAVOR_CUSTOMER   (refund==charge)→ 0          → tech deducted, per dispute-resolution.md
+  //   - PARTIAL          → labor scaled by the kept fraction
+  // The customer refund stays bounded by the full charge (parts included); the DISPUTE_REVERSAL
+  // records that refund. Parts money never touches the technician's ledger.
+  const base = booking.declinedAt != null ? booking.visitFeePaise : booking.laborPaise;
+  const retainedLaborPaise = charge === 0 ? 0 : Math.round((base * (charge - refundPaise)) / charge);
+  const { earningPaise, commissionPaise } = splitPaise(retainedLaborPaise);
 
   // CLAIM the dispute atomically BEFORE the gateway call: flip OPEN→RESOLVED conditioned on
   // status='OPEN'. Two concurrent resolves (double-submit, retry, two admins) would otherwise
@@ -194,6 +198,20 @@ export async function resolveDispute(
         },
       },
     });
+
+    // Cash refund has no gateway confirmation (UPI gets a refund_confirmed webhook). Emit a
+    // distinct marker so ops has a queryable signal that this refund must still be PAID OUT of
+    // band — the ledger recorded the money leaving, but for cash it hasn't physically left yet.
+    if (refundPaise > 0 && captured.method !== 'UPI') {
+      await tx.auditLog.create({
+        data: {
+          action: 'DISPUTE_EVENT',
+          actorType: 'USER',
+          actorId: adminUserId,
+          metadata: { event: 'manual_refund_recorded', disputeId, bookingId: booking.id, refundPaise, method: captured.method },
+        },
+      });
+    }
   });
 
   return { id: booking.id, state: 'CLOSED', outcome: body.outcome, refundPaise };

@@ -143,7 +143,8 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
       return;
     }
     if (payment.razorpayRefundId) return; // duplicate delivery — refundId already anchored, no-op
-    const booking = await prisma.booking.findUniqueOrThrow({ where: { id: payment.bookingId } });
+    // Use payment.bookingId directly — no findUniqueOrThrow (an unguarded throw here would 500 the
+    // webhook and trigger a Razorpay retry storm, breaking the always-ACK contract).
     await prisma.$transaction(async (tx) => {
       await tx.payment.update({ where: { id: payment.id }, data: { razorpayRefundId: refundEntity.id } });
       await tx.auditLog.create({
@@ -152,7 +153,7 @@ export async function handleWebhookEvent(rawBody: string, signature: string | un
           actorType: 'SYSTEM',
           metadata: {
             event: 'refund_confirmed',
-            bookingId: booking.id,
+            bookingId: payment.bookingId,
             refundId: refundEntity.id,
             amountPaise: refundEntity.amount,
           },
