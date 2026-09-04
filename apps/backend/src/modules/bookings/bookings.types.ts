@@ -1,4 +1,4 @@
-import type { Booking, BookingPart, PhotoEvidence, Payment } from '@prisma/client';
+import type { Booking, BookingPart, PhotoEvidence, Payment, Dispute } from '@prisma/client';
 import { maskPhone } from '../../shared/utils/mask.js';
 import { computeEstimate, type Estimate } from './estimate.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
@@ -35,9 +35,14 @@ export interface BookingDto {
   // Latest payment attempt (null before any). Gateway ids never leak here — the app gets what
   // checkout needs from POST /pay, and everything else is internal evidence.
   payment: PaymentSummary | null;
+  // Latest dispute on this booking (null if none raised). The customer's own free-text reason is
+  // NEVER surfaced here — it stays internal/admin-only (B7 dispute detail is admin-side only).
+  dispute: DisputeSummary | null;
 }
 
 export interface PaymentSummary { status: Payment['status']; method: Payment['method']; amountPaise: number }
+
+export interface DisputeSummary { status: Dispute['status']; outcome: Dispute['outcome']; refundPaise: number | null }
 
 export function toBookingDto(
   b: Booking,
@@ -45,6 +50,7 @@ export function toBookingDto(
   parts: BookingPart[] = [],
   photos: PhotoSummary[] = [],
   payment: PaymentSummary | null = null,
+  dispute: DisputeSummary | null = null,
 ): BookingDto {
   return {
     id: b.id,
@@ -63,5 +69,6 @@ export function toBookingDto(
     estimate: computeEstimate(b, parts),
     photos,
     payment,
+    dispute,
   };
 }

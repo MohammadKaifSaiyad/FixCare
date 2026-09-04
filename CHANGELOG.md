@@ -8,6 +8,60 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-28 — B7 final gates + `/code-review` (branch finalized, ready for PR)
+
+- **Final gates:** opus whole-branch review found a **Critical** the per-task reviews rationalized as
+  intentional — dispute resolution split the wrong base, so the technician's earning was wrong. Two
+  wrong models were tried and caught (base=labor over-credited the visit-fee slice on a full refund;
+  base=charge over-credited 80% of *parts* money, the merchant's) before the founder settled the
+  model: **earning = labor prorated by the retained charge fraction**, parts never credited to the
+  technician, FAVOR_TECHNICIAN identical to the sweep. Re-review confirmed the arithmetic (all three
+  outcomes traced, with-parts case, rounding edges). prisma / golden-rules / fraud-vector clean —
+  folded in their WARNs (Dispute `@@index([status, createdAt])`, append-only rationale comment,
+  `adminReason` now audited, admin-only `getDispute` surfaces `reason`).
+- **`/code-review`:** caught the parts-over-credit (above) plus two more, fixed: the `refund.processed`
+  webhook dropped an unguarded `findUniqueOrThrow` (an uncaught throw would 500 → Razorpay retry storm,
+  breaking always-ACK; it used the booking only for `id == payment.bookingId`); cash refunds now emit a
+  distinct `manual_refund_recorded` audit so ops has a queryable signal the refund must still be paid
+  out of band. Backlogged: single `razorpayRefundId` caps refunds at one/payment (correct for B7's
+  one-dispute-per-booking; a multi-refund future needs a refund table). 361/361 tests, tsc clean.
+
+## 2026-07-28 — Booking slice B7 (disputes)
+
+- **Schema (additive):** `Dispute` model — `status` (`OPEN`/`RESOLVED`), `outcome`
+  (`FAVOR_CUSTOMER`/`FAVOR_TECHNICIAN`/`PARTIAL`, set at resolution), `refundPaise` (nullable —
+  null/0 for FAVOR_TECHNICIAN), `reason` (customer free text, capped ≤500, **never copied into audit
+  metadata or the customer DTO**), `raisedByUserId`, `resolvedByUserId`/`resolvedAt`. FK to Booking
+  (`onDelete: Restrict`); `@@index([bookingId])` + `@@index([status])` (admin OPEN queue).
+- **Raise-dispute** (`POST /me/bookings/:id/raise-dispute`, customer): `PAYMENT_RECEIVED → DISPUTED` as
+  CUSTOMER; the payout is held — `DISPUTED` is excluded from the B6c settlement sweep so a disputed
+  booking can never auto-close out from under an open dispute.
+- **Refund plumbing:** gateway wrapper gained a `refund` method (real Razorpay refund call, wrapped
+  behind the existing typed-error/third-party-wrapper convention); a real `refund.*` webhook handler
+  (signature-verified like the existing payment webhooks, idempotent, records the reversal as a
+  `LedgerEntry` rather than trusting client-reported state).
+- **Resolve-dispute** (`POST /admin/disputes/:id/resolve`, MANAGER+): outcome ledger entries, refund
+  issued via the gateway on FAVOR_CUSTOMER/PARTIAL, booking transitions to `CLOSED` as `ADMIN`. The
+  technician earning is the **labor share prorated by the retained charge fraction**
+  (`splitPaise(round(labor × (charge − refund) / charge))`): FAVOR_TECHNICIAN pays the full labor
+  split (identical to the B6c sweep — no penalty for winning), FAVOR_CUSTOMER pays 0 (at fault),
+  PARTIAL prorates; **parts money is never credited to the technician** (it is the merchant's). Admin
+  list + detail queries over disputes. **Review fix (Critical):** the OPEN→RESOLVED transition is now an atomic claim — the
+  gateway refund call only fires after the DB has exclusively claimed the dispute as RESOLVED, closing
+  a double-submit race that could otherwise trigger two gateway refunds for one dispute. A separate
+  review pass narrowed the dispute-raise race-catch to match on the specific unique-index name rather
+  than any P2002, avoiding accidentally swallowing an unrelated constraint violation.
+- **Customer DTO:** `BookingDto.dispute: { status; outcome; refundPaise } | null` — the *latest* dispute
+  on the booking (follows the existing `pickPaymentSummary` pattern: fetch ordered desc, take 1, map).
+  The reason text is deliberately never mapped in — verified by a test that JSON-stringifies the DTO's
+  `dispute` field and asserts the reason string is absent. `toBookingDto` gained a 7th positional
+  `dispute` param (default `null`); every call site in `bookings.service.ts` updated.
+- 359/359 tests green (354 pre-existing + 5 new DTO tests), tsc clean.
+- **Deferred (documented in STATUS.md, not built this slice):** tier-based auto-resolve, appeals on a
+  RESOLVED dispute, abuse-detection/repeat-disputer flagging, admin dispute dashboard UI (endpoints
+  exist, no UI until admin lands), technician-raised disputes, warranty/rework as an outcome, deposit
+  deduction.
+
 ## 2026-07-26 — B6c final gates + `/code-review` pass (branch finalized, awaiting PR)
 
 - **Final gates:** opus whole-branch "Ready to merge" — the ledger↔cache reconciliation invariant

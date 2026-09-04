@@ -1,4 +1,4 @@
-import { Prisma, type PaymentStatus, type PaymentMethod } from '@prisma/client';
+import { Prisma, type PaymentStatus, type PaymentMethod, type DisputeStatus, type DisputeOutcome } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ForbiddenError, NotFoundError, UnprocessableError, ConflictError, UnauthorizedError, TooManyRequestsError } from '../../shared/errors.js';
 import { resolvePincode } from '../addresses/serviceability.service.js';
@@ -9,7 +9,7 @@ import { mintCompletionCode } from './completion-code.js';
 import { mintCashReceiptCode, cashCollectedLast24hPaise } from './cash.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { ARRIVAL_GEOFENCE_METERS } from './bookings.constants.js';
-import { toBookingDto, toPhotoSummaries, type BookingDto, type PaymentSummary } from './bookings.types.js';
+import { toBookingDto, toPhotoSummaries, type BookingDto, type PaymentSummary, type DisputeSummary } from './bookings.types.js';
 import { sumParts } from './estimate.js';
 import { chargeAmountFor } from './charge.js';
 import { paymentGateway } from '../../shared/third-party/razorpay.js';
@@ -19,7 +19,7 @@ import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
 
 const otpSender = makeOtpSender();
 
-async function requireCustomer(userId: string): Promise<{ id: string }> {
+export async function requireCustomer(userId: string): Promise<{ id: string }> {
   const c = await prisma.customer.findFirst({ where: { userId, deletedAt: null } });
   if (!c) throw new ForbiddenError('Only customers can book');
   return { id: c.id };
@@ -103,13 +103,26 @@ function pickPaymentSummary(payments: { status: PaymentStatus; method: PaymentMe
   return p ? { status: p.status, method: p.method, amountPaise: p.amountPaise } : null;
 }
 
+/** Map the latest dispute (if any) to the customer-facing summary. NEVER includes `reason` (free
+ *  text, internal/admin-only). Query side takes only the newest row (orderBy createdAt desc, take 1). */
+function pickDisputeSummary(disputes: { status: DisputeStatus; outcome: DisputeOutcome | null; refundPaise: number | null }[]): DisputeSummary | null {
+  const d = disputes[0];
+  return d ? { status: d.status, outcome: d.outcome, refundPaise: d.refundPaise } : null;
+}
+
 export async function listBookings(userId: string): Promise<BookingDto[]> {
   const { id: customerId } = await requireCustomer(userId);
   // include technician + cart so the list's estimate/diagnosis match the detail view (getBooking).
   const rows = await prisma.booking.findMany({
     where: { customerId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' } } },
+    include: {
+      technician: { include: { user: true } },
+      bookingParts: true,
+      photos: { where: { deletedAt: null } },
+      payments: { orderBy: { createdAt: 'desc' } },
+      disputes: { orderBy: { createdAt: 'desc' }, take: 1 },
+    },
   });
   return Promise.all(rows.map(async (b) =>
     toBookingDto(
@@ -118,6 +131,7 @@ export async function listBookings(userId: string): Promise<BookingDto[]> {
       b.bookingParts,
       await toPhotoSummaries(b.photos),
       pickPaymentSummary(b.payments),
+      pickDisputeSummary(b.disputes),
     ),
   ));
 }
@@ -127,7 +141,13 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
   // owner-scoped (another customer's id → 404, no IDOR); include the assigned technician (if any)
   const b = await prisma.booking.findFirst({
     where: { id, customerId, deletedAt: null },
-    include: { technician: { include: { user: true } }, bookingParts: true, photos: { where: { deletedAt: null } }, payments: { orderBy: { createdAt: 'desc' } } },
+    include: {
+      technician: { include: { user: true } },
+      bookingParts: true,
+      photos: { where: { deletedAt: null } },
+      payments: { orderBy: { createdAt: 'desc' } },
+      disputes: { orderBy: { createdAt: 'desc' }, take: 1 },
+    },
   });
   if (!b) throw new NotFoundError('Booking not found');
   return toBookingDto(
@@ -136,6 +156,7 @@ export async function getBooking(userId: string, id: string): Promise<BookingDto
     b.bookingParts,
     await toPhotoSummaries(b.photos),
     pickPaymentSummary(b.payments),
+    pickDisputeSummary(b.disputes),
   );
 }
 
