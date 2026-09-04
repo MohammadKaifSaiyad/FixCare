@@ -464,12 +464,14 @@ enum LedgerEntryType {
   DISPUTE_REVERSAL
 }
 
+// Case record, evidence-adjacent to Payment/LedgerEntry — no soft-delete; status carries the
+// lifecycle (OPEN → RESOLVED), same append-only posture as the financial-evidence family.
 model Dispute {
   id               String          @id @default(uuid())
   bookingId        String
   booking          Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
   raisedByUserId   String
-  reason           String // customer free text (Zod-capped ≤ 500) — assumed non-PII; NEVER copied into audit metadata
+  reason           String // customer free text (Zod-capped ≤ 500) — assumed non-PII; NEVER copied into audit metadata or the customer DTO
   status           DisputeStatus   @default(OPEN)
   outcome          DisputeOutcome? // set at resolution
   refundPaise      Int? // customer refund at resolution; null/0 for FAVOR_TECHNICIAN
@@ -479,7 +481,7 @@ model Dispute {
   updatedAt        DateTime        @updatedAt
 
   @@index([bookingId])
-  @@index([status]) // admin OPEN queue
+  @@index([status, createdAt]) // admin queue: filter by status + newest-first sort in one index scan
 }
 
 enum DisputeStatus {

@@ -4,12 +4,13 @@ import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
 import { makeAdminToken, makeCustomer, makeTechnician, seedBookable } from '../bookings/helpers.js';
 
-// Charge = 45100 (the Payment.amountPaise seeded by disputedBooking)
-// laborPaise = 60000, visitFeePaise = 14900 (from seedBookable defaults)
-// COMMISSION_RATE_BPS = 2000 (20%) — earningPaise = floor(base * 0.8), commission = remainder
-// splitPaise(60000) → earningPaise = floor(60000 * 8000 / 10000) = 48000, commission = 12000
-// splitPaise(40000) → earningPaise = floor(40000 * 0.8) = 32000, commission = 8000
-// splitPaise(14900) → earningPaise = floor(14900 * 0.8) = 11920, commission = 2980
+// Charge = 45100 (the Payment.amountPaise seeded by disputedBooking = labor 60000 − visitFee 14900).
+// Resolution retains from the CHARGE (what the customer paid), NOT labor: retained = charge − refund.
+// COMMISSION_RATE_BPS = 2000 (20%) — earningPaise = floor(retained * 0.8), commission = remainder.
+//   FAVOR_TECHNICIAN: refund 0    → retained 45100 → earning floor(45100*0.8)=36080, commission 9020
+//   FAVOR_CUSTOMER:   refund 45100 → retained 0     → NO earning, NO commission, DISPUTE_REVERSAL 45100
+//   PARTIAL:          refund 20000 → retained 25100 → earning floor(25100*0.8)=20080, commission 5020
+// Conservation: retained + refund == charge, exactly, every outcome.
 
 const CHARGE = 45100;
 const LABOR = 60000;
@@ -66,7 +67,7 @@ async function disputedBooking(opts?: { method?: 'UPI' | 'CASH'; cashDebt?: numb
 }
 
 describe('POST /admin/disputes/:id/resolve — FAVOR_TECHNICIAN', () => {
-  it('credits full labor (60000): EARNING_CREDIT 48000 + COMMISSION 12000; NO DISPUTE_REVERSAL; no gateway.refund; booking CLOSED', async () => {
+  it('refund 0 → retains the full charge (45100): EARNING_CREDIT 36080 + COMMISSION 9020; NO DISPUTE_REVERSAL; no gateway.refund; booking CLOSED', async () => {
     const { bookingId, disputeId, adminToken } = await disputedBooking();
 
     const res = await app.inject({
@@ -78,15 +79,15 @@ describe('POST /admin/disputes/:id/resolve — FAVOR_TECHNICIAN', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ id: bookingId, state: 'CLOSED', outcome: 'FAVOR_TECHNICIAN', refundPaise: 0 });
 
-    // Ledger: EARNING_CREDIT 48000 + COMMISSION 12000
+    // retained = charge − 0 = 45100 → split floor(45100*0.8)=36080, commission 9020
     const entries = await prisma.ledgerEntry.findMany({ where: { bookingId }, orderBy: { type: 'asc' } });
     expect(entries).toHaveLength(2);
     const earning = entries.find(e => e.type === 'EARNING_CREDIT');
     const commission = entries.find(e => e.type === 'COMMISSION');
-    expect(earning?.amountPaise).toBe(48000); // floor(60000 * 0.8)
-    expect(commission?.amountPaise).toBe(12000); // 60000 - 48000
-    // Conservation: retained(60000) + refund(0) == base(60000)
-    expect(earning!.amountPaise + commission!.amountPaise).toBe(LABOR);
+    expect(earning?.amountPaise).toBe(36080);
+    expect(commission?.amountPaise).toBe(9020);
+    // Conservation: retained(45100) + refund(0) == charge(45100)
+    expect(earning!.amountPaise + commission!.amountPaise).toBe(CHARGE);
 
     // No DISPUTE_REVERSAL
     expect(entries.find(e => e.type === 'DISPUTE_REVERSAL')).toBeUndefined();
@@ -101,16 +102,17 @@ describe('POST /admin/disputes/:id/resolve — FAVOR_TECHNICIAN', () => {
     expect(dispute!.status).toBe('RESOLVED');
     expect(dispute!.outcome).toBe('FAVOR_TECHNICIAN');
 
-    // DISPUTE_EVENT audit
+    // DISPUTE_EVENT audit carries the admin's rationale (adminReason)
     const audit = await prisma.auditLog.findFirst({
       where: { action: 'DISPUTE_EVENT', metadata: { path: ['event'], equals: 'resolved' } },
     });
     expect(audit).not.toBeNull();
+    expect((audit!.metadata as Record<string, unknown>).adminReason).toBe('Work was completed correctly');
   });
 });
 
 describe('POST /admin/disputes/:id/resolve — FAVOR_CUSTOMER (UPI)', () => {
-  it('refund == charge (45100): retained = base - charge = 14900; EARNING_CREDIT 11920 + COMMISSION 2980 + DISPUTE_REVERSAL 45100; CLOSED', async () => {
+  it('refund == charge (45100): technician at fault → retained 0 → NO earning/commission, only DISPUTE_REVERSAL 45100; CLOSED', async () => {
     const { bookingId, disputeId, adminToken } = await disputedBooking();
 
     const res = await app.inject({
@@ -123,34 +125,29 @@ describe('POST /admin/disputes/:id/resolve — FAVOR_CUSTOMER (UPI)', () => {
     expect(res.json()).toMatchObject({ id: bookingId, state: 'CLOSED', outcome: 'FAVOR_CUSTOMER', refundPaise: CHARGE });
 
     const entries = await prisma.ledgerEntry.findMany({ where: { bookingId }, orderBy: { type: 'asc' } });
-    // retained = LABOR - CHARGE = 60000 - 45100 = 14900
-    // splitPaise(14900) → earningPaise = floor(14900*0.8) = 11920, commission = 2980
-    const earning = entries.find(e => e.type === 'EARNING_CREDIT');
-    const commission = entries.find(e => e.type === 'COMMISSION');
+    // retained = charge − refund = 45100 − 45100 = 0 → the technician is credited NOTHING
+    // (at fault → deduct from payout, per dispute-resolution.md). Only the reversal is written.
+    expect(entries.find(e => e.type === 'EARNING_CREDIT')).toBeUndefined();
+    expect(entries.find(e => e.type === 'COMMISSION')).toBeUndefined();
     const reversal = entries.find(e => e.type === 'DISPUTE_REVERSAL');
-
-    expect(earning?.amountPaise).toBe(11920);
-    expect(commission?.amountPaise).toBe(2980);
     expect(reversal?.amountPaise).toBe(CHARGE); // 45100
-
-    // Conservation: retained(14900) + refund(45100) == base(60000)
-    expect(earning!.amountPaise + commission!.amountPaise + reversal!.amountPaise).toBe(LABOR);
+    // Conservation: retained(0) + refund(45100) == charge(45100)
+    expect(reversal!.amountPaise).toBe(CHARGE);
 
     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
     expect(booking!.state).toBe('CLOSED');
 
-    // For UPI: a refund_initiated audit must exist (the dev gateway resolves synchronously)
+    // UPI: the resolved audit carries the dev-gateway refundId
     const auditInitiated = await prisma.auditLog.findFirst({
       where: { action: 'DISPUTE_EVENT', metadata: { path: ['event'], equals: 'resolved' } },
     });
     expect(auditInitiated).not.toBeNull();
-    const meta = auditInitiated!.metadata as Record<string, unknown>;
-    expect(meta.refundId).toBeTruthy(); // refundId from the dev gateway
+    expect((auditInitiated!.metadata as Record<string, unknown>).refundId).toBeTruthy();
   });
 });
 
 describe('POST /admin/disputes/:id/resolve — PARTIAL', () => {
-  it('refund 20000: retained = 40000; EARNING_CREDIT 32000 + COMMISSION 8000 + DISPUTE_REVERSAL 20000; money conserved', async () => {
+  it('refund 20000: retained = charge−20000 = 25100; EARNING_CREDIT 20080 + COMMISSION 5020 + DISPUTE_REVERSAL 20000; money conserved', async () => {
     const { bookingId, disputeId, adminToken } = await disputedBooking();
 
     const res = await app.inject({
@@ -167,14 +164,13 @@ describe('POST /admin/disputes/:id/resolve — PARTIAL', () => {
     const commission = entries.find(e => e.type === 'COMMISSION');
     const reversal = entries.find(e => e.type === 'DISPUTE_REVERSAL');
 
-    expect(earning?.amountPaise).toBe(32000); // floor(40000 * 0.8)
-    expect(commission?.amountPaise).toBe(8000); // 40000 - 32000
+    // retained = charge − refund = 45100 − 20000 = 25100 → floor(25100*0.8)=20080, commission 5020
+    expect(earning?.amountPaise).toBe(20080);
+    expect(commission?.amountPaise).toBe(5020);
     expect(reversal?.amountPaise).toBe(20000);
 
-    // Conservation: retained(40000) + refund(20000) == base(60000)
-    expect(earning!.amountPaise + commission!.amountPaise + reversal!.amountPaise).toBe(LABOR);
-    expect(earning!.amountPaise + commission!.amountPaise + reversal!.amountPaise)
-      .toBe(40000 + 20000); // 60000
+    // Conservation: retained(25100) + refund(20000) == charge(45100)
+    expect(earning!.amountPaise + commission!.amountPaise + reversal!.amountPaise).toBe(CHARGE);
 
     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
     expect(booking!.state).toBe('CLOSED');
@@ -226,7 +222,7 @@ describe('POST /admin/disputes/:id/resolve — auto-offset cash debt', () => {
       payload: { outcome: 'FAVOR_TECHNICIAN', reason: 'Work verified' },
     });
 
-    // earningPaise = 48000, debt = 30000 → offset = min(48000, 30000) = 30000
+    // earningPaise = 36080 (retained charge 45100 × 0.8), debt = 30000 → offset = min(36080, 30000) = 30000
     const offsetEntry = await prisma.ledgerEntry.findFirst({ where: { bookingId, type: 'CASH_DEBT_OFFSET' } });
     expect(offsetEntry?.amountPaise).toBe(30000);
 
@@ -396,6 +392,9 @@ describe('GET /admin/disputes/:id', () => {
     expect(body.bookingId).toBe(bookingId);
     expect(body.status).toBe('OPEN');
     expect(body.outcome).toBeNull();
+    // Admin case-file surfaces the complaint text (admin needs it to adjudicate; this route is
+    // MANAGER-gated). The CUSTOMER-facing BookingDto.dispute still omits reason.
+    expect(body.reason).toBe('AC not cooling');
     // No raw user objects — just structured DTO
     expect(body.raisedByUserId).toBeUndefined();
   });

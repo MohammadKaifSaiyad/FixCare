@@ -69,9 +69,13 @@ export async function resolveDispute(
     throw new UnprocessableError('PARTIAL refund must be between 1 and the captured charge (exclusive)');
   }
 
-  // base: if the customer declined the diagnosis, tech only earns the visit fee; otherwise labor.
-  const base = booking.declinedAt != null ? booking.visitFeePaise : booking.laborPaise;
-  const retained = Math.max(0, base - refundPaise);
+  // Retention keys off the CAPTURED CHARGE (what the customer actually paid), NOT labor — so a
+  // full refund (technician at fault) leaves retained 0 and credits the technician nothing, per
+  // dispute-resolution.md ("at fault → deduct from payout"). Keying off labor would credit the
+  // tech the visit-fee slice even on a full refund, and — with parts, where charge > labor — could
+  // drive retained negative. charge already nets the visit-fee credit and includes parts, so
+  // retained + refund == charge holds exactly for every outcome.
+  const retained = charge - refundPaise; // refund is bounded 0..charge above, so retained is 0..charge
   const { earningPaise, commissionPaise } = splitPaise(retained);
 
   // CLAIM the dispute atomically BEFORE the gateway call: flip OPEN→RESOLVED conditioned on
@@ -171,7 +175,8 @@ export async function resolveDispute(
     );
     await tx.booking.update({ where: { id: booking.id }, data: { closedAt: new Date() } });
 
-    // Audit log — no PII, integer paise only.
+    // Audit log — no customer PII. adminReason is the ADMIN's own adjudication rationale (not the
+    // customer's free text) — safe to log and the record of WHY a money-moving ruling was made.
     await tx.auditLog.create({
       data: {
         action: 'DISPUTE_EVENT',
@@ -185,6 +190,7 @@ export async function resolveDispute(
           refundPaise,
           refundId, // null for cash or FAVOR_TECHNICIAN; non-null for UPI refund
           method: captured.method,
+          adminReason: body.reason,
         },
       },
     });
@@ -193,11 +199,15 @@ export async function resolveDispute(
   return { id: booking.id, state: 'CLOSED', outcome: body.outcome, refundPaise };
 }
 
-/** Case file DTO for admin drill-down — no raw user objects, no PII. */
+/** Case file DTO for admin drill-down (MANAGER+ route only). Includes the customer's `reason` —
+ *  the admin must read the complaint to adjudicate. `reason` is appliance-complaint text, NOT a
+ *  restricted PII category (phone/UPI/address/Aadhaar/photo), and this endpoint is admin-gated;
+ *  the CUSTOMER-facing BookingDto.dispute still omits it. No raw user objects. */
 export async function getDispute(disputeId: string): Promise<{
   id: string;
   bookingId: string;
   status: string;
+  reason: string;
   outcome: string | null;
   refundPaise: number | null;
   resolvedAt: string | null;
@@ -209,6 +219,7 @@ export async function getDispute(disputeId: string): Promise<{
     id: dispute.id,
     bookingId: dispute.bookingId,
     status: dispute.status,
+    reason: dispute.reason,
     outcome: dispute.outcome ?? null,
     refundPaise: dispute.refundPaise ?? null,
     resolvedAt: dispute.resolvedAt?.toISOString() ?? null,
