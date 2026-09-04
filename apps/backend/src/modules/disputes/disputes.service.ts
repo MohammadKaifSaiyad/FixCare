@@ -42,7 +42,9 @@ export async function raiseDispute(userId: string, bookingId: string, body: Rais
  *  SINGLE-REVERSAL CONTRACT: this function writes the ONE DISPUTE_REVERSAL for BOTH UPI and cash.
  *  The refund.processed webhook (Task 3) only confirms the refund by setting razorpayRefundId +
  *  writing a refund_confirmed audit — it never writes a second ledger entry.
- *  Conservation: retained + refund == charge (exactly; proven by tests). */
+ *  Earning is the LABOR share prorated by the retained charge fraction (parts money is the
+ *  merchant's, never split to the technician); earning + commission == retainedLaborPaise, and the
+ *  DISPUTE_REVERSAL separately records the customer refund (bounded by the full charge). */
 export async function resolveDispute(
   adminUserId: string,
   disputeId: string,

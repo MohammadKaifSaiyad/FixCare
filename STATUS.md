@@ -21,23 +21,29 @@ keys until KYC.
 reversal**. `Dispute` model (OPEN/RESOLVED, outcome FAVOR_CUSTOMER/FAVOR_TECHNICIAN/PARTIAL, `refundPaise`,
 `reason` internal-only). Customer `POST /me/bookings/:id/raise-dispute` (PAYMENT_RECEIVED→DISPUTED, payout held —
 excluded from the B6c settlement sweep). Admin `POST /admin/disputes/:id/resolve` (MANAGER+, OPEN→RESOLVED
-atomic claim gates the gateway refund so a double-submit can't double-refund; outcome ledger — FAVOR_CUSTOMER/
-PARTIAL write a real refund via the gateway's `refund` method + `LedgerEntry` reversal, FAVOR_TECHNICIAN credits
-full labor with no refund; booking → CLOSED as `SYSTEM`) + admin list/detail queries. Real `refund.*` Razorpay
-webhook (signature-verified, idempotent, records the reversal). Customer `BookingDto.dispute: { status; outcome;
-refundPaise } | null` — latest dispute only, **reason never leaves the API** (JSON-string-checked in tests).
-`toBookingDto` gained a 7th positional `dispute` param (all callers updated). 359/359 tests green, tsc clean.
-**Deferred (recorded below):** tier auto-resolve, appeals, abuse-detection, admin dispute dashboard,
-technician-raised disputes, warranty/rework flow, deposit deduction. **On branch — ready for `/code-review`
-and PR. Next: B2b (accept-timer) / Flutter customer app / dispute dashboard (once admin lands).**
+atomic claim gates the gateway refund so a double-submit can't double-refund; booking → CLOSED as `ADMIN`)
++ admin list/detail queries. **Earning model:** the technician earns the LABOR share prorated by the retained
+charge fraction — `splitPaise(round(labor × (charge − refund) / charge))` — so FAVOR_TECHNICIAN pays exactly
+what the B6c sweep would (a dispute-winner isn't penalized), FAVOR_CUSTOMER pays 0 (at fault, deducted), PARTIAL
+prorates; **parts money is never credited to the technician** (merchant's). Customer refund is bounded by the
+full captured charge and recorded as `DISPUTE_REVERSAL` (UPI → real gateway `refund`, confirmed by the real
+`refund.*` webhook — signature-verified, idempotent; cash → `manual_refund_recorded` ops marker). Customer
+`BookingDto.dispute: { status; outcome; refundPaise } | null` — **reason never leaves the API** (admin case-file
+`getDispute` surfaces it MANAGER-only). 361/361 tests green, tsc clean. **Deferred (recorded below):** tier
+auto-resolve, appeals, abuse-detection (dispute-frequency), admin dispute dashboard, technician-raised disputes,
+warranty/rework flow, deposit deduction. **All gates DONE** (opus whole-branch "Ready to merge" after fixing the
+Critical earning-base bug; prisma/golden-rules/fraud-vector clean; `/code-review` fixed the parts-over-credit +
+webhook-500-safety + cash-marker). **Ready for PR → `main`. Next: B2b (accept-timer) / Flutter customer app /
+dispute dashboard (once admin lands).**
 
 ## Last shipped
 - **Booking Slice B7** (`apps/backend`, disputes): `Dispute` model + migration; raise-dispute endpoint
   (PAYMENT_RECEIVED→DISPUTED as CUSTOMER, payout held, DISPUTED excluded from the settlement sweep);
   gateway `refund` method + real `refund.*` webhook (idempotent reversal recording); admin resolve-dispute
-  (atomic OPEN→RESOLVED claim gates the refund call — no double-refund on a double-submit; outcome ledger
-  entries; refund on FAVOR_CUSTOMER/PARTIAL; booking→CLOSED) + admin list/detail queries; `BookingDto.dispute`
-  summary (status/outcome/refundPaise only — reason stays internal). 359 tests. On branch, ready for PR.
+  (atomic OPEN→RESOLVED claim gates the refund call — no double-refund on a double-submit; earning = labor
+  prorated by the retained charge fraction, parts never credited to the tech; refund on FAVOR_CUSTOMER/PARTIAL;
+  booking→CLOSED as ADMIN) + admin list/detail queries; `BookingDto.dispute` summary (status/outcome/refundPaise
+  only — reason stays internal). 361 tests. On branch, all gates + /code-review passed, ready for PR.
 - **Booking Slice B6c** — **merged to `main`** (PR #20, `dca81e1`): settlement ledger + CLOSED. Append-only
   `LedgerEntry`; `paidAt`/`closedAt` on Booking; 48h dispute-window sweep closes PAYMENT_RECEIVED bookings to
   CLOSED with the 80/20 split + cash-debt auto-offset; zero-payable short-circuit; debt-limit accept-gate;

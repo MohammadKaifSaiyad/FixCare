@@ -8,6 +8,24 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-07-28 — B7 final gates + `/code-review` (branch finalized, ready for PR)
+
+- **Final gates:** opus whole-branch review found a **Critical** the per-task reviews rationalized as
+  intentional — dispute resolution split the wrong base, so the technician's earning was wrong. Two
+  wrong models were tried and caught (base=labor over-credited the visit-fee slice on a full refund;
+  base=charge over-credited 80% of *parts* money, the merchant's) before the founder settled the
+  model: **earning = labor prorated by the retained charge fraction**, parts never credited to the
+  technician, FAVOR_TECHNICIAN identical to the sweep. Re-review confirmed the arithmetic (all three
+  outcomes traced, with-parts case, rounding edges). prisma / golden-rules / fraud-vector clean —
+  folded in their WARNs (Dispute `@@index([status, createdAt])`, append-only rationale comment,
+  `adminReason` now audited, admin-only `getDispute` surfaces `reason`).
+- **`/code-review`:** caught the parts-over-credit (above) plus two more, fixed: the `refund.processed`
+  webhook dropped an unguarded `findUniqueOrThrow` (an uncaught throw would 500 → Razorpay retry storm,
+  breaking always-ACK; it used the booking only for `id == payment.bookingId`); cash refunds now emit a
+  distinct `manual_refund_recorded` audit so ops has a queryable signal the refund must still be paid
+  out of band. Backlogged: single `razorpayRefundId` caps refunds at one/payment (correct for B7's
+  one-dispute-per-booking; a multi-refund future needs a refund table). 361/361 tests, tsc clean.
+
 ## 2026-07-28 — Booking slice B7 (disputes)
 
 - **Schema (additive):** `Dispute` model — `status` (`OPEN`/`RESOLVED`), `outcome`
@@ -23,9 +41,12 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   (signature-verified like the existing payment webhooks, idempotent, records the reversal as a
   `LedgerEntry` rather than trusting client-reported state).
 - **Resolve-dispute** (`POST /admin/disputes/:id/resolve`, MANAGER+): outcome ledger entries, refund
-  issued via the gateway on FAVOR_CUSTOMER/PARTIAL, full labor credited with no refund on
-  FAVOR_TECHNICIAN, booking transitions to `CLOSED` as `SYSTEM`. Admin list + detail queries over
-  disputes. **Review fix (Critical):** the OPEN→RESOLVED transition is now an atomic claim — the
+  issued via the gateway on FAVOR_CUSTOMER/PARTIAL, booking transitions to `CLOSED` as `ADMIN`. The
+  technician earning is the **labor share prorated by the retained charge fraction**
+  (`splitPaise(round(labor × (charge − refund) / charge))`): FAVOR_TECHNICIAN pays the full labor
+  split (identical to the B6c sweep — no penalty for winning), FAVOR_CUSTOMER pays 0 (at fault),
+  PARTIAL prorates; **parts money is never credited to the technician** (it is the merchant's). Admin
+  list + detail queries over disputes. **Review fix (Critical):** the OPEN→RESOLVED transition is now an atomic claim — the
   gateway refund call only fires after the DB has exclusively claimed the dispute as RESOLVED, closing
   a double-submit race that could otherwise trigger two gateway refunds for one dispute. A separate
   review pass narrowed the dispute-raise race-catch to match on the specific unique-index name rather
