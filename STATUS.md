@@ -4,48 +4,45 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-26_
+_Last updated: 2026-07-28_
 
 ---
 
 ## Phase
-**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3** merged
-to `main`. **Booking module underway** — 7 sub-slices (B1 creation → B2 dispatch → B3 arrival handshake →
-B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes); B2 split into B2a (dispatch, merged) /
-B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred); B4a/B4b/OTP-primitive/B5 merged
-(PRs #14–#17). B6 split into **B6a (UPI charge, DONE on branch)** / B6b (cash path) / B6c (settlement
-ledger). **Money moves for the first time** — on Razorpay test keys until KYC.
+**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3 + B4a +
+B4b + B5 + B6a + B6b + B6c** merged to `main`. **Booking module underway** — 7 sub-slices (B1 creation →
+B2 dispatch → B3 arrival handshake → B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes);
+B2 split into B2a (dispatch, merged) / B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred);
+B6 split into B6a/B6b/B6c (all merged). **B7 (disputes) complete on branch.** Money moves on Razorpay test
+keys until KYC.
 
 ## Active task
-**Booking Slice B6c** complete on `feature/booking-b6c-settlement` — **settlement ledger + CLOSED**.
-`LedgerEntry` (append-only, 6 types: EARNING_CREDIT / COMMISSION / CASH_COLLECTED / CASH_DEBT_OFFSET /
-PAYOUT / DEBT_REPAYMENT); `Booking.paidAt` + `Booking.closedAt`; `SETTLEMENT_EVENT` audit action;
-`CHECK (cashDebtPaise >= 0)` (B6b carry-forward); `@@index([method,status,capturedAt])` on Payment.
-`ALLOWED_ACTORS.CLOSED = [SYSTEM]`. Config: `COMMISSION_RATE_BPS`=2000 / `DISPUTE_WINDOW_HOURS`=48 /
-`SETTLEMENT_SWEEP_INTERVAL_MINUTES`=15. Settlement service: `splitPaise` (80/20), ledger-derived balances,
-`recordCashCollected` wired into `confirmCashPayment` tx, `settleClosableBookings` idempotent 48h-close sweep
-(FOR-UPDATE-locked cash-debt auto-offset + stale-CASH-CREATED cleanup + error-per-booking logging). Zero-payable
-chain at `confirmCompletion` (CUSTOMER_CONFIRMED→PAYMENT_RECEIVED as SYSTEM when nothing owed). Debt-limit
-accept-gate (422 before DISPATCHED→ACCEPTED when `cashDebtPaise` exceeds limit). **BullMQ settlement sweep
-(the codebase's first background work):** `shared/queue/settlement-sweep.ts` schedules a repeating job every 15 min
-via `queue.upsertJobScheduler`; worker calls `settleClosableBookings`; `startSettlementSweep()` wired into
-`server.ts` with a graceful SIGTERM/SIGINT shutdown hook. Endpoints: `GET /technician/me/balance`;
-`POST /admin/settlements/payouts` + `/repayments` (MANAGER+, CHECK→409); `GET /admin/settlements/technicians/:id`.
-324/324 tests green, tsc clean, server boots clean. Final gates DONE: opus whole-branch "Ready to
-merge" (ledger↔cache reconciliation invariant holds on all 3 debt paths; money conserved; paidAt on
-every PAYMENT_RECEIVED path; DISPUTED excluded from sweep); prisma/golden-rules/fraud-vector clean
-(FK RESTRICT + [technicianId,type] index folded in). `/code-review` DONE (6915507): accept-gate
-boundary (`>` matches capture), zero-amount ledger guard, balance snapshot-consistency + best-effort
-flag. **Awaiting PR → `main`. Next: B7 (disputes) / B2b (accept-timer, BullMQ now exists).**
-Design: [`docs/designs/2026-07-19-booking-b6c-settlement-design.md`]; plan:
-[`docs/plans/2026-07-19-booking-b6c-settlement.md`].
+**Booking Slice B7** complete on `feature/booking-b7-disputes` — **disputes: raise, hold, resolve, refund,
+reversal**. `Dispute` model (OPEN/RESOLVED, outcome FAVOR_CUSTOMER/FAVOR_TECHNICIAN/PARTIAL, `refundPaise`,
+`reason` internal-only). Customer `POST /me/bookings/:id/dispute` (PAYMENT_RECEIVED→DISPUTED, payout held —
+excluded from the B6c settlement sweep). Admin `POST /admin/disputes/:id/resolve` (MANAGER+, OPEN→RESOLVED
+atomic claim gates the gateway refund so a double-submit can't double-refund; outcome ledger — FAVOR_CUSTOMER/
+PARTIAL write a real refund via the gateway's `refund` method + `LedgerEntry` reversal, FAVOR_TECHNICIAN credits
+full labor with no refund; booking → CLOSED as `SYSTEM`) + admin list/detail queries. Real `refund.*` Razorpay
+webhook (signature-verified, idempotent, records the reversal). Customer `BookingDto.dispute: { status; outcome;
+refundPaise } | null` — latest dispute only, **reason never leaves the API** (JSON-string-checked in tests).
+`toBookingDto` gained a 7th positional `dispute` param (all callers updated). 359/359 tests green, tsc clean.
+**Deferred (recorded below):** tier auto-resolve, appeals, abuse-detection, admin dispute dashboard,
+technician-raised disputes, warranty/rework flow, deposit deduction. **On branch — ready for `/code-review`
+and PR. Next: B2b (accept-timer) / Flutter customer app / dispute dashboard (once admin lands).**
 
 ## Last shipped
-- **Booking Slice B6c** (`apps/backend`, settlement ledger + CLOSED): append-only `LedgerEntry`;
-  `paidAt`/`closedAt` on Booking; 48h dispute-window sweep closes PAYMENT_RECEIVED bookings to CLOSED
-  with the 80/20 split + cash-debt auto-offset; zero-payable short-circuit; debt-limit accept-gate;
-  balance + payout + repayment + technician-settlement admin endpoints; BullMQ sweep scheduling
-  (codebase's first background work). 324 tests. On branch — all gates passed, awaiting PR.
+- **Booking Slice B7** (`apps/backend`, disputes): `Dispute` model + migration; raise-dispute endpoint
+  (PAYMENT_RECEIVED→DISPUTED as CUSTOMER, payout held, DISPUTED excluded from the settlement sweep);
+  gateway `refund` method + real `refund.*` webhook (idempotent reversal recording); admin resolve-dispute
+  (atomic OPEN→RESOLVED claim gates the refund call — no double-refund on a double-submit; outcome ledger
+  entries; refund on FAVOR_CUSTOMER/PARTIAL; booking→CLOSED) + admin list/detail queries; `BookingDto.dispute`
+  summary (status/outcome/refundPaise only — reason stays internal). 359 tests. On branch, ready for PR.
+- **Booking Slice B6c** — **merged to `main`** (PR #20, `dca81e1`): settlement ledger + CLOSED. Append-only
+  `LedgerEntry`; `paidAt`/`closedAt` on Booking; 48h dispute-window sweep closes PAYMENT_RECEIVED bookings to
+  CLOSED with the 80/20 split + cash-debt auto-offset; zero-payable short-circuit; debt-limit accept-gate;
+  balance + payout + repayment + technician-settlement admin endpoints; BullMQ sweep scheduling (codebase's
+  first background work). 324 tests.
 - **Booking Slice B6b** — **merged to `main`** (PR #19, squash `9fa2088`): cash path — CASH payment
   method; receipt OTP handshake; `Technician.cashDebtPaise` running balance; debt + velocity gates;
   idempotent CASH attempt; PAYMENT_RECEIVED as TECHNICIAN with evidence. 304 tests.
@@ -154,14 +151,19 @@ Design: [`docs/designs/2026-07-19-booking-b6c-settlement-design.md`]; plan:
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **B7 — disputes** (DISPUTED state, customer-raise window, admin adjudication, partial refunds via
-   B6a's `refund.*` webhook skeleton). The 48h dispute window is already enforced by the B6c sweep.
-2. **B2b — accept-timer** (30-sec unclaimed-job re-broadcast; BullMQ infra NOW EXISTS — reuse the
+1. **B2b — accept-timer** (30-sec unclaimed-job re-broadcast; BullMQ infra NOW EXISTS — reuse the
    `shared/queue/` scaffolding from B6c). Apply for Razorpay KYC + Route NOW if not in flight.
-3. **Flutter customer app** (Month 5 start): booking creation flow + live status polling + payment UI.
+2. **Flutter customer app** (Month 5 start): booking creation flow + live status polling + payment UI.
    Provision Cloudflare R2 account + creds (`R2_*` env) before launch.
+3. **Dispute dashboard** (admin, once the admin app lands — Month 4): OPEN queue, resolve UI over the
+   B7 admin endpoints. Until then, disputes are adjudicated via direct API calls (Bruno/Postman).
 
 ## Deferred follow-ups (carry forward)
+- **B7 (disputes) deferred scope:** tier-based auto-resolve (small-refund disputes settled without
+  admin review); customer/technician appeals on a RESOLVED dispute; abuse-detection (repeat-disputer
+  flagging, feeds the trust system); admin dispute dashboard UI (queries exist, no UI until admin
+  lands); technician-raised disputes (currently customer-only); warranty/rework flow as a dispute
+  outcome (vs. only refund/no-refund/partial today); deposit deduction (no security-deposit model yet).
 - **Auth rate-limiting hardening pass:** tighter per-IP/email limit + lockout on
   `/admin/auth/login`; rate-limit `/auth/refresh` (review notes from B + C — both
   need a valid token/account first, so low urgency).
