@@ -24,8 +24,12 @@ import UIKit
     // time) is what actually reaches production installs.
     //
     // Without the env var at build time the Info.plist value resolves to
-    // empty, so no key is provided — safe: the MAPS_ENABLED gate in Dart
-    // already prevents GoogleMap construction without a key.
+    // empty, so no key is provided. The GoogleMaps SDK ABORTS (SIGABRT) if a
+    // GMSMapView is created without a key — so the Dart side must not build
+    // GoogleMap unless a key is actually present. Dart gates the map on the
+    // `MAPS_API_KEY` dart-define being non-empty (see Env.mapsEnabled), which
+    // the runbook sets alongside this native key, so `MAPS_ENABLED=true`
+    // without a key renders the placeholder instead of crashing.
     if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "MapsApiKey") as? String, !mapsKey.isEmpty {
       GMSServices.provideAPIKey(mapsKey)
     }
