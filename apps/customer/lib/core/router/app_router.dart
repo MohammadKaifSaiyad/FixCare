@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/address/data/address_dtos.dart';
 import '../../features/address/presentation/address_form_screen.dart';
 import '../../features/address/presentation/address_list_screen.dart';
 import '../../features/auth/domain/session.dart';
@@ -90,7 +91,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/address/new', builder: (_, _) => const AddressFormScreen(addressId: null)),
       GoRoute(
         path: '/address/:id/edit',
-        builder: (_, state) => AddressFormScreen(addressId: state.pathParameters['id']),
+        builder: (_, state) => AddressFormScreen(
+          addressId: state.pathParameters['id'],
+          initial: state.extra as AddressDto?,
+        ),
       ),
     ],
   );

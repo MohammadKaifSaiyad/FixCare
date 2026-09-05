@@ -69,7 +69,7 @@ class _AddressCard extends ConsumerWidget {
             key: Key('addrMenu_${a.id}'),
             onSelected: (v) async {
               final ctrl = ref.read(addressControllerProvider.notifier);
-              if (v == 'edit') { if (context.mounted) context.push('/address/${a.id}/edit'); }
+              if (v == 'edit') { if (context.mounted) context.push('/address/${a.id}/edit', extra: a); }
               if (v == 'default') {
                 final r = await ctrl.setDefault(a.id);
                 if (!context.mounted) return;

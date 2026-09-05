@@ -12,8 +12,12 @@ import 'widgets/serviceability_chip.dart';
 // Task 10 adds: import 'widgets/address_map_picker.dart';
 
 class AddressFormScreen extends ConsumerStatefulWidget {
-  const AddressFormScreen({super.key, required this.addressId});
+  const AddressFormScreen({super.key, required this.addressId, this.initial});
   final String? addressId;
+  /// The existing address to pre-fill in edit mode, passed as router `extra`
+  /// from the list screen. May be null (e.g. a deep link with no extra) —
+  /// the form then falls back to blank fields for edit mode.
+  final AddressDto? initial;
   @override
   ConsumerState<AddressFormScreen> createState() => _AddressFormScreenState();
 }
@@ -39,6 +43,17 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initial;
+    if (initial != null) {
+      _label.text = initial.label;
+      _line1.text = initial.line1;
+      _line2.text = initial.line2 ?? '';
+      _landmark.text = initial.landmark ?? '';
+      _pincode.text = initial.pincode;
+      _isDefault = initial.isDefault;
+      _lat = initial.lat;
+      _lng = initial.lng;
+    }
     _pincode.addListener(_onPincodeChanged);
   }
 
@@ -98,10 +113,20 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
         // torn down — it will simply refetch fresh next time something
         // watches it, so a disposed controller here must not block
         // navigating back to a successful save.
-        try {
-          await ref.read(addressControllerProvider.notifier).refresh();
-        } catch (_) {
-          // Provider already disposed — nothing to refresh; ignore.
+        //
+        // riverpod's `UnmountedRefException` (the specific exception this
+        // guards against) is not part of the public API surface (it lives
+        // in `riverpod`'s `src/core/ref.dart`, unreachable from app code),
+        // so we narrow via the public `ref.exists(...)` pre-check instead
+        // of naming the exception type, plus an `Exception`-only catch
+        // (not a bare `catch`) for the residual dispose-mid-await race —
+        // programming errors (`Error` subtypes) still propagate.
+        if (ref.exists(addressControllerProvider)) {
+          try {
+            await ref.read(addressControllerProvider.notifier).refresh();
+          } on Exception {
+            // Provider was torn down mid-refresh — nothing to refresh; ignore.
+          }
         }
         if (mounted) context.pop();
       case Failure(message: final m):

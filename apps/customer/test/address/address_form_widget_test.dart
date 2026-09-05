@@ -63,6 +63,29 @@ Future<void> _pump(WidgetTester tester, _FakeAddrRepo repo) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpEdit(WidgetTester tester, _FakeAddrRepo repo, AddressDto initial) async {
+  tester.view.physicalSize = const Size(1200, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final router = GoRouter(initialLocation: '/addresses', routes: [
+    GoRoute(path: '/addresses', builder: (_, _) => const Scaffold(body: Text('addresses list stub'))),
+    GoRoute(
+      path: '/address/:id/edit',
+      builder: (_, state) => AddressFormScreen(
+        addressId: state.pathParameters['id'],
+        initial: state.extra as AddressDto?,
+      ),
+    ),
+  ]);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [addressRepositoryProvider.overrideWithValue(repo)],
+    child: MaterialApp.router(theme: buildFixCareTheme(), routerConfig: router),
+  ));
+  router.push('/address/${initial.id}/edit', extra: initial);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('serviceable pincode shows the serve affordance', (tester) async {
     final repo = _FakeAddrRepo(true);
@@ -104,5 +127,23 @@ void main() {
     expect(find.text('Something went wrong.'), findsOneWidget);
     // Still on the form (did not navigate away on failure).
     expect(find.byKey(const Key('saveAddressBtn')), findsOneWidget);
+  });
+
+  testWidgets('edit mode pre-fills fields from the passed-in AddressDto', (tester) async {
+    final repo = _FakeAddrRepo(true);
+    const initial = AddressDto(
+      id: 'a1', label: 'Office', line1: '4 Alkapuri', line2: 'Near Circle',
+      landmark: 'Opp. bank', pincode: '390007', isDefault: true, status: 'ACTIVE',
+      serviceable: true, zone: null,
+    );
+    await _pumpEdit(tester, repo, initial);
+
+    expect(find.text('Office'), findsOneWidget);
+    expect(find.text('4 Alkapuri'), findsOneWidget);
+    expect(find.text('390007'), findsOneWidget);
+    expect(find.text('Edit address'), findsOneWidget);
+
+    final switchTile = tester.widget<SwitchListTile>(find.byKey(const Key('defaultSwitch')));
+    expect(switchTile.value, isTrue);
   });
 }
