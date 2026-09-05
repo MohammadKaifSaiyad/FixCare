@@ -10,7 +10,14 @@ part 'auth_controller.g.dart';
 /// Owns the session lifecycle: boot from storage, OTP verify, logout, and the
 /// interceptor's session-lost signal. The auth interceptor is the ONLY place a
 /// token refresh happens; this controller only reacts to the outcome.
-@riverpod
+///
+/// keepAlive: this is app-wide session state that must live for the whole app
+/// session. It is read from several places (the router bridge, the dio
+/// interceptor's onAuthLost, screens) at different times; an auto-dispose
+/// controller would risk being torn down and re-booting the session between
+/// uses. Keep the lifetime explicit rather than relying on an incidental
+/// long-lived listener.
+@Riverpod(keepAlive: true)
 class AuthController extends _$AuthController {
   @override
   Future<Session> build() async {
