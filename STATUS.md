@@ -30,7 +30,14 @@ monthly-spend limit was killing subagent dispatches). **Next: final whole-branch
 flutter-widget reviewers + `/code-review`, then PR → `main`.**
 
 ## Last shipped
-- **Customer app Slice 1** (`apps/customer`, Flutter — first app slice): project scaffold (Flutter 3.47,
+- **Customer app — iOS target + web dropped** (`feature/customer-app-ios-drop-web`, on branch): scope
+  reversal recorded in **ADR-0005** — V1 is now **Android + iOS** (both apps, first-priority); **web dropped**.
+  Scaffolded `apps/customer/ios/` (bundle `in.fixcare.fixcareCustomer`, iOS 15+); `localhost`-only ATS
+  cleartext exception in `Info.plist` (release HTTPS-only); removed `web/` + Chrome commands. Docs updated
+  (CLAUDE.md, mobile-stack.md, slice-1 design/plan notes, README with per-platform base URLs + iOS Xcode/
+  CocoaPods setup). The shared Dart is unchanged (platform-neutral): `flutter analyze` clean, 16/16 tests.
+  **iOS build/simulator smoke-test pending on the founder's Mac (needs Xcode — cannot build in this env).**
+- **Customer app Slice 1** (`apps/customer`, Flutter — first app slice) — **merged (PR #22, `1003e9d`)**: project scaffold (Flutter 3.47,
   Riverpod 3.x `@riverpod` codegen, go_router 18, dio 5, flutter_secure_storage 11, freezed 4) + phone-OTP
   auth. `Env` (`--dart-define=BASE_URL`, default `10.0.2.2:3000`), Material3 theme (primary `#C2521B`,
   success `#1D6B4F`); sealed `Result<T>` + `FailureKind`; `TokenStore` (secure-storage); freezed auth DTOs +

@@ -1,5 +1,11 @@
 # Customer App Slice 1 — Scaffold + Phone-OTP Auth Implementation Plan
 
+> **Historical note (2026-09-05):** this plan scaffolded Android + web (no iOS), matching the
+> then-current "Android only V1" stance. That was later reversed by
+> [ADR-0005](../adrs/ADR-0005-mobile-platforms-android-ios.md): V1 is now **Android + iOS, no web**.
+> The steps below are the record of what was executed for Slice 1; the iOS target + web removal
+> landed in the PR right after. Don't follow the web/Chrome bits going forward.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A Flutter customer app (Android-first) where a homeowner logs in via phone OTP and lands on a stub home, with the access/refresh token lifecycle handled transparently by a dio interceptor.
