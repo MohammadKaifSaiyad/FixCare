@@ -141,7 +141,7 @@ void main() {
     await tester.tap(find.byKey(const Key('myAddressesTile')));
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(AppBar, 'Addresses'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'My addresses'), findsOneWidget);
   });
 
   testWidgets('name-edit failure shows the error and does not update the name', (tester) async {
