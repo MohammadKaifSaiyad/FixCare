@@ -21,16 +21,22 @@ const _months = [
 String _dayLabel(DateTime d) => '${_weekdays[d.weekday - 1]} ${d.day}';
 String _fullDateLabel(DateTime d) => '${_weekdays[d.weekday - 1]}, ${d.day} ${_months[d.month - 1]}';
 
+/// 12-hour clock time, e.g. "2:00 pm" (minutes always shown, no leading zero on the hour).
+String _timeLabel(DateTime d) {
+  final hour12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  final minute = d.minute.toString().padLeft(2, '0');
+  final period = d.hour < 12 ? 'am' : 'pm';
+  return '$hour12:$minute $period';
+}
+
 /// Formats a scheduledSlot ISO (UTC) string for display in local time, e.g.
-/// "Wed, 10 Sep · Morning · 9–12" (falls back to the window whose startHour
-/// matches, else just the time).
+/// "Wed, 10 Sep · Morning · 9–12" when the hour matches one of the fixed
+/// booking windows (9/12/15), else just the actual time, e.g. "Wed, 10 Sep · 2:00 pm".
 String formatScheduledSlot(String iso) {
   final dt = DateTime.parse(iso).toLocal();
-  final window = SlotWindow.values.firstWhere(
-    (w) => w.startHour == dt.hour,
-    orElse: () => SlotWindow.morning,
-  );
-  return '${_fullDateLabel(dt)} · ${window.label}';
+  final window = SlotWindow.values.where((w) => w.startHour == dt.hour).firstOrNull;
+  final suffix = window?.label ?? _timeLabel(dt);
+  return '${_fullDateLabel(dt)} · $suffix';
 }
 
 /// The booking wizard: address -> slot -> confirm. `service` (from the route
@@ -105,10 +111,20 @@ class _BookingWizardScreenState extends ConsumerState<BookingWizardScreen> {
     addressesAsync.whenData((addresses) {
       if (!_addressPreselected && wizard.addressId == null && addresses.isNotEmpty) {
         _addressPreselected = true;
-        final def = addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
-        WidgetsBinding.instance.addPostFrameCallback((_) => notifier.setAddress(def.id));
+        final def = defaultServiceableAddress(addresses);
+        if (def != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => notifier.setAddress(def.id));
+        }
       }
     });
+
+    // The selected address' own record (to gate Continue on serviceability —
+    // an address can be SAVED out-of-area, but never booked to).
+    final AddressDto? selectedAddress = addressesAsync.value?.cast<AddressDto?>().firstWhere(
+          (a) => a?.id == wizard.addressId,
+          orElse: () => null,
+        );
+    final selectedAddressServiceable = selectedAddress != null && selectedAddress.serviceable && selectedAddress.zone != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -124,15 +140,22 @@ class _BookingWizardScreenState extends ConsumerState<BookingWizardScreen> {
           0 => _AddressStep(
               addressesAsync: addressesAsync,
               selectedId: wizard.addressId,
+              selectedNonServiceable: wizard.addressId != null && !selectedAddressServiceable,
               onSelect: notifier.setAddress,
             ),
           1 => _SlotStep(
               selectedDate: _selectedDate,
               selectedWindow: _selectedWindow,
-              onSelectDate: (d) => setState(() {
-                _selectedDate = d;
-                _selectedWindow = null;
-              }),
+              onSelectDate: (d) {
+                setState(() {
+                  _selectedDate = d;
+                  _selectedWindow = null;
+                });
+                // The previously chosen window belonged to the OLD date; clear the
+                // wizard's slot too so Continue re-disables until a window is picked
+                // for the new date (else we'd silently book the stale date/window).
+                notifier.clearSlot();
+              },
               onSelectWindow: (w) {
                 setState(() => _selectedWindow = w);
                 final iso = slotToIso(_selectedDate, w);
@@ -141,10 +164,7 @@ class _BookingWizardScreenState extends ConsumerState<BookingWizardScreen> {
             ),
           _ => _ConfirmStep(
               service: widget.service,
-              address: addressesAsync.value?.cast<AddressDto?>().firstWhere(
-                    (a) => a?.id == wizard.addressId,
-                    orElse: () => null,
-                  ),
+              address: selectedAddress,
               scheduledSlot: wizard.scheduledSlot,
               error: _error,
               busy: _busy,
@@ -158,7 +178,7 @@ class _BookingWizardScreenState extends ConsumerState<BookingWizardScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: FilledButton(
-                  onPressed: _canContinue(wizard) ? _next : null,
+                  onPressed: _canContinue(wizard, selectedAddressServiceable) ? _next : null,
                   child: const Text('Continue'),
                 ),
               ),
@@ -166,17 +186,23 @@ class _BookingWizardScreenState extends ConsumerState<BookingWizardScreen> {
     );
   }
 
-  bool _canContinue(BookingWizardState wizard) => switch (_step) {
-        0 => wizard.addressId != null,
+  bool _canContinue(BookingWizardState wizard, bool selectedAddressServiceable) => switch (_step) {
+        0 => wizard.addressId != null && selectedAddressServiceable,
         1 => wizard.scheduledSlot != null,
         _ => true,
       };
 }
 
 class _AddressStep extends StatelessWidget {
-  const _AddressStep({required this.addressesAsync, required this.selectedId, required this.onSelect});
+  const _AddressStep({
+    required this.addressesAsync,
+    required this.selectedId,
+    required this.selectedNonServiceable,
+    required this.onSelect,
+  });
   final AsyncValue<List<AddressDto>> addressesAsync;
   final String? selectedId;
+  final bool selectedNonServiceable;
   final ValueChanged<String> onSelect;
 
   @override
@@ -196,6 +222,22 @@ class _AddressStep extends StatelessWidget {
             children: [
               for (final a in addresses)
                 _AddressTile(address: a, selected: a.id == selectedId, onTap: () => onSelect(a.id)),
+              if (selectedNonServiceable) ...[
+                const SizedBox(height: 4),
+                Container(
+                  key: const Key('wizardNonServiceableNote'),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: FixCareColors.errorFill,
+                    borderRadius: BorderRadius.circular(FixCareRadii.card),
+                    border: Border.all(color: FixCareColors.errorBorder),
+                  ),
+                  child: const Text(
+                    "We don't serve this address's area — pick another or add one",
+                    style: TextStyle(fontSize: 13, color: FixCareColors.errorText, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               TextButton(
                 key: const Key('wizardAddAddress'),

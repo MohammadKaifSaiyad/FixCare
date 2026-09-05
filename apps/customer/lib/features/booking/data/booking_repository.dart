@@ -15,7 +15,11 @@ class BookingRepository {
 
   Result<T> _ok<T>(Response res, T Function(dynamic data) parse) {
     final status = res.statusCode ?? 0;
-    if (status >= 200 && status < 300) return Ok(parse(res.data));
+    if (status >= 200 && status < 300) {
+      final data = res.data;
+      if (data is! Map) return const Failure(FailureKind.server, 'Unexpected response from the server.');
+      return Ok(parse(data));
+    }
     return Failure(failureKindFromStatus(status), _msg(res.data));
   }
 

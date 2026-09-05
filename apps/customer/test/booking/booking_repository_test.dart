@@ -146,4 +146,19 @@ void main() {
     final r = await repo.cancel('b1');
     expect(r, isA<Ok<void>>());
   });
+
+  test('create 200 with a non-object body -> Failure(server), not a thrown TypeError', () async {
+    adapter.onPost('/me/bookings', (s) => s.reply(200, ''),
+        data: {'addressId': 'a1', 'serviceId': 's1', 'scheduledSlot': '2026-09-10T09:00:00.000Z'});
+    final r = await repo.create(addressId: 'a1', serviceId: 's1', scheduledSlot: '2026-09-10T09:00:00.000Z');
+    expect(r, isA<Failure<BookingDto>>());
+    expect((r as Failure<BookingDto>).kind, FailureKind.server);
+  });
+
+  test('get 200 with a non-object (list) body -> Failure(server), not a thrown TypeError', () async {
+    adapter.onGet('/me/bookings/b1', (s) => s.reply(200, <dynamic>[]));
+    final r = await repo.get('b1');
+    expect(r, isA<Failure<BookingDto>>());
+    expect((r as Failure<BookingDto>).kind, FailureKind.server);
+  });
 }

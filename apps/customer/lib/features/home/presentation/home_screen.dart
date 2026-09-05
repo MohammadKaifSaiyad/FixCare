@@ -31,9 +31,7 @@ class HomeScreen extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, _) => _ErrorRetry(onRetry: () => ref.invalidate(addressControllerProvider)),
           data: (addresses) {
-            final AddressDto? def = addresses.isEmpty
-                ? null
-                : addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
+            final AddressDto? def = defaultServiceableAddress(addresses);
             final zone = def?.zone;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,

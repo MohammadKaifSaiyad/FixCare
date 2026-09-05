@@ -15,6 +15,12 @@ Map<String, dynamic> _addr({bool isDefault = true}) => {
   'serviceable': true, 'zone': {'id': 'z1', 'name': 'Vadodara', 'visitFeePaise': 14900},
 };
 
+Map<String, dynamic> _nonServiceableDefaultAddr() => {
+  'id': 'a2', 'label': 'Farmhouse', 'line1': '1 Out of Zone Rd', 'line2': null, 'landmark': null,
+  'pincode': '390099', 'lat': null, 'lng': null, 'isDefault': true, 'status': 'ACTIVE',
+  'serviceable': false, 'zone': null,
+};
+
 class _FakeAddressRepo extends AddressRepository {
   _FakeAddressRepo(this._list) : super(Dio());
   final List<AddressDto> _list;
@@ -62,5 +68,21 @@ void main() {
     await _pump(tester, addr: _FakeAddressRepo(const []), cat: _FakeCatalogRepo());
     expect(find.byKey(const Key('homeAddAddressCta')), findsOneWidget);
     // never crashes trying to fetch services without a zone
+  });
+
+  testWidgets('default address is non-serviceable but another IS serviceable -> real catalog renders, not the CTA', (tester) async {
+    await _pump(
+      tester,
+      addr: _FakeAddressRepo([
+        AddressDto.fromJson(_nonServiceableDefaultAddr()),
+        AddressDto.fromJson(_addr(isDefault: false)),
+      ]),
+      cat: _FakeCatalogRepo(),
+    );
+    // Finding 2+4 regression: a non-serviceable default must NOT hide the bookable
+    // catalog when another address on the account is serviceable.
+    expect(find.byKey(const Key('homeAddAddressCta')), findsNothing);
+    expect(find.text('Refrigerator'), findsWidgets);
+    expect(find.text('Fridge not cooling'), findsOneWidget);
   });
 }

@@ -58,7 +58,7 @@ final class BookingWizardProvider
   }
 }
 
-String _$bookingWizardHash() => r'650636020dbf809462345c196e50469d42a7d896';
+String _$bookingWizardHash() => r'c55a47f665287f425bc2416300da242b435ce921';
 
 final class BookingWizardFamily extends $Family
     with
