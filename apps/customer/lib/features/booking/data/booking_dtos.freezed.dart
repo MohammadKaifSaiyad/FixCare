@@ -2488,7 +2488,7 @@ as int,
 /// @nodoc
 mixin _$DisputeSummaryDto {
 
- String get status; String get outcome; int? get refundPaise;
+ String get status; String? get outcome; int? get refundPaise;
 /// Create a copy of DisputeSummaryDto
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2526,7 +2526,7 @@ abstract mixin class $DisputeSummaryDtoCopyWith<$Res>  {
   factory $DisputeSummaryDtoCopyWith(DisputeSummaryDto value, $Res Function(DisputeSummaryDto) _then) = _$DisputeSummaryDtoCopyWithImpl;
 @useResult
 $Res call({
- String status, String outcome, int? refundPaise
+ String status, String? outcome, int? refundPaise
 });
 
 
@@ -2543,11 +2543,11 @@ class _$DisputeSummaryDtoCopyWithImpl<$Res>
 
 /// Create a copy of DisputeSummaryDto
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? status = null,Object? outcome = null,Object? refundPaise = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? status = null,Object? outcome = freezed,Object? refundPaise = freezed,}) {
   return _then(DisputeSummaryDto(
 status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
-as String,outcome: null == outcome ? _self.outcome : outcome // ignore: cast_nullable_to_non_nullable
-as String,refundPaise: freezed == refundPaise ? _self.refundPaise : refundPaise // ignore: cast_nullable_to_non_nullable
+as String,outcome: freezed == outcome ? _self.outcome : outcome // ignore: cast_nullable_to_non_nullable
+as String?,refundPaise: freezed == refundPaise ? _self.refundPaise : refundPaise // ignore: cast_nullable_to_non_nullable
 as int?,
   ));
 }
@@ -2633,7 +2633,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String status,  String outcome,  int? refundPaise)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String status,  String? outcome,  int? refundPaise)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _DisputeSummaryDto() when $default != null:
 return $default(_that.status,_that.outcome,_that.refundPaise);case _:
@@ -2654,7 +2654,7 @@ return $default(_that.status,_that.outcome,_that.refundPaise);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String status,  String outcome,  int? refundPaise)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String status,  String? outcome,  int? refundPaise)  $default,) {final _that = this;
 switch (_that) {
 case _DisputeSummaryDto():
 return $default(_that.status,_that.outcome,_that.refundPaise);case _:
@@ -2674,7 +2674,7 @@ return $default(_that.status,_that.outcome,_that.refundPaise);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String status,  String outcome,  int? refundPaise)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String status,  String? outcome,  int? refundPaise)?  $default,) {final _that = this;
 switch (_that) {
 case _DisputeSummaryDto() when $default != null:
 return $default(_that.status,_that.outcome,_that.refundPaise);case _:
@@ -2689,11 +2689,11 @@ return $default(_that.status,_that.outcome,_that.refundPaise);case _:
 @JsonSerializable()
 
 class _DisputeSummaryDto implements DisputeSummaryDto {
-  const _DisputeSummaryDto({required this.status, required this.outcome, this.refundPaise});
+  const _DisputeSummaryDto({required this.status, this.outcome, this.refundPaise});
   factory _DisputeSummaryDto.fromJson(Map<String, dynamic> json) => _$DisputeSummaryDtoFromJson(json);
 
 @override final  String status;
-@override final  String outcome;
+@override final  String? outcome;
 @override final  int? refundPaise;
 
 /// Create a copy of DisputeSummaryDto
@@ -2731,7 +2731,7 @@ abstract mixin class _$DisputeSummaryDtoCopyWith<$Res> implements $DisputeSummar
   factory _$DisputeSummaryDtoCopyWith(_DisputeSummaryDto value, $Res Function(_DisputeSummaryDto) _then) = __$DisputeSummaryDtoCopyWithImpl;
 @override @useResult
 $Res call({
- String status, String outcome, int? refundPaise
+ String status, String? outcome, int? refundPaise
 });
 
 
@@ -2748,11 +2748,11 @@ class __$DisputeSummaryDtoCopyWithImpl<$Res>
 
 /// Create a copy of DisputeSummaryDto
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? status = null,Object? outcome = null,Object? refundPaise = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? status = null,Object? outcome = freezed,Object? refundPaise = freezed,}) {
   return _then(_DisputeSummaryDto(
 status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
-as String,outcome: null == outcome ? _self.outcome : outcome // ignore: cast_nullable_to_non_nullable
-as String,refundPaise: freezed == refundPaise ? _self.refundPaise : refundPaise // ignore: cast_nullable_to_non_nullable
+as String,outcome: freezed == outcome ? _self.outcome : outcome // ignore: cast_nullable_to_non_nullable
+as String?,refundPaise: freezed == refundPaise ? _self.refundPaise : refundPaise // ignore: cast_nullable_to_non_nullable
 as int?,
   ));
 }
@@ -2764,7 +2764,7 @@ as int?,
 /// @nodoc
 mixin _$BookingDto {
 
- String get id; String get bookingNumber; String get state; String get scheduledSlot; int get visitFeePaise; int get laborPaise; String? get laborTier; BookingServiceDto get service; BookingZoneDto get zone; BookingAddressRefDto get address; TechnicianRefDto? get technician; DiagnosisDto? get diagnosis; List<PartDto> get parts; EstimateDto get estimate; List<PhotoDto> get photos; PaymentSummaryDto? get payment; DisputeSummaryDto? get dispute;
+ String get id; String get bookingNumber; String get state; String get scheduledSlot; int get visitFeePaise; int get laborPaise; String get laborTier; BookingServiceDto get service; BookingZoneDto get zone; BookingAddressRefDto get address; TechnicianRefDto? get technician; DiagnosisDto? get diagnosis; List<PartDto> get parts; EstimateDto get estimate; List<PhotoDto> get photos; PaymentSummaryDto? get payment; DisputeSummaryDto? get dispute;
 /// Create a copy of BookingDto
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2802,7 +2802,7 @@ abstract mixin class $BookingDtoCopyWith<$Res>  {
   factory $BookingDtoCopyWith(BookingDto value, $Res Function(BookingDto) _then) = _$BookingDtoCopyWithImpl;
 @useResult
 $Res call({
- String id, String bookingNumber, String state, String scheduledSlot, int visitFeePaise, int laborPaise, String? laborTier, BookingServiceDto service, BookingZoneDto zone, BookingAddressRefDto address, TechnicianRefDto? technician, DiagnosisDto? diagnosis, List<PartDto> parts, EstimateDto estimate, List<PhotoDto> photos, PaymentSummaryDto? payment, DisputeSummaryDto? dispute
+ String id, String bookingNumber, String state, String scheduledSlot, int visitFeePaise, int laborPaise, String laborTier, BookingServiceDto service, BookingZoneDto zone, BookingAddressRefDto address, TechnicianRefDto? technician, DiagnosisDto? diagnosis, List<PartDto> parts, EstimateDto estimate, List<PhotoDto> photos, PaymentSummaryDto? payment, DisputeSummaryDto? dispute
 });
 
 
@@ -2819,7 +2819,7 @@ class _$BookingDtoCopyWithImpl<$Res>
 
 /// Create a copy of BookingDto
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? bookingNumber = null,Object? state = null,Object? scheduledSlot = null,Object? visitFeePaise = null,Object? laborPaise = null,Object? laborTier = freezed,Object? service = null,Object? zone = null,Object? address = null,Object? technician = freezed,Object? diagnosis = freezed,Object? parts = null,Object? estimate = null,Object? photos = null,Object? payment = freezed,Object? dispute = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? bookingNumber = null,Object? state = null,Object? scheduledSlot = null,Object? visitFeePaise = null,Object? laborPaise = null,Object? laborTier = null,Object? service = null,Object? zone = null,Object? address = null,Object? technician = freezed,Object? diagnosis = freezed,Object? parts = null,Object? estimate = null,Object? photos = null,Object? payment = freezed,Object? dispute = freezed,}) {
   return _then(BookingDto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,bookingNumber: null == bookingNumber ? _self.bookingNumber : bookingNumber // ignore: cast_nullable_to_non_nullable
@@ -2827,8 +2827,8 @@ as String,state: null == state ? _self.state : state // ignore: cast_nullable_to
 as String,scheduledSlot: null == scheduledSlot ? _self.scheduledSlot : scheduledSlot // ignore: cast_nullable_to_non_nullable
 as String,visitFeePaise: null == visitFeePaise ? _self.visitFeePaise : visitFeePaise // ignore: cast_nullable_to_non_nullable
 as int,laborPaise: null == laborPaise ? _self.laborPaise : laborPaise // ignore: cast_nullable_to_non_nullable
-as int,laborTier: freezed == laborTier ? _self.laborTier : laborTier // ignore: cast_nullable_to_non_nullable
-as String?,service: null == service ? _self.service : service // ignore: cast_nullable_to_non_nullable
+as int,laborTier: null == laborTier ? _self.laborTier : laborTier // ignore: cast_nullable_to_non_nullable
+as String,service: null == service ? _self.service : service // ignore: cast_nullable_to_non_nullable
 as BookingServiceDto,zone: null == zone ? _self.zone : zone // ignore: cast_nullable_to_non_nullable
 as BookingZoneDto,address: null == address ? _self.address : address // ignore: cast_nullable_to_non_nullable
 as BookingAddressRefDto,technician: freezed == technician ? _self.technician : technician // ignore: cast_nullable_to_non_nullable
@@ -3007,7 +3007,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String bookingNumber,  String state,  String scheduledSlot,  int visitFeePaise,  int laborPaise,  String? laborTier,  BookingServiceDto service,  BookingZoneDto zone,  BookingAddressRefDto address,  TechnicianRefDto? technician,  DiagnosisDto? diagnosis,  List<PartDto> parts,  EstimateDto estimate,  List<PhotoDto> photos,  PaymentSummaryDto? payment,  DisputeSummaryDto? dispute)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String bookingNumber,  String state,  String scheduledSlot,  int visitFeePaise,  int laborPaise,  String laborTier,  BookingServiceDto service,  BookingZoneDto zone,  BookingAddressRefDto address,  TechnicianRefDto? technician,  DiagnosisDto? diagnosis,  List<PartDto> parts,  EstimateDto estimate,  List<PhotoDto> photos,  PaymentSummaryDto? payment,  DisputeSummaryDto? dispute)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _BookingDto() when $default != null:
 return $default(_that.id,_that.bookingNumber,_that.state,_that.scheduledSlot,_that.visitFeePaise,_that.laborPaise,_that.laborTier,_that.service,_that.zone,_that.address,_that.technician,_that.diagnosis,_that.parts,_that.estimate,_that.photos,_that.payment,_that.dispute);case _:
@@ -3028,7 +3028,7 @@ return $default(_that.id,_that.bookingNumber,_that.state,_that.scheduledSlot,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String bookingNumber,  String state,  String scheduledSlot,  int visitFeePaise,  int laborPaise,  String? laborTier,  BookingServiceDto service,  BookingZoneDto zone,  BookingAddressRefDto address,  TechnicianRefDto? technician,  DiagnosisDto? diagnosis,  List<PartDto> parts,  EstimateDto estimate,  List<PhotoDto> photos,  PaymentSummaryDto? payment,  DisputeSummaryDto? dispute)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String bookingNumber,  String state,  String scheduledSlot,  int visitFeePaise,  int laborPaise,  String laborTier,  BookingServiceDto service,  BookingZoneDto zone,  BookingAddressRefDto address,  TechnicianRefDto? technician,  DiagnosisDto? diagnosis,  List<PartDto> parts,  EstimateDto estimate,  List<PhotoDto> photos,  PaymentSummaryDto? payment,  DisputeSummaryDto? dispute)  $default,) {final _that = this;
 switch (_that) {
 case _BookingDto():
 return $default(_that.id,_that.bookingNumber,_that.state,_that.scheduledSlot,_that.visitFeePaise,_that.laborPaise,_that.laborTier,_that.service,_that.zone,_that.address,_that.technician,_that.diagnosis,_that.parts,_that.estimate,_that.photos,_that.payment,_that.dispute);case _:
@@ -3048,7 +3048,7 @@ return $default(_that.id,_that.bookingNumber,_that.state,_that.scheduledSlot,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String bookingNumber,  String state,  String scheduledSlot,  int visitFeePaise,  int laborPaise,  String? laborTier,  BookingServiceDto service,  BookingZoneDto zone,  BookingAddressRefDto address,  TechnicianRefDto? technician,  DiagnosisDto? diagnosis,  List<PartDto> parts,  EstimateDto estimate,  List<PhotoDto> photos,  PaymentSummaryDto? payment,  DisputeSummaryDto? dispute)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String bookingNumber,  String state,  String scheduledSlot,  int visitFeePaise,  int laborPaise,  String laborTier,  BookingServiceDto service,  BookingZoneDto zone,  BookingAddressRefDto address,  TechnicianRefDto? technician,  DiagnosisDto? diagnosis,  List<PartDto> parts,  EstimateDto estimate,  List<PhotoDto> photos,  PaymentSummaryDto? payment,  DisputeSummaryDto? dispute)?  $default,) {final _that = this;
 switch (_that) {
 case _BookingDto() when $default != null:
 return $default(_that.id,_that.bookingNumber,_that.state,_that.scheduledSlot,_that.visitFeePaise,_that.laborPaise,_that.laborTier,_that.service,_that.zone,_that.address,_that.technician,_that.diagnosis,_that.parts,_that.estimate,_that.photos,_that.payment,_that.dispute);case _:
@@ -3063,7 +3063,7 @@ return $default(_that.id,_that.bookingNumber,_that.state,_that.scheduledSlot,_th
 @JsonSerializable()
 
 class _BookingDto implements BookingDto {
-  const _BookingDto({required this.id, required this.bookingNumber, required this.state, required this.scheduledSlot, required this.visitFeePaise, required this.laborPaise, this.laborTier, required this.service, required this.zone, required this.address, this.technician, this.diagnosis,  List<PartDto> parts = const <PartDto>[], required this.estimate,  List<PhotoDto> photos = const <PhotoDto>[], this.payment, this.dispute}): _parts = parts,_photos = photos;
+  const _BookingDto({required this.id, required this.bookingNumber, required this.state, required this.scheduledSlot, required this.visitFeePaise, required this.laborPaise, required this.laborTier, required this.service, required this.zone, required this.address, this.technician, this.diagnosis,  List<PartDto> parts = const <PartDto>[], required this.estimate,  List<PhotoDto> photos = const <PhotoDto>[], this.payment, this.dispute}): _parts = parts,_photos = photos;
   factory _BookingDto.fromJson(Map<String, dynamic> json) => _$BookingDtoFromJson(json);
 
 @override final  String id;
@@ -3072,7 +3072,7 @@ class _BookingDto implements BookingDto {
 @override final  String scheduledSlot;
 @override final  int visitFeePaise;
 @override final  int laborPaise;
-@override final  String? laborTier;
+@override final  String laborTier;
 @override final  BookingServiceDto service;
 @override final  BookingZoneDto zone;
 @override final  BookingAddressRefDto address;
@@ -3131,7 +3131,7 @@ abstract mixin class _$BookingDtoCopyWith<$Res> implements $BookingDtoCopyWith<$
   factory _$BookingDtoCopyWith(_BookingDto value, $Res Function(_BookingDto) _then) = __$BookingDtoCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String bookingNumber, String state, String scheduledSlot, int visitFeePaise, int laborPaise, String? laborTier, BookingServiceDto service, BookingZoneDto zone, BookingAddressRefDto address, TechnicianRefDto? technician, DiagnosisDto? diagnosis, List<PartDto> parts, EstimateDto estimate, List<PhotoDto> photos, PaymentSummaryDto? payment, DisputeSummaryDto? dispute
+ String id, String bookingNumber, String state, String scheduledSlot, int visitFeePaise, int laborPaise, String laborTier, BookingServiceDto service, BookingZoneDto zone, BookingAddressRefDto address, TechnicianRefDto? technician, DiagnosisDto? diagnosis, List<PartDto> parts, EstimateDto estimate, List<PhotoDto> photos, PaymentSummaryDto? payment, DisputeSummaryDto? dispute
 });
 
 
@@ -3148,7 +3148,7 @@ class __$BookingDtoCopyWithImpl<$Res>
 
 /// Create a copy of BookingDto
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? bookingNumber = null,Object? state = null,Object? scheduledSlot = null,Object? visitFeePaise = null,Object? laborPaise = null,Object? laborTier = freezed,Object? service = null,Object? zone = null,Object? address = null,Object? technician = freezed,Object? diagnosis = freezed,Object? parts = null,Object? estimate = null,Object? photos = null,Object? payment = freezed,Object? dispute = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? bookingNumber = null,Object? state = null,Object? scheduledSlot = null,Object? visitFeePaise = null,Object? laborPaise = null,Object? laborTier = null,Object? service = null,Object? zone = null,Object? address = null,Object? technician = freezed,Object? diagnosis = freezed,Object? parts = null,Object? estimate = null,Object? photos = null,Object? payment = freezed,Object? dispute = freezed,}) {
   return _then(_BookingDto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,bookingNumber: null == bookingNumber ? _self.bookingNumber : bookingNumber // ignore: cast_nullable_to_non_nullable
@@ -3156,8 +3156,8 @@ as String,state: null == state ? _self.state : state // ignore: cast_nullable_to
 as String,scheduledSlot: null == scheduledSlot ? _self.scheduledSlot : scheduledSlot // ignore: cast_nullable_to_non_nullable
 as String,visitFeePaise: null == visitFeePaise ? _self.visitFeePaise : visitFeePaise // ignore: cast_nullable_to_non_nullable
 as int,laborPaise: null == laborPaise ? _self.laborPaise : laborPaise // ignore: cast_nullable_to_non_nullable
-as int,laborTier: freezed == laborTier ? _self.laborTier : laborTier // ignore: cast_nullable_to_non_nullable
-as String?,service: null == service ? _self.service : service // ignore: cast_nullable_to_non_nullable
+as int,laborTier: null == laborTier ? _self.laborTier : laborTier // ignore: cast_nullable_to_non_nullable
+as String,service: null == service ? _self.service : service // ignore: cast_nullable_to_non_nullable
 as BookingServiceDto,zone: null == zone ? _self.zone : zone // ignore: cast_nullable_to_non_nullable
 as BookingZoneDto,address: null == address ? _self.address : address // ignore: cast_nullable_to_non_nullable
 as BookingAddressRefDto,technician: freezed == technician ? _self.technician : technician // ignore: cast_nullable_to_non_nullable

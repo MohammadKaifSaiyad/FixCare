@@ -104,7 +104,7 @@ Map<String, dynamic> _$PaymentSummaryDtoToJson(_PaymentSummaryDto instance) =>
 _DisputeSummaryDto _$DisputeSummaryDtoFromJson(Map<String, dynamic> json) =>
     _DisputeSummaryDto(
       status: json['status'] as String,
-      outcome: json['outcome'] as String,
+      outcome: json['outcome'] as String?,
       refundPaise: (json['refundPaise'] as num?)?.toInt(),
     );
 
@@ -122,7 +122,7 @@ _BookingDto _$BookingDtoFromJson(Map<String, dynamic> json) => _BookingDto(
   scheduledSlot: json['scheduledSlot'] as String,
   visitFeePaise: (json['visitFeePaise'] as num).toInt(),
   laborPaise: (json['laborPaise'] as num).toInt(),
-  laborTier: json['laborTier'] as String?,
+  laborTier: json['laborTier'] as String,
   service: BookingServiceDto.fromJson(json['service'] as Map<String, dynamic>),
   zone: BookingZoneDto.fromJson(json['zone'] as Map<String, dynamic>),
   address: BookingAddressRefDto.fromJson(

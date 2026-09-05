@@ -33,7 +33,23 @@ Map<String, dynamic> _fullBookingJson() => {
     {'kind': 'OLD_PART_REMOVED', 'capturedAt': '2026-09-11T10:30:00.000Z', 'url': 'https://cdn.example/photo1.jpg'},
   ],
   'payment': {'status': 'CAPTURED', 'method': 'UPI', 'amountPaise': 335100},
-  'dispute': {'status': 'OPEN', 'outcome': 'PENDING', 'refundPaise': null},
+  'dispute': {'status': 'RESOLVED', 'outcome': 'FAVOR_CUSTOMER', 'refundPaise': 335100},
+};
+
+Map<String, dynamic> _openDisputeBookingJson() => {
+  'id': 'b3', 'bookingNumber': 'FC-1003', 'state': 'DISPUTED',
+  'scheduledSlot': '2026-09-12T09:00:00.000Z', 'visitFeePaise': 14900, 'laborPaise': 45000, 'laborTier': 'T2',
+  'service': {'id': 's1', 'name': 'Fridge not cooling'},
+  'zone': {'id': 'z1', 'name': 'Vadodara'},
+  'address': {'id': 'a1'},
+  'diagnosis': null,
+  'parts': <Map<String, dynamic>>[],
+  'estimate': {'laborPaise': 45000, 'partsPaise': 0, 'visitFeeCreditPaise': 0, 'totalPayablePaise': 45000},
+  'photos': <Map<String, dynamic>>[],
+  'payment': null,
+  // Regression fixture: a dispute is OPEN — outcome is set only at resolution, so it is null here.
+  // This is the exact shape that previously crashed BookingDto.fromJson (outcome was `required String`).
+  'dispute': {'status': 'OPEN', 'outcome': null, 'refundPaise': null},
 };
 
 void main() {
@@ -80,8 +96,19 @@ void main() {
     expect(b.photos.single.kind, 'OLD_PART_REMOVED');
     expect(b.payment?.status, 'CAPTURED');
     expect(b.payment?.amountPaise, 335100);
-    expect(b.dispute?.status, 'OPEN');
-    expect(b.dispute?.refundPaise, isNull);
+    expect(b.dispute?.status, 'RESOLVED');
+    expect(b.dispute?.outcome, 'FAVOR_CUSTOMER');
+    expect(b.dispute?.refundPaise, 335100);
+  });
+
+  test('get 200 -> Ok(BookingDto) parses an OPEN dispute with outcome: null (regression — previously crashed)', () async {
+    adapter.onGet('/me/bookings/b3', (s) => s.reply(200, _openDisputeBookingJson()));
+    final r = await repo.get('b3');
+    final b = (r as Ok<BookingDto>).value;
+    expect(b.dispute, isNotNull);
+    expect(b.dispute!.status, 'OPEN');
+    expect(b.dispute!.outcome, isNull);
+    expect(b.dispute!.refundPaise, isNull);
   });
 
   test('create — exact-body matcher rejects a request missing an expected extra field (proves the matcher is strict)', () async {

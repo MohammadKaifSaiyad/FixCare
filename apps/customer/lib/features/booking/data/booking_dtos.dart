@@ -64,7 +64,7 @@ abstract class PaymentSummaryDto with _$PaymentSummaryDto {
 
 @freezed
 abstract class DisputeSummaryDto with _$DisputeSummaryDto {
-  const factory DisputeSummaryDto({required String status, required String outcome, int? refundPaise}) = _DisputeSummaryDto;
+  const factory DisputeSummaryDto({required String status, String? outcome, int? refundPaise}) = _DisputeSummaryDto;
   factory DisputeSummaryDto.fromJson(Map<String, dynamic> j) => _$DisputeSummaryDtoFromJson(j);
 }
 
@@ -77,7 +77,7 @@ abstract class BookingDto with _$BookingDto {
     required String scheduledSlot,
     required int visitFeePaise,
     required int laborPaise,
-    String? laborTier,
+    required String laborTier,
     required BookingServiceDto service,
     required BookingZoneDto zone,
     required BookingAddressRefDto address,
