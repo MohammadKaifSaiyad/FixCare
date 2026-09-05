@@ -9,27 +9,35 @@ _Last updated: 2026-09-05_
 ---
 
 ## Phase
-**Month 5 — customer app (Flutter).** Backend booking module **COMPLETE** (B1→B7 all merged to `main`,
-including B7 disputes, PR #21). Build order (ADR-0004) now advances to the **customer app**: `apps/customer`,
-Flutter/Android-first, Riverpod codegen + go_router + dio + secure-storage. **Slice 1 (scaffold + phone-OTP
-auth) complete on branch.** Money still on Razorpay test keys until KYC.
+**Month 5 — customer app (Flutter).** Backend booking module COMPLETE (B1→B7 merged, PR #21). Build order
+(ADR-0004) advanced to the **customer app** (`apps/customer`, Android + iOS per ADR-0005; Riverpod codegen +
+go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/web-drop (#23), design-fidelity
+(#24). **Slice 2 (boot hydration + profile + addresses + maps) complete on branch, in final review.** Money
+still on Razorpay test keys until KYC.
 
 ## Active task
-**Customer app Slice 1** complete on `feature/customer-app-skeleton-auth` — **project scaffold + full
-phone-OTP auth flow**. Establishes the app architecture (feature-first, `@riverpod` codegen, go_router,
-typed `Result<T>` end-to-end, freezed DTOs, secure-storage) and the token backbone every later slice rides on.
-Flow: splash/token-gate → phone entry (10-digit `^[6-9]\d{9}$`) → OTP entry (dev `devOtp` autofill on debug only,
-resend, wrong-code inline error) → home stub. **Dio auth interceptor** attaches the bearer and, on 401, does a
-**single-flight** `/auth/refresh` (N concurrent 401s share ONE refresh; refresh/retry through a bare
-interceptor-free dio so no recursion), stores the rotated pair, retries; refresh-fail → clear tokens +
-`onAuthLost` → phone. Backend `/auth/*` contract verified against source (`verify`→{access,refresh,user};
-`refresh`→{access,refresh} NO user; `send`→{ok,devOtp?}). 15 tests (repository / single-flight interceptor /
-token-gate router / OTP widget flow); `flutter analyze` clean; build_runner idempotent (generated files
-committed). Built via SDD (6 tasks, each spec+quality reviewed — Tasks 5-6 executed inline when the org
-monthly-spend limit was killing subagent dispatches). **Next: final whole-branch review + golden-rules /
-flutter-widget reviewers + `/code-review`, then PR → `main`.**
+**Customer app Slice 2** complete on `feature/customer-app-slice2-profile-addresses` — **boot hydration +
+profile + addresses (with live serviceability + a Google Maps pin-picker)**. Replaces the Slice-1 placeholder
+user: `AuthController.build()` now fetches `GET /me/profile` on boot (`SessionAuthenticated(CustomerProfileDto,
+hydrated)`; 401→clear→login; network-blip→stay logged in, no name-gate). First-run **name capture** gated after
+login when name empty. **Account** screen (name edit, phone read-only from secure storage, sign out). Full
+**address CRUD** (list/add/edit/delete/set-default) with debounced live pincode **serviceability** (warn but
+allow out-of-area, per backend 201), and a **Google Maps** pin-drop for lat/lng that **degrades gracefully
+without a key** (`MAPS_ENABLED`-gated placeholder — the app builds/tests/runs keyless; only the live map needs
+one). Built via SDD (11 tasks, each spec+quality reviewed — 5 fix-loops caught real defects: 2 weak contract
+tests, 2 silent error-swallows, 1 blank-edit-form). 64 tests; `flutter analyze` clean; build_runner idempotent
+(generated files committed). Design: `docs/designs/2026-09-05-customer-app-slice2-profile-addresses-design.md`.
+**Next: final whole-branch review + golden-rules/flutter-widget reviewers + `/code-review`, then PR → `main`.**
+**Founder action for full testing: provision a Google Maps API key (runbook in apps/customer/README.md) — the
+map picker shows a placeholder until then; everything else works.**
 
 ## Last shipped
+- **Customer app Slice 2** (`apps/customer`, on branch, final review) — profile + addresses + boot hydration +
+  maps. Profile module (`CustomerProfileDto` + repo); session carries the profile; boot hydration + name-gate;
+  Account screen; address module (`AddressDto`/`ZoneDto`/`ServiceabilityDto` + repo, contract-guarded tests);
+  address list + `@riverpod` controller + serviceability chip; add/edit form (debounced serviceability + edit
+  pre-fill + save-failure surfaced); `google_maps_flutter` pin-picker (graceful without a key). 64 tests,
+  analyze clean.
 - **Customer app — design-faithful auth screens** (`feature/customer-app-auth-design-fidelity`, on branch):
   ported the full design system into `theme.dart` (FixCareColors/FixCareRadii tokens, exact palette, Outfit
   typography), **bundled the Outfit font** (offline, OFL), drew the wrench+check logo via CustomPainter (no
