@@ -119,17 +119,20 @@ JSON ever reaches the widget layer. The interceptor is the ONLY place that perfo
   `set -a && source .env && set +a && pnpm dev` → API on `:3000`.
 - **App (Android emulator):** from `apps/customer`,
   `flutter run --dart-define=BASE_URL=http://10.0.2.2:3000`.
-- **App (Chrome, hits localhost directly):**
-  `flutter run -d chrome --dart-define=BASE_URL=http://localhost:3000`.
+- **App (iOS simulator):** from `apps/customer`,
+  `flutter run --dart-define=BASE_URL=http://localhost:3000`. _(Added by ADR-0005; iOS
+  scaffolded in the PR after this slice. The web/Chrome run command was **removed** —
+  web is no longer a target.)_
 - **Codegen (after touching a provider/DTO):** `dart run build_runner build --delete-conflicting-outputs`.
 - **Tests / lint:** `flutter test` · `flutter analyze`.
 
 ## Out of scope (recorded)
 
 Home content, profile, addresses/serviceability, catalog browse, booking creation/tracking, payment,
-disputes, camera evidence — all later slices. iOS (Android-only V1). Real SMS (backend dev-stub until
-MSG91 DLT). Localization/language toggle (screens are English-only per the design; a toggle is a
-later concern). Push notifications, deep-link auth, biometric unlock.
+disputes, camera evidence — all later slices. ~~iOS (Android-only V1)~~ **iOS is now a V1 target
+(ADR-0005) — scaffolded in the PR right after this slice; the shared Dart code needs no change.**
+Real SMS (backend dev-stub until MSG91 DLT). Localization/language toggle (screens are English-only
+per the design; a toggle is a later concern). Push notifications, deep-link auth, biometric unlock.
 
 ## Follow-ups from the final review (deferred, recorded)
 

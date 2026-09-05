@@ -1,6 +1,8 @@
 # Mobile Stack
 
-Flutter for both customer and technician apps. Single codebase, Android-first.
+Flutter for both customer and technician apps. Single shared codebase, **Android + iOS
+for V1** (Android-first in emphasis, but iOS ships alongside — see
+[ADR-0005](../adrs/ADR-0005-mobile-platforms-android-ios.md)). No web app.
 
 ---
 
@@ -9,9 +11,8 @@ Flutter for both customer and technician apps. Single codebase, Android-first.
 ```
 Framework:       Flutter 3.x (latest stable)
 Language:        Dart 3.x
-Target:          Android API 23+ (Android 6.0+)
-                 (Covers 95%+ of Indian Android devices)
-iOS:             Deferred to V2
+Target:          Android API 23+ (Android 6.0+) — covers 95%+ of Indian devices
+iOS:             iOS 15+ (Flutter scaffold default; ships in V1 alongside Android — ADR-0005)
 ```
 
 ### Why Flutter Wins
@@ -122,7 +123,7 @@ Deep linking:    via go_router + notification payload
 - Easier setup
 - Built-in segmentation (technician vs customer)
 - Free tier covers 10K subscribers
-- Cross-platform when iOS launches
+- Cross-platform (Android + iOS) out of the box
 - A/B testing built-in
 
 ---

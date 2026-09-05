@@ -18,8 +18,9 @@ A trusted marketplace for **home appliance repair and electrical services** in
 Core promise: honest service, transparent catalog pricing, fair pay, no one can cheat.
 
 Built by a **solo founder-developer** using **Claude Code** for nearly all work.
-Timeline: V1 in ~12-18 months. Android-first. Two apps (customer + technician); merchant
-runs on WhatsApp + web for V1.
+Timeline: V1 in ~12-18 months. Android-first, **but both apps ship Android + iOS for V1**
+(one shared Flutter codebase; no web app — see `docs/adrs/ADR-0005-mobile-platforms-android-ios.md`).
+Two apps (customer + technician); merchant runs on WhatsApp + web for V1.
 
 ---
 
@@ -41,7 +42,7 @@ runs on WhatsApp + web for V1.
 
 | Layer | Choice |
 |---|---|
-| Mobile | Flutter 3.x, Riverpod, go_router, dio (Android only V1) |
+| Mobile | Flutter 3.x, Riverpod, go_router, dio (**Android + iOS** V1; no web — ADR-0005) |
 | Backend | Node.js 22 LTS + Fastify 5 + TypeScript (strict) |
 | ORM / DB | Prisma 6 + PostgreSQL 16 + PostGIS |
 | Cache/Queue | Redis 7 + BullMQ |
