@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme.dart';
-import '../../auth/presentation/auth_controller.dart';
 
 /// Home shell (stub) — the logged-in landing, built to the design chrome:
 /// header (address switcher + avatar), search stub, "What needs fixing?"
@@ -53,11 +53,11 @@ class HomeScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  // Avatar chip doubles as the logout control for the stub.
+                  // Avatar chip opens the Account screen (sign out lives there).
                   // 42px visual circle inside a 48dp hit target (min tap size).
                   InkResponse(
-                    key: const Key('logoutBtn'),
-                    onTap: () => ref.read(authControllerProvider.notifier).logout(),
+                    key: const Key('accountAvatar'),
+                    onTap: () => context.push('/account'),
                     radius: 28,
                     child: Container(
                       width: 48,
