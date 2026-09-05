@@ -37,10 +37,9 @@ class CatalogRepository {
   });
 
   Future<Result<List<ServiceDto>>> services({required String zoneId, String? categoryId}) => _guard(() async {
-    final res = await _dio.get('/catalog/services', queryParameters: {
-      'zoneId': zoneId,
-      if (categoryId != null) 'categoryId': categoryId,
-    });
+    final queryParams = <String, dynamic>{'zoneId': zoneId};
+    if (categoryId != null) queryParams['categoryId'] = categoryId;
+    final res = await _dio.get('/catalog/services', queryParameters: queryParams);
     return _ok<List<ServiceDto>>(res, (data) =>
         (data as List).map((e) => ServiceDto.fromJson((e as Map).cast<String, dynamic>())).toList());
   });
