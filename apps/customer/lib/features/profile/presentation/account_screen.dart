@@ -77,6 +77,7 @@ class _NameTileState extends ConsumerState<_NameTile> {
   bool _editing = false;
   late final TextEditingController _c = TextEditingController(text: widget.name);
   bool _busy = false;
+  String? _error;
 
   @override
   void dispose() { _c.dispose(); super.dispose(); }
@@ -84,10 +85,17 @@ class _NameTileState extends ConsumerState<_NameTile> {
   Future<void> _save() async {
     final n = _c.text.trim();
     if (n.isEmpty) return;
-    setState(() => _busy = true);
+    setState(() { _busy = true; _error = null; });
     final res = await ref.read(authControllerProvider.notifier).updateName(n);
     if (!mounted) return;
-    setState(() { _busy = false; if (res is Ok) _editing = false; });
+    setState(() {
+      _busy = false;
+      if (res is Ok) {
+        _editing = false;
+      } else if (res case Failure(:final message)) {
+        _error = message;
+      }
+    });
   }
 
   @override
@@ -95,11 +103,12 @@ class _NameTileState extends ConsumerState<_NameTile> {
     if (!_editing) {
       return _InfoRowEditable(
         label: 'Name', value: widget.name.isEmpty ? '—' : widget.name,
-        onEdit: () => setState(() { _c.text = widget.name; _editing = true; }));
+        onEdit: () => setState(() { _c.text = widget.name; _editing = true; _error = null; }));
     }
-    return Row(children: [
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Expanded(child: TextField(key: const Key('accountNameField'), controller: _c,
-          textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Name'))),
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(labelText: 'Name', errorText: _error))),
       const SizedBox(width: 8),
       IconButton(
         key: const Key('accountNameSave'),

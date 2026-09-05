@@ -27,6 +27,18 @@ class _FakeAuthRepository extends AuthRepository {
   Future<Result<void>> logout(String refresh) async => const Ok(null);
 }
 
+/// getProfile succeeds (boot hydrates to /home) but updateName always fails —
+/// exercises the name-edit error path (the review-round-1 fix).
+class _UpdateNameFailsRepo extends ProfileRepository {
+  _UpdateNameFailsRepo() : super(Dio());
+  @override
+  Future<Result<CustomerProfileDto>> getProfile() async =>
+      const Ok(CustomerProfileDto(id: 'u1', role: 'CUSTOMER', name: 'Ravi', status: 'ACTIVE'));
+  @override
+  Future<Result<CustomerProfileDto>> updateName(String name) async =>
+      const Failure(FailureKind.validation, 'name must not be empty');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final backing = <String, String>{};
@@ -64,11 +76,11 @@ void main() {
     );
   });
 
-  Future<GoRouter> pump(WidgetTester tester) async {
+  Future<GoRouter> pump(WidgetTester tester, {ProfileRepository? profileRepo}) async {
     late GoRouter router;
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        profileRepositoryProvider.overrideWithValue(_NamedRepo()),
+        profileRepositoryProvider.overrideWithValue(profileRepo ?? _NamedRepo()),
         authRepositoryProvider.overrideWithValue(_FakeAuthRepository()),
       ],
       child: Consumer(builder: (c, ref, _) {
@@ -130,5 +142,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(AppBar, 'Addresses'), findsOneWidget);
+  });
+
+  testWidgets('name-edit failure shows the error and does not update the name', (tester) async {
+    await pump(tester, profileRepo: _UpdateNameFailsRepo());
+    await tester.tap(find.byKey(const Key('accountAvatar')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('editNameBtn')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('accountNameField')), 'Ravi Kumar');
+    await tester.tap(find.byKey(const Key('accountNameSave')));
+    await tester.pumpAndSettle();
+
+    // Error surfaced, field stays open for retry (not swallowed) — the save
+    // button is still the edit-mode "check" icon, not the read-only "Edit" tile.
+    expect(find.text('name must not be empty'), findsOneWidget);
+    expect(find.byKey(const Key('accountNameField')), findsOneWidget);
+    expect(find.byKey(const Key('accountNameSave')), findsOneWidget);
+    expect(find.byKey(const Key('editNameBtn')), findsNothing);
+    // The read-only "Ravi" label is gone (we're mid-edit) and the session's
+    // name was never updated to "Ravi Kumar" — only the local unsaved draft.
+    expect(find.widgetWithText(AppBar, 'Account'), findsOneWidget);
   });
 }
