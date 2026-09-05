@@ -28,11 +28,20 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   with a `refreshListenable` bound to the controller so redirects re-run on login/logout/session-lost; splash /
   phone-entry / OTP-entry (dev-`devOtp` autofill on **debug only**, resend, wrong-code inline error) / home stub.
 - **Quality:** built via SDD (6 tasks, each spec+quality reviewed). Tasks 5-6 executed inline when the org
-  monthly-spend limit began 429-ing subagent dispatches. Review fix: dropped an unreachable `SessionUnknown`
+  monthly-spend limit began 429-ing subagent dispatches. Review fixes: dropped an unreachable `SessionUnknown`
   (boot is `AsyncLoading`) and split router error-handling from loading (a `build()` throw routes to phone, not
-  an endless splash). 15 tests (repository / single-flight interceptor / token-gate router / OTP widget flow);
-  `flutter analyze` clean; build_runner idempotent (generated files committed). Final whole-branch review +
-  golden-rules / flutter-widget reviewers + `/code-review` pending before PR.
+  an endless splash); `@Riverpod(keepAlive: true)` on the session controller (explicit app-session lifetime);
+  Android network (INTERNET in the main manifest so release has network, **debug-only** cleartext to the dev
+  API, `compileSdk 37` to unblock `flutter_secure_storage`).
+- **`/code-review` caught 3 contract breaks the mocked tests hid** — the app could not actually log in against
+  the real backend: `/auth/otp/send` and `/auth/otp/verify` both require `role` (omitted); verify's code field
+  is **`otp`** not `code`; the error envelope is `{code, message}` not `{error}` (so every backend message
+  collapsed to a generic string). Fixed: send `role: 'CUSTOMER'`, use `otp`, read `message`; also made the 2xx
+  body-cast safe and tightened the OTP guard to exactly 6 digits. The repository tests now assert the real
+  request bodies + `{code, message}` envelope (they'd fail against the old code), and the screen-context doc's
+  contract was corrected. 16 tests; `flutter analyze` clean; debug APK builds and reaches the network.
+- **Gates:** golden-rules (clean), flutter-widget (conventions pass), whole-branch opus (auth logic sound;
+  caught the device-network gap), `/code-review` (caught the contract breaks) — all findings fixed. Ready for PR.
 
 ## 2026-07-28 — B7 final gates + `/code-review` (branch finalized, ready for PR)
 

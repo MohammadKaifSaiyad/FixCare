@@ -40,8 +40,10 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
 
   Future<void> _verify() async {
     final code = _controller.text.trim();
-    if (code.length < 4) {
-      setState(() => _error = 'Enter the code we sent you.');
+    // The backend OTP is exactly 6 digits (^\d{6}$); guard client-side so a
+    // short code gets a clear message instead of a generic server 400.
+    if (code.length != 6) {
+      setState(() => _error = 'Enter the 6-digit code.');
       return;
     }
     setState(() {

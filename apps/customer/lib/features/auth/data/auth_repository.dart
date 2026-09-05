@@ -10,12 +10,25 @@ class AuthRepository {
   AuthRepository(this._dio);
   final Dio _dio;
 
+  // This is the customer app: every OTP registration/login is a CUSTOMER. The
+  // backend requires `role` on both /auth/otp/send and /auth/otp/verify (it's
+  // ignored for an existing user — their stored role wins — but must be present
+  // to pass validation, and it picks the profile type for a brand-new phone).
+  static const _role = 'CUSTOMER';
+
   Future<Result<T>> _post<T>(String path, Object body, T Function(Map<String, dynamic>) parse) async {
     try {
       final res = await _dio.post(path, data: body);
       final status = res.statusCode ?? 0;
       if (status >= 200 && status < 300) {
-        return Ok(parse((res.data as Map).cast<String, dynamic>()));
+        final data = res.data;
+        if (data is! Map) {
+          // A 2xx with a non-JSON-object body (empty body, HTML from a proxy)
+          // is not something a caller can parse — treat it as a server fault
+          // rather than letting an `as Map` cast throw past the Result contract.
+          return Failure(FailureKind.server, 'Unexpected response from the server.');
+        }
+        return Ok(parse(data.cast<String, dynamic>()));
       }
       return Failure(failureKindFromStatus(status), _msg(res.data));
     } on DioException catch (e) {
@@ -26,16 +39,17 @@ class AuthRepository {
     }
   }
 
+  // The backend error envelope is { code, message } (see errorHandler.ts).
   String _msg(dynamic data) {
-    if (data is Map && data['error'] is String) return data['error'] as String;
+    if (data is Map && data['message'] is String) return data['message'] as String;
     return 'Something went wrong.';
   }
 
   Future<Result<SendOtpResponse>> sendOtp(String phone) =>
-      _post('/auth/otp/send', {'phone': phone}, SendOtpResponse.fromJson);
+      _post('/auth/otp/send', {'phone': phone, 'role': _role}, SendOtpResponse.fromJson);
 
-  Future<Result<VerifyResponse>> verifyOtp(String phone, String code) =>
-      _post('/auth/otp/verify', {'phone': phone, 'code': code}, VerifyResponse.fromJson);
+  Future<Result<VerifyResponse>> verifyOtp(String phone, String otp) =>
+      _post('/auth/otp/verify', {'phone': phone, 'role': _role, 'otp': otp}, VerifyResponse.fromJson);
 
   Future<Result<RefreshResponse>> refresh(String refreshToken) =>
       _post('/auth/refresh', {'refreshToken': refreshToken}, RefreshResponse.fromJson);

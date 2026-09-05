@@ -26,8 +26,10 @@ phone number (masked), and money never moves without the customer's action.
 
 ## Auth & session (Slice 1 — being built now)
 
-- **Phone entry** → `POST /auth/otp/send { phone }`. Indian 10-digit mobile. → success = "OTP sent".
-- **OTP entry** → `POST /auth/otp/verify { phone, code }` → returns `{ accessToken, refreshToken, user }`
+- **Phone entry** → `POST /auth/otp/send { phone, role: "CUSTOMER" }`. Indian 10-digit mobile; **`role` is
+  required** by the backend schema (the customer app always sends `CUSTOMER`). → success = "OTP sent".
+- **OTP entry** → `POST /auth/otp/verify { phone, role: "CUSTOMER", otp }` (the code field is **`otp`**, a fixed
+  6 digits `^\d{6}$` — not `code`; `role` required) → returns `{ accessToken, refreshToken, user }`
   (access 15m, refresh 30d). New number auto-registers as a CUSTOMER. Dev: the code is in the send
   response. Screen: 6-digit code, resend (throttled — expect a 429 "try later"), wrong code = 401.
 - **Silent refresh** → `POST /auth/refresh { refreshToken }` on 401; reuse-detected refresh → forced

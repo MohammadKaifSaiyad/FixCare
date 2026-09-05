@@ -130,3 +130,15 @@ Home content, profile, addresses/serviceability, catalog browse, booking creatio
 disputes, camera evidence — all later slices. iOS (Android-only V1). Real SMS (backend dev-stub until
 MSG91 DLT). Localization/language toggle (screens are English-only per the design; a toggle is a
 later concern). Push notifications, deep-link auth, biometric unlock.
+
+## Follow-ups from the final review (deferred, recorded)
+
+- **Boot-time token validation** — `AuthController.build()` treats a stored access token as
+  authenticated without validating it; on a cold boot with an expired refresh the user briefly lands
+  on `/home`, the first call 401s, refresh fails, and they bounce to `/phone`. A boot-time refresh (or
+  a `/me/profile` probe) would remove the flash. Fold this into the next slice's boot flow that
+  hydrates the real user (the placeholder-`UserDto` follow-up) — one boot request does both.
+- **401 policy nuance** — the interceptor refreshes on any non-`/auth/` 401. The backend uses 403
+  (`ForbiddenError`) for authorization failures, so this is safe today; if a future endpoint returns
+  401 for a non-expiry reason, the interceptor should key off an error code to avoid a spurious
+  refresh/logout. Revisit when such an endpoint appears.
