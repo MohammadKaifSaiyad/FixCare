@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:fixcare_customer/core/result.dart';
 import 'package:fixcare_customer/core/router/app_router.dart';
+import 'package:fixcare_customer/features/address/data/address_repository.dart';
 import 'package:fixcare_customer/features/auth/data/auth_repository.dart';
 import 'package:fixcare_customer/features/profile/data/profile_repository.dart';
 
@@ -25,6 +26,16 @@ class _FakeAuthRepository extends AuthRepository {
   _FakeAuthRepository() : super(Dio());
   @override
   Future<Result<void>> logout(String refresh) async => const Ok(null);
+}
+
+/// Empty list so /addresses doesn't hit the real Dio client from this
+/// account-screen test — this test only cares about navigation, not the
+/// address list's own behavior (covered by address_controller_test.dart and
+/// address_list_screen_widget_test.dart).
+class _EmptyAddressRepository extends AddressRepository {
+  _EmptyAddressRepository() : super(Dio());
+  @override
+  Future<Result<List<AddressDto>>> list() async => const Ok([]);
 }
 
 /// getProfile succeeds (boot hydrates to /home) but updateName always fails —
@@ -82,6 +93,7 @@ void main() {
       overrides: [
         profileRepositoryProvider.overrideWithValue(profileRepo ?? _NamedRepo()),
         authRepositoryProvider.overrideWithValue(_FakeAuthRepository()),
+        addressRepositoryProvider.overrideWithValue(_EmptyAddressRepository()),
       ],
       child: Consumer(builder: (c, ref, _) {
         router = ref.watch(goRouterProvider);

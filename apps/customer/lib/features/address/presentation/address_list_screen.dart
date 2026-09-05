@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/result.dart';
 import '../../../core/theme.dart';
 import '../data/address_dtos.dart';
 import 'address_controller.dart';
@@ -69,8 +70,20 @@ class _AddressCard extends ConsumerWidget {
             onSelected: (v) async {
               final ctrl = ref.read(addressControllerProvider.notifier);
               if (v == 'edit') { if (context.mounted) context.push('/address/${a.id}/edit'); }
-              if (v == 'default') await ctrl.setDefault(a.id);
-              if (v == 'delete') await ctrl.remove(a.id);
+              if (v == 'default') {
+                final r = await ctrl.setDefault(a.id);
+                if (!context.mounted) return;
+                if (r case Failure(:final message)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                }
+              }
+              if (v == 'delete') {
+                final r = await ctrl.remove(a.id);
+                if (!context.mounted) return;
+                if (r case Failure(:final message)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                }
+              }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'edit', child: Text('Edit')),
