@@ -162,9 +162,14 @@ class _PhoneField extends StatelessWidget {
         border: Border.all(color: borderColor, width: 1.5),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Text('+91',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w500, color: FixCareColors.textPrimary)),
+              style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w500,
+                  color: FixCareColors.textPrimary,
+                  height: 1.0)),
           const SizedBox(width: 10),
           Container(width: 1, height: 26, color: FixCareColors.border),
           const SizedBox(width: 10),
@@ -175,10 +180,16 @@ class _PhoneField extends StatelessWidget {
               focusNode: focus,
               keyboardType: TextInputType.phone,
               maxLength: 10,
+              // Center the field's text vertically so digits align with "+91".
+              textAlignVertical: TextAlignVertical.center,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               cursorColor: FixCareColors.primary,
               style: const TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w600, color: FixCareColors.textPrimary, letterSpacing: 1.5),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: FixCareColors.textPrimary,
+                  letterSpacing: 1.5,
+                  height: 1.0),
               decoration: const InputDecoration(
                 counterText: '',
                 border: InputBorder.none,
@@ -188,7 +199,11 @@ class _PhoneField extends StatelessWidget {
                 isCollapsed: true,
                 hintText: '00000 00000',
                 hintStyle: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w600, color: FixCareColors.placeholder, letterSpacing: 1.5),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: FixCareColors.placeholder,
+                    letterSpacing: 1.5,
+                    height: 1.0),
               ),
             ),
           ),
