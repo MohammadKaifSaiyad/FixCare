@@ -162,16 +162,30 @@ live map at runtime needs a key. To turn it on:
    from a terminal, or via the scheme's **Run → Arguments → Environment
    Variables** if launched from Xcode's UI directly) is sufficient — no
    further Xcode configuration is needed.
-5. **Verify the map renders.** With the key exported (Android) or set in the
-   scheme (iOS), run the app with the Dart flag flipped on:
+5. **Verify the map renders.** With the key exported (native wiring, steps 3-4),
+   run the app passing **both** the enable flag **and the key to Dart** — the
+   Dart map gate requires the key too (see the crash-safety note below), so pass
+   `MAPS_API_KEY` as a `--dart-define` in addition to exporting it:
    ```bash
-   flutter run --dart-define=MAPS_ENABLED=true --dart-define=BASE_URL=http://10.0.2.2:3000
+   export MAPS_API_KEY=your-real-key-here
+   flutter run \
+     --dart-define=MAPS_ENABLED=true \
+     --dart-define=MAPS_API_KEY=$MAPS_API_KEY \
+     --dart-define=BASE_URL=http://10.0.2.2:3000   # iOS sim: http://localhost:3000
    ```
    Open Add/Edit address — the map should render centered on the address (or a
    Vadodara default) instead of the placeholder text, and tapping it should
-   drop/move a pin and update the saved lat/lng. Without `MAPS_ENABLED=true`
-   (or without a key wired per steps 3-4), the placeholder shows instead —
-   this is the expected, safe default for anyone building the app without a key.
+   drop/move a pin and update the saved lat/lng.
+
+   **Crash-safety (why the key must reach Dart too):** the GoogleMaps SDK
+   *aborts the process* (SIGABRT) if a map view is constructed without
+   `GMSServices.provideAPIKey` having been called with a real key. So
+   `Env.mapsEnabled` (which gates whether `GoogleMap` is built at all) is true
+   **only when `MAPS_ENABLED=true` AND `MAPS_API_KEY` is non-empty**. Passing
+   `MAPS_ENABLED=true` *without* the key → the placeholder renders (no crash).
+   No `MAPS_ENABLED` at all → placeholder. You only get the live map when both
+   the native key (steps 3-4) and the two dart-defines above are set. This is
+   the expected, safe default for anyone building without a key.
 
 ## Status
 
