@@ -38,16 +38,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final loc = state.matchedLocation;
 
       // Still booting → splash.
-      if (async.isLoading || async.hasError) {
+      if (async.isLoading) {
         return loc == '/splash' ? null : '/splash';
+      }
+
+      // build() failed (e.g. secure-storage threw). We can't prove a session,
+      // so treat it as logged-out and send the user to phone entry rather than
+      // stranding them on an endless splash. onAuthLost/retry via re-login.
+      if (async.hasError) {
+        final onAuthScreenErr = loc == '/phone' || loc == '/otp';
+        return onAuthScreenErr ? null : '/phone';
       }
 
       final session = async.requireValue;
       final onAuthScreen = loc == '/phone' || loc == '/otp';
 
       switch (session) {
-        case SessionUnknown():
-          return loc == '/splash' ? null : '/splash';
         case SessionUnauthenticated():
           return onAuthScreen ? null : '/phone';
         case SessionAuthenticated():

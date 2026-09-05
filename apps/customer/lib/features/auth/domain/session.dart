@@ -1,16 +1,13 @@
 import '../data/auth_dtos.dart';
 
-/// The customer's auth state, as the router and UI see it.
+/// The customer's resolved auth state.
 ///
-/// `SessionUnknown` is the boot state while token storage is being read
-/// (splash shown); it is distinct from `SessionUnauthenticated`, which means
-/// we looked and there is no token.
+/// The "still booting" state is NOT modelled here — it is represented by
+/// `AsyncLoading` on the `AuthController`'s `AsyncValue` while `build()` reads
+/// token storage (the router shows the splash for it). This type only ever
+/// holds a *resolved* answer: authenticated or not.
 sealed class Session {
   const Session();
-}
-
-class SessionUnknown extends Session {
-  const SessionUnknown();
 }
 
 class SessionUnauthenticated extends Session {
