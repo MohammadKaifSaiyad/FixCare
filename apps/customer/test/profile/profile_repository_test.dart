@@ -11,7 +11,8 @@ void main() {
 
   setUp(() {
     dio = Dio(BaseOptions(baseUrl: 'http://test', validateStatus: (_) => true));
-    adapter = DioAdapter(dio: dio);
+    // Enforce exact body match to prevent sending extra fields in PATCH
+    adapter = DioAdapter(dio: dio, matcher: const FullHttpRequestMatcher(needsExactBody: true));
     repo = ProfileRepository(dio);
   });
 
