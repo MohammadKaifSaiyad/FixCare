@@ -314,7 +314,7 @@ class _ServiceRow extends StatelessWidget {
         ? 'Visit fee ${rupees(service.visitFeePaise)} · Labor from ${rupees(service.laborPaise!)}'
         : 'Visit fee ${rupees(service.visitFeePaise)}';
     return InkWell(
-      onTap: () => context.push('/book/${service.id}'),
+      onTap: () => context.push('/book/${service.id}', extra: service),
       borderRadius: BorderRadius.circular(FixCareRadii.card),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),

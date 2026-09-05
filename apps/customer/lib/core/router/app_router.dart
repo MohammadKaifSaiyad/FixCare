@@ -10,6 +10,8 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/otp_entry_screen.dart';
 import '../../features/auth/presentation/phone_entry_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/booking/presentation/booking_wizard_screen.dart';
+import '../../features/catalog/data/catalog_dtos.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/profile/presentation/account_screen.dart';
 import '../../features/profile/presentation/name_capture_screen.dart';
@@ -94,6 +96,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => AddressFormScreen(
           addressId: state.pathParameters['id'],
           initial: state.extra as AddressDto?,
+        ),
+      ),
+      GoRoute(
+        path: '/book/:serviceId',
+        builder: (_, state) => BookingWizardScreen(
+          serviceId: state.pathParameters['serviceId']!,
+          service: state.extra as ServiceDto?,
         ),
       ),
     ],
