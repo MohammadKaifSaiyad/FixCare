@@ -37,6 +37,11 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
   String? _svcError;
   bool _busy = false;
   String? _formError;
+  // Bumped on every _check() call; a response is applied only if its
+  // captured id is still the latest — guards against an older request's
+  // response arriving after a newer one (out-of-order network replies)
+  // and overwriting the UI with the wrong pincode's result.
+  int _svcReqId = 0;
 
   bool get _isEdit => widget.addressId != null;
 
@@ -72,9 +77,13 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
   }
 
   Future<void> _check() async {
+    final reqId = ++_svcReqId;
     setState(() { _checking = true; _svcError = null; });
     final r = await ref.read(addressRepositoryProvider).checkServiceability(_pincode.text.trim());
     if (!mounted) return;
+    // A newer _check() (later pincode edit) has already started — drop this
+    // stale response instead of overwriting the UI with the wrong result.
+    if (reqId != _svcReqId) return;
     setState(() {
       _checking = false;
       switch (r) {
@@ -84,16 +93,34 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
     });
   }
 
-  Map<String, dynamic> _body() => {
-    'label': _label.text.trim(),
-    'line1': _line1.text.trim(),
-    if (_line2.text.trim().isNotEmpty) 'line2': _line2.text.trim(),
-    if (_landmark.text.trim().isNotEmpty) 'landmark': _landmark.text.trim(),
-    'pincode': _pincode.text.trim(),
-    if (_lat != null && _lng != null) 'lat': _lat, // both-or-neither
-    if (_lat != null && _lng != null) 'lng': _lng,
-    'isDefault': _isDefault,
-  };
+  // CREATE omits empty optionals (nothing to clear yet). EDIT must be able to
+  // CLEAR a previously-set optional, and the backend only clears a nullable
+  // field when the client sends explicit `null` (an omitted key leaves the
+  // stored value untouched) — so in edit mode we send `null` for an
+  // emptied line2/landmark, and both-null for lat/lng when the pin was
+  // removed (both-or-neither, preserved either way).
+  Map<String, dynamic> _body() {
+    final line2 = _line2.text.trim();
+    final landmark = _landmark.text.trim();
+    return {
+      'label': _label.text.trim(),
+      'line1': _line1.text.trim(),
+      if (_isEdit)
+        'line2': line2.isNotEmpty ? line2 : null
+      else if (line2.isNotEmpty)
+        'line2': line2,
+      if (_isEdit)
+        'landmark': landmark.isNotEmpty ? landmark : null
+      else if (landmark.isNotEmpty)
+        'landmark': landmark,
+      'pincode': _pincode.text.trim(),
+      if (_isEdit || (_lat != null && _lng != null)) ...{
+        'lat': (_lat != null && _lng != null) ? _lat : null,
+        'lng': (_lat != null && _lng != null) ? _lng : null,
+      },
+      'isDefault': _isDefault,
+    };
+  }
 
   Future<void> _save() async {
     if (_label.text.trim().isEmpty || _line1.text.trim().isEmpty || _pincode.text.trim().length != 6) {

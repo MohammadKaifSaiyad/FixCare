@@ -49,6 +49,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Google Maps API key — see Runner/Info.plist for the full comment.
+	     Kept in sync with that file: baked in at build time from the
+	     MAPS_API_KEY Xcode build setting / env var, read back at runtime in
+	     AppDelegate.swift. -->
+	<key>MapsApiKey</key>
+	<string>$(MAPS_API_KEY)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

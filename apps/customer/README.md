@@ -141,12 +141,27 @@ live map at runtime needs a key. To turn it on:
    `manifestPlaceholders["MAPS_API_KEY"]` in `android/app/build.gradle.kts`,
    which reads the same env var (defaults to `""` when unset, so the build
    never fails without a key).
-4. **Wire it into iOS** — same env var, read at launch in
-   `ios/Runner/AppDelegate.swift` (`ProcessInfo.processInfo.environment["MAPS_API_KEY"]`)
-   and passed to `GMSServices.provideAPIKey(...)` only when non-empty. For a
-   simulator/device run from Xcode, set `MAPS_API_KEY` in the scheme's
-   **Run → Arguments → Environment Variables** instead of exporting it in shell
-   (Xcode-launched processes don't inherit your terminal's exported vars).
+4. **Wire it into iOS** — same env var, but resolved **at build time**, not
+   read from the process environment at launch. `ProcessInfo.processInfo
+   .environment` only sees vars for processes Xcode itself launches (a
+   debug run from a scheme) — a real device install, TestFlight, or a
+   release build never has that env var, so that approach silently never
+   gets the key outside of Xcode-launched debug runs. Instead the key flows:
+   the `MAPS_API_KEY` env var (exported before `flutter build ios` /
+   `xcodebuild`, same as step 3) →  the `MAPS_API_KEY` **user-defined Xcode
+   build setting** on the Runner target (`ios/Runner.xcodeproj/project.pbxproj`,
+   present on Debug/Profile/Release, defaults to empty when the env var is
+   unset) → baked into `Info.plist` (and the debug-only `Info-Debug.plist`,
+   kept in sync) as `<key>MapsApiKey</key><string>$(MAPS_API_KEY)</string>` →
+   read back at **runtime** in `ios/Runner/AppDelegate.swift` via
+   `Bundle.main.object(forInfoDictionaryKey: "MapsApiKey")` and passed to
+   `GMSServices.provideAPIKey(...)` only when non-empty. This is what
+   actually reaches a real installed build. Exporting the env var before any
+   `xcodebuild`/`flutter build ios`/`flutter run` invocation (including from
+   Xcode itself, which inherits your shell's exported vars when launched
+   from a terminal, or via the scheme's **Run → Arguments → Environment
+   Variables** if launched from Xcode's UI directly) is sufficient — no
+   further Xcode configuration is needed.
 5. **Verify the map renders.** With the key exported (Android) or set in the
    scheme (iOS), run the app with the Dart flag flipped on:
    ```bash

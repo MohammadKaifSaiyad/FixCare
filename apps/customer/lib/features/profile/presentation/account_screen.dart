@@ -8,11 +8,22 @@ import '../../../core/theme.dart';
 import '../../auth/domain/session.dart';
 import '../../auth/presentation/auth_controller.dart';
 
-class AccountScreen extends ConsumerWidget {
+class AccountScreen extends ConsumerStatefulWidget {
   const AccountScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends ConsumerState<AccountScreen> {
+  // Read once (not inside build()) so every rebuild — e.g. from the
+  // authControllerProvider watch below — reuses the same Future instead of
+  // kicking off a new secure-storage read each time, which would flash the
+  // '—' placeholder on every rebuild.
+  late final Future<String?> _phoneFuture = ref.read(tokenStoreProvider).readPhone();
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(authControllerProvider).value;
     final name = session is SessionAuthenticated ? session.name : '';
     return Scaffold(
@@ -23,7 +34,7 @@ class AccountScreen extends ConsumerWidget {
           _NameTile(name: name),
           const SizedBox(height: 8),
           FutureBuilder<String?>(
-            future: ref.read(tokenStoreProvider).readPhone(),
+            future: _phoneFuture,
             builder: (c, snap) => _InfoRow(label: 'Mobile', value: snap.data == null ? '—' : '+91 ${snap.data}'),
           ),
           const SizedBox(height: 20),

@@ -32,6 +32,18 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Google Maps API key, baked in at build time from the MAPS_API_KEY
+	     Xcode build setting (project.pbxproj), which itself reads the
+	     MAPS_API_KEY environment variable at build time (defaults to empty
+	     when unset — never fails the build, never commits a real key).
+	     Read back at runtime in AppDelegate.swift via
+	     Bundle.main.object(forInfoDictionaryKey:) and passed to
+	     GMSServices.provideAPIKey only when non-empty. This is what actually
+	     reaches a real device / TestFlight / release install — unlike
+	     ProcessInfo.environment, which only sees vars for Xcode-launched
+	     debug processes. -->
+	<key>MapsApiKey</key>
+	<string>$(MAPS_API_KEY)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

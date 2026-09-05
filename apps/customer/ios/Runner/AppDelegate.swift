@@ -12,11 +12,21 @@ import UIKit
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    // Google Maps key from an env var at build time; never committed. Without it
-    // the map shows a placeholder (MAPS_ENABLED gate in Dart), so this is safe to
-    // leave unset for testing. For a real device build, set the key in the
-    // scheme's environment or hardcode locally — never commit it.
-    if let mapsKey = ProcessInfo.processInfo.environment["MAPS_API_KEY"], !mapsKey.isEmpty {
+    // Google Maps key flows: `MAPS_API_KEY` env var (build time) -> the
+    // `MAPS_API_KEY` user-defined Xcode build setting (see project.pbxproj,
+    // defaults to empty) -> Info.plist's `MapsApiKey` entry (both
+    // Info.plist and the debug-only Info-Debug.plist) -> read here via the
+    // app bundle at RUNTIME. `ProcessInfo.processInfo.environment` does NOT
+    // work for this: env vars are only visible to processes Xcode itself
+    // launches (a debug run from the scheme), never to a TestFlight/App
+    // Store/ad-hoc install — so a real installed build would silently never
+    // get the key. Reading it back out of Info.plist (baked in at build
+    // time) is what actually reaches production installs.
+    //
+    // Without the env var at build time the Info.plist value resolves to
+    // empty, so no key is provided — safe: the MAPS_ENABLED gate in Dart
+    // already prevents GoogleMap construction without a key.
+    if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "MapsApiKey") as? String, !mapsKey.isEmpty {
       GMSServices.provideAPIKey(mapsKey)
     }
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
