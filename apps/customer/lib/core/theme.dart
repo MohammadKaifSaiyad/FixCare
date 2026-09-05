@@ -84,7 +84,9 @@ ThemeData buildFixCareTheme() {
       bodyLarge: t(15, FontWeight.w400, FixCareColors.textPrimary, height: 1.5),
       bodyMedium: t(14.5, FontWeight.w400, FixCareColors.textMuted, height: 1.5),
       bodySmall: t(13, FontWeight.w400, FixCareColors.textMuted),
-      labelLarge: t(17, FontWeight.w600, Colors.white), // button text
+      // Button-only: white text assumes a colored (terracotta) fill. Do NOT
+      // reuse labelLarge for a label on the cream background — it'd be invisible.
+      labelLarge: t(17, FontWeight.w600, Colors.white),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: FixCareColors.background,

@@ -120,22 +120,39 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              _OtpBoxes(code: code, hasError: _error, focus: _focus),
-              // Hidden backing field that actually captures input + carries the test key.
+              // The visible six boxes with a REAL, full-size transparent TextField
+              // laid over them (Positioned.fill). The field owns the actual input,
+              // focus, paste and — crucially — has real geometry so screen readers
+              // can find and announce it (a zero-size field is invisible to
+              // TalkBack/VoiceOver). Its glyphs/caret are transparent; the boxes
+              // render the digits.
               SizedBox(
-                height: 0,
-                child: Opacity(
-                  opacity: 0,
-                  child: TextField(
-                    key: const Key('otpField'),
-                    controller: _controller,
-                    focusNode: _focus,
-                    keyboardType: TextInputType.number,
-                    maxLength: _otpLength,
-                    showCursor: false,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(counterText: '', border: InputBorder.none),
-                  ),
+                height: 62,
+                child: Stack(
+                  children: [
+                    _OtpBoxes(code: code, hasError: _error, focus: _focus),
+                    Positioned.fill(
+                      child: TextField(
+                        key: const Key('otpField'),
+                        controller: _controller,
+                        focusNode: _focus,
+                        keyboardType: TextInputType.number,
+                        maxLength: _otpLength,
+                        autofillHints: const [AutofillHints.oneTimeCode],
+                        showCursor: false,
+                        cursorColor: Colors.transparent,
+                        style: const TextStyle(color: Colors.transparent, height: 1),
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(
+                          counterText: '',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          filled: false,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (_error) ...[
@@ -197,8 +214,8 @@ class _OtpBoxes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: focus.requestFocus,
+    // Purely visual — the transparent TextField stacked above owns taps/focus.
+    return IgnorePointer(
       child: Row(
         children: List.generate(_otpLength, (i) {
           final filled = i < code.length;
@@ -208,7 +225,6 @@ class _OtpBoxes extends StatelessWidget {
           Color border;
           Color fill = FixCareColors.surface;
           Color text = FixCareColors.textPrimary;
-          BorderStyle style = BorderStyle.solid;
 
           if (hasError) {
             fill = FixCareColors.errorFill;
@@ -220,8 +236,7 @@ class _OtpBoxes extends StatelessWidget {
           } else if (filled) {
             border = FixCareColors.border;
           } else {
-            border = FixCareColors.borderStrong; // pending (dashed in design → solid faint here)
-            style = BorderStyle.solid;
+            border = FixCareColors.borderStrong; // pending (design shows dashed; solid faint here)
           }
 
           return Expanded(
@@ -232,7 +247,7 @@ class _OtpBoxes extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: fill,
                   borderRadius: BorderRadius.circular(FixCareRadii.field),
-                  border: Border.all(color: border, width: 1.5, style: style),
+                  border: Border.all(color: border, width: 1.5),
                 ),
                 alignment: Alignment.center,
                 child: Text(digit,

@@ -54,16 +54,23 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
                   // Avatar chip doubles as the logout control for the stub.
-                  GestureDetector(
+                  // 42px visual circle inside a 48dp hit target (min tap size).
+                  InkResponse(
                     key: const Key('logoutBtn'),
                     onTap: () => ref.read(authControllerProvider.notifier).logout(),
+                    radius: 28,
                     child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: const BoxDecoration(color: FixCareColors.primaryTint, shape: BoxShape.circle),
+                      width: 48,
+                      height: 48,
                       alignment: Alignment.center,
-                      child: const Text('RP',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: FixCareColors.primary)),
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: const BoxDecoration(color: FixCareColors.primaryTint, shape: BoxShape.circle),
+                        alignment: Alignment.center,
+                        child: const Text('RP',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: FixCareColors.primary)),
+                      ),
                     ),
                   ),
                 ],
