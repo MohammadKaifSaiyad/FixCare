@@ -1,7 +1,9 @@
 # apps/customer — FixCare Customer App
 
-Flutter 3.x (Android + web for dev) + Riverpod + go_router + dio. Customer books →
-tracks → pays → rates from mobile, with real-time job updates.
+Flutter 3.x (**Android + iOS**) + Riverpod + go_router + dio. Customer books →
+tracks → pays → rates from mobile. One shared Dart codebase (`lib/`) runs on both
+platforms; `android/` and `ios/` are only the thin per-platform launch shells.
+Web is not a target — see [`docs/adrs/ADR-0005-mobile-platforms-android-ios.md`](../../docs/adrs/ADR-0005-mobile-platforms-android-ios.md).
 
 Mobile architecture & conventions: [`docs/03-tech-stack/mobile-stack.md`](../../docs/03-tech-stack/mobile-stack.md)
 and the Flutter section of [`docs/05-development/coding-conventions.md`](../../docs/05-development/coding-conventions.md).
@@ -25,18 +27,32 @@ docker compose up -d                        # from repo root
 cd apps/backend && set -a && source .env && set +a && pnpm dev   # API on :3000
 ```
 
-Run the app against the local backend (Android emulator; `10.0.2.2` maps to the
-host machine's `localhost`):
+Run the app against the local backend. **The base URL differs by platform** because
+each reaches the host machine differently:
 
-```bash
-flutter run --dart-define=BASE_URL=http://10.0.2.2:3000
-```
+- **Android emulator** — `10.0.2.2` is the emulator's alias for the host's `localhost`:
+  ```bash
+  flutter run --dart-define=BASE_URL=http://10.0.2.2:3000
+  ```
+- **iOS simulator** — reaches the host as `localhost` directly:
+  ```bash
+  flutter run --dart-define=BASE_URL=http://localhost:3000
+  ```
+- **Physical device (either platform)** — use the host Mac's LAN IP (same Wi-Fi),
+  e.g. `--dart-define=BASE_URL=http://192.168.1.42:3000`.
 
-Chrome (web) variant, against host `localhost` directly:
+`--dart-define` is baked in at build time — after changing it, fully restart
+`flutter run` (hot reload won't pick it up).
 
-```bash
-flutter run -d chrome --dart-define=BASE_URL=http://localhost:3000
-```
+### iOS toolchain (one-time setup)
+
+iOS needs the full **Xcode** (App Store) + **CocoaPods** (`sudo gem install cocoapods`).
+Then `flutter doctor` should show iOS ✓, and `open -a Simulator` launches an iPhone.
+The debug build's cleartext-HTTP allowance for the dev backend lives in
+`ios/Runner/Info-Debug.plist` (scoped to `localhost` only) and is wired to the **Debug
+build config only** — Release/Profile use the clean `Info.plist`, so shipped builds are
+HTTPS-only. A **simulator is free**; an
+Apple Developer account ($99/yr) is only needed to run on a physical iPhone or ship.
 
 Generate code (freezed / json_serializable / riverpod_generator):
 

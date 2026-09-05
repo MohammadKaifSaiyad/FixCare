@@ -17,3 +17,4 @@ Decision, Alternatives Considered, Consequences.
 - [ADR-0002 — Trunk-based branching](ADR-0002-trunk-based-branching.md)
 - [ADR-0003 — "Worker" → "Technician" naming](ADR-0003-worker-to-technician.md)
 - [ADR-0004 — Build order: apps before admin](ADR-0004-build-order.md)
+- [ADR-0005 — Mobile platforms: Android + iOS for V1, drop web](ADR-0005-mobile-platforms-android-ios.md)

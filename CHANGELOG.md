@@ -8,7 +8,27 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
-## 2026-09-05 — Customer app Slice 1: scaffold + phone-OTP auth (Flutter, on branch)
+## 2026-09-05 — Customer app: add iOS target, drop web (ADR-0005, on branch)
+
+- **Scope change (ADR-0005):** V1 mobile is now **Android + iOS** (both first-priority, both apps —
+  customer now, technician when it starts); **web is dropped**. Reverses the prior "Android only V1" stance.
+  The Dart codebase is already platform-neutral (no `dart:io`/platform channels; every dep is
+  cross-platform), so this is scaffold + config, not a rewrite — one shared `lib/` runs on both.
+- **iOS scaffolded** (`apps/customer/ios/`) via `flutter create --platforms=ios` (bundle id
+  `in.fixcare.fixcareCustomer`, iOS 15+). The debug backend's cleartext-HTTP allowance is a **`localhost`-only**
+  App Transport Security exception in a **separate `Info-Debug.plist` wired to the Debug build config only**
+  (via `INFOPLIST_FILE` in `project.pbxproj`) — Release/Profile use the clean `Info.plist`, so shipped builds
+  are HTTPS-only. (Review caught that a single shared `Info.plist` would have leaked the exception into Release;
+  fixed by splitting the plist per-config — the true iOS mirror of Android's debug-only `network_security_config.xml`.)
+  `flutter_secure_storage` confirmed iOS-supported. Deleted the template `widget_test.dart` the scaffold generated.
+- **Web removed** — deleted `apps/customer/web/`, the Chrome run command, and the `web/**` analyzer exclude.
+- **Docs:** ADR-0005 + index; CLAUDE.md ("Android only V1" → "Android + iOS V1, no web"); `mobile-stack.md`
+  (iOS 15+, no web); slice-1 design out-of-scope + run commands (iOS sim URL is `localhost`, not the
+  emulator's `10.0.2.2`); README rewritten (per-platform base URLs + iOS one-time Xcode/CocoaPods setup).
+- **Verified here:** `flutter analyze` clean, 16/16 tests green, `Info.plist` lints OK. **Not verifiable
+  here:** the iOS build + simulator run (needs Xcode) — that smoke-test is the founder's.
+
+## 2026-09-05 — Customer app Slice 1: scaffold + phone-OTP auth (Flutter, merged PR #22)
 
 - **First app slice.** Backend booking module now complete (B1→B7 merged, incl. B7 disputes PR #21), so
   the build order (ADR-0004) advances to the customer app. `apps/customer`: Flutter/Android-first,
