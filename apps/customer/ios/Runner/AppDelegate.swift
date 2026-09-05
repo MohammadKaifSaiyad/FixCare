@@ -1,4 +1,5 @@
 import Flutter
+import GoogleMaps
 import UIKit
 
 @main
@@ -11,6 +12,13 @@ import UIKit
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    // Google Maps key from an env var at build time; never committed. Without it
+    // the map shows a placeholder (MAPS_ENABLED gate in Dart), so this is safe to
+    // leave unset for testing. For a real device build, set the key in the
+    // scheme's environment or hardcode locally — never commit it.
+    if let mapsKey = ProcessInfo.processInfo.environment["MAPS_API_KEY"], !mapsKey.isEmpty {
+      GMSServices.provideAPIKey(mapsKey)
+    }
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
 }

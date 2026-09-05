@@ -8,8 +8,8 @@ import '../../../core/result.dart';
 import '../../../core/theme.dart';
 import '../data/address_repository.dart';
 import 'address_controller.dart';
+import 'widgets/address_map_picker.dart';
 import 'widgets/serviceability_chip.dart';
-// Task 10 adds: import 'widgets/address_map_picker.dart';
 
 class AddressFormScreen extends ConsumerStatefulWidget {
   const AddressFormScreen({super.key, required this.addressId, this.initial});
@@ -168,8 +168,10 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
                   style: TextStyle(color: FixCareColors.textMuted, fontSize: 13))),
           if (_svcError != null) Text(_svcError!, style: const TextStyle(color: FixCareColors.textMuted, fontSize: 13)),
           const SizedBox(height: 16),
-          // Task 10 replaces this placeholder with AddressMapPicker.
-          const _MapPlaceholder(),
+          AddressMapPicker(
+            lat: _lat, lng: _lng,
+            onPicked: (lat, lng) => setState(() { _lat = lat; _lng = lng; }),
+          ),
           const SizedBox(height: 8),
           SwitchListTile(
             key: const Key('defaultSwitch'),
@@ -193,20 +195,4 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
       ),
     );
   }
-}
-
-class _MapPlaceholder extends StatelessWidget {
-  const _MapPlaceholder();
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 160,
-    decoration: BoxDecoration(
-      color: FixCareColors.surface,
-      borderRadius: BorderRadius.circular(FixCareRadii.card),
-      border: Border.all(color: FixCareColors.border),
-    ),
-    alignment: Alignment.center,
-    child: const Text('Map (optional) — pin your exact location',
-        style: TextStyle(color: FixCareColors.textMuted, fontSize: 13)),
-  );
 }

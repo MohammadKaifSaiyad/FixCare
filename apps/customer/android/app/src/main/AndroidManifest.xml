@@ -36,6 +36,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Google Maps API key. Do NOT commit a real key. Provide it at build
+             time or via a git-ignored secrets file (see apps/customer/README.md).
+             The map degrades to a placeholder when MAPS_ENABLED is not set. -->
+        <meta-data android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

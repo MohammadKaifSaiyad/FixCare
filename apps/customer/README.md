@@ -113,6 +113,51 @@ The first slice ships the full phone-OTP auth backbone every later slice rides o
 Try it end-to-end: start the backend (above), run the app, enter any 10-digit
 number, and use the dev code shown on the OTP screen.
 
+## Google Maps API key (address pin-drop picker)
+
+The address form's map (`AddressMapPicker`) is **gated by `Env.mapsEnabled`**
+(a `--dart-define=MAPS_ENABLED=true` flag, default `false`). Without it, the
+form renders a bordered placeholder instead of the live map — the rest of the
+app builds, analyzes, and tests with **no API key present**. Only enabling the
+live map at runtime needs a key. To turn it on:
+
+1. **Get a key.** In the [Google Cloud Console](https://console.cloud.google.com/),
+   create (or reuse) a project, enable **Maps SDK for Android** and
+   **Maps SDK for iOS**, then create an API key under **APIs & Services → Credentials**.
+2. **Restrict it.** Edit the key: set an **Android app restriction** (this app's
+   package `in.fixcare.fixcare_customer` + your debug/release SHA-1 fingerprints,
+   from `keytool -list -v -keystore ~/.android/debug.keystore`), and/or an
+   **iOS app restriction** (bundle id `in.fixcare.fixcare_customer`, or whatever
+   `ios/Runner.xcodeproj` currently has set). Also restrict the **API list** to
+   just the two Maps SDKs above. Never use an unrestricted key.
+3. **Wire it into the Android build** — export it as an environment variable
+   before building/running (never hardcode it in `AndroidManifest.xml` or
+   `build.gradle.kts`, both of which read it from the environment):
+   ```bash
+   export MAPS_API_KEY=your-real-key-here
+   ```
+   The manifest placeholder `${MAPS_API_KEY}` (in
+   `android/app/src/main/AndroidManifest.xml`) is resolved from
+   `manifestPlaceholders["MAPS_API_KEY"]` in `android/app/build.gradle.kts`,
+   which reads the same env var (defaults to `""` when unset, so the build
+   never fails without a key).
+4. **Wire it into iOS** — same env var, read at launch in
+   `ios/Runner/AppDelegate.swift` (`ProcessInfo.processInfo.environment["MAPS_API_KEY"]`)
+   and passed to `GMSServices.provideAPIKey(...)` only when non-empty. For a
+   simulator/device run from Xcode, set `MAPS_API_KEY` in the scheme's
+   **Run → Arguments → Environment Variables** instead of exporting it in shell
+   (Xcode-launched processes don't inherit your terminal's exported vars).
+5. **Verify the map renders.** With the key exported (Android) or set in the
+   scheme (iOS), run the app with the Dart flag flipped on:
+   ```bash
+   flutter run --dart-define=MAPS_ENABLED=true --dart-define=BASE_URL=http://10.0.2.2:3000
+   ```
+   Open Add/Edit address — the map should render centered on the address (or a
+   Vadodara default) instead of the placeholder text, and tapping it should
+   drop/move a pin and update the saved lat/lng. Without `MAPS_ENABLED=true`
+   (or without a key wired per steps 3-4), the placeholder shows instead —
+   this is the expected, safe default for anyone building the app without a key.
+
 ## Status
 
 **Slice 1 complete** — project scaffold + full phone-OTP auth flow
