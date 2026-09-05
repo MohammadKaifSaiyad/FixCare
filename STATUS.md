@@ -4,40 +4,41 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-09-05_
 
 ---
 
 ## Phase
-**Month 3 — core business logic.** Auth + profile + catalog + addresses + **booking B1 + B2a + B3 + B4a +
-B4b + B5 + B6a + B6b + B6c** merged to `main`. **Booking module underway** — 7 sub-slices (B1 creation →
-B2 dispatch → B3 arrival handshake → B4 diagnosis → B5 completion handshake → B6 payment → B7 disputes);
-B2 split into B2a (dispatch, merged) / B2b (accept-timer+BullMQ, deferred) / B2c (weighted algo, deferred);
-B6 split into B6a/B6b/B6c (all merged). **B7 (disputes) complete on branch.** Money moves on Razorpay test
-keys until KYC.
+**Month 5 — customer app (Flutter).** Backend booking module **COMPLETE** (B1→B7 all merged to `main`,
+including B7 disputes, PR #21). Build order (ADR-0004) now advances to the **customer app**: `apps/customer`,
+Flutter/Android-first, Riverpod codegen + go_router + dio + secure-storage. **Slice 1 (scaffold + phone-OTP
+auth) complete on branch.** Money still on Razorpay test keys until KYC.
 
 ## Active task
-**Booking Slice B7** complete on `feature/booking-b7-disputes` — **disputes: raise, hold, resolve, refund,
-reversal**. `Dispute` model (OPEN/RESOLVED, outcome FAVOR_CUSTOMER/FAVOR_TECHNICIAN/PARTIAL, `refundPaise`,
-`reason` internal-only). Customer `POST /me/bookings/:id/raise-dispute` (PAYMENT_RECEIVED→DISPUTED, payout held —
-excluded from the B6c settlement sweep). Admin `POST /admin/disputes/:id/resolve` (MANAGER+, OPEN→RESOLVED
-atomic claim gates the gateway refund so a double-submit can't double-refund; booking → CLOSED as `ADMIN`)
-+ admin list/detail queries. **Earning model:** the technician earns the LABOR share prorated by the retained
-charge fraction — `splitPaise(round(labor × (charge − refund) / charge))` — so FAVOR_TECHNICIAN pays exactly
-what the B6c sweep would (a dispute-winner isn't penalized), FAVOR_CUSTOMER pays 0 (at fault, deducted), PARTIAL
-prorates; **parts money is never credited to the technician** (merchant's). Customer refund is bounded by the
-full captured charge and recorded as `DISPUTE_REVERSAL` (UPI → real gateway `refund`, confirmed by the real
-`refund.*` webhook — signature-verified, idempotent; cash → `manual_refund_recorded` ops marker). Customer
-`BookingDto.dispute: { status; outcome; refundPaise } | null` — **reason never leaves the API** (admin case-file
-`getDispute` surfaces it MANAGER-only). 361/361 tests green, tsc clean. **Deferred (recorded below):** tier
-auto-resolve, appeals, abuse-detection (dispute-frequency), admin dispute dashboard, technician-raised disputes,
-warranty/rework flow, deposit deduction. **All gates DONE** (opus whole-branch "Ready to merge" after fixing the
-Critical earning-base bug; prisma/golden-rules/fraud-vector clean; `/code-review` fixed the parts-over-credit +
-webhook-500-safety + cash-marker). **Ready for PR → `main`. Next: B2b (accept-timer) / Flutter customer app /
-dispute dashboard (once admin lands).**
+**Customer app Slice 1** complete on `feature/customer-app-skeleton-auth` — **project scaffold + full
+phone-OTP auth flow**. Establishes the app architecture (feature-first, `@riverpod` codegen, go_router,
+typed `Result<T>` end-to-end, freezed DTOs, secure-storage) and the token backbone every later slice rides on.
+Flow: splash/token-gate → phone entry (10-digit `^[6-9]\d{9}$`) → OTP entry (dev `devOtp` autofill on debug only,
+resend, wrong-code inline error) → home stub. **Dio auth interceptor** attaches the bearer and, on 401, does a
+**single-flight** `/auth/refresh` (N concurrent 401s share ONE refresh; refresh/retry through a bare
+interceptor-free dio so no recursion), stores the rotated pair, retries; refresh-fail → clear tokens +
+`onAuthLost` → phone. Backend `/auth/*` contract verified against source (`verify`→{access,refresh,user};
+`refresh`→{access,refresh} NO user; `send`→{ok,devOtp?}). 15 tests (repository / single-flight interceptor /
+token-gate router / OTP widget flow); `flutter analyze` clean; build_runner idempotent (generated files
+committed). Built via SDD (6 tasks, each spec+quality reviewed — Tasks 5-6 executed inline when the org
+monthly-spend limit was killing subagent dispatches). **Next: final whole-branch review + golden-rules /
+flutter-widget reviewers + `/code-review`, then PR → `main`.**
 
 ## Last shipped
-- **Booking Slice B7** (`apps/backend`, disputes): `Dispute` model + migration; raise-dispute endpoint
+- **Customer app Slice 1** (`apps/customer`, Flutter — first app slice): project scaffold (Flutter 3.47,
+  Riverpod 3.x `@riverpod` codegen, go_router 18, dio 5, flutter_secure_storage 11, freezed 4) + phone-OTP
+  auth. `Env` (`--dart-define=BASE_URL`, default `10.0.2.2:3000`), Material3 theme (primary `#C2521B`,
+  success `#1D6B4F`); sealed `Result<T>` + `FailureKind`; `TokenStore` (secure-storage); freezed auth DTOs +
+  `AuthRepository`→Result; **single-flight auth interceptor** (401→one refresh→retry via bare dio;
+  fail→clear+onAuthLost); `AuthController` (@riverpod) + sealed `Session`; go_router token-gate
+  (`refreshListenable` on the controller); splash/phone/OTP/home screens. 15 tests, analyze clean. On branch,
+  final gates pending.
+- **Booking Slice B7** (`apps/backend`, disputes) — **merged to `main`** (PR #21): `Dispute` model + migration; raise-dispute endpoint
   (PAYMENT_RECEIVED→DISPUTED as CUSTOMER, payout held, DISPUTED excluded from the settlement sweep);
   gateway `refund` method + real `refund.*` webhook (idempotent reversal recording); admin resolve-dispute
   (atomic OPEN→RESOLVED claim gates the refund call — no double-refund on a double-submit; earning = labor
@@ -157,12 +158,17 @@ dispute dashboard (once admin lands).**
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **B2b — accept-timer** (30-sec unclaimed-job re-broadcast; BullMQ infra NOW EXISTS — reuse the
-   `shared/queue/` scaffolding from B6c). Apply for Razorpay KYC + Route NOW if not in flight.
-2. **Flutter customer app** (Month 5 start): booking creation flow + live status polling + payment UI.
-   Provision Cloudflare R2 account + creds (`R2_*` env) before launch.
-3. **Dispute dashboard** (admin, once the admin app lands — Month 4): OPEN queue, resolve UI over the
-   B7 admin endpoints. Until then, disputes are adjudicated via direct API calls (Bruno/Postman).
+1. **Customer app Slice 2** — home + profile + addresses: home/bookings list (`GET /me/bookings`),
+   profile capture (`GET/PATCH /me/profile`), address CRUD (`/me/addresses`) with live pincode
+   serviceability (`GET /serviceability`). Replace the Slice-1 placeholder user (fetch `/me/profile`
+   on boot). Reuse the Slice-1 `Result`/repository/interceptor backbone.
+2. **Customer app Slice 3** — discovery + booking creation: catalog browse
+   (`/catalog/categories`,`/catalog/services`) → booking wizard (`POST /me/bookings`) → tracking screen
+   (polling `GET /me/bookings/:id`, the 17-state hero). Provision Cloudflare R2 (`R2_*`) before the
+   photo-evidence slice.
+3. **Backend B2b — accept-timer** (deferred; 30-sec unclaimed-job re-broadcast; reuse `shared/queue/`
+   from B6c) — pick up when the app work needs it, else after the core customer flow. Apply for
+   Razorpay KYC + Route NOW if not already in flight.
 
 ## Deferred follow-ups (carry forward)
 - **B7 (disputes) deferred scope:** tier-based auto-resolve (small-refund disputes settled without

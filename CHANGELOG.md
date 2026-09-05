@@ -8,6 +8,32 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-05 — Customer app Slice 1: scaffold + phone-OTP auth (Flutter, on branch)
+
+- **First app slice.** Backend booking module now complete (B1→B7 merged, incl. B7 disputes PR #21), so
+  the build order (ADR-0004) advances to the customer app. `apps/customer`: Flutter/Android-first,
+  Riverpod 3.x `@riverpod` codegen + go_router 18 + dio 5 + flutter_secure_storage 11 + freezed 4.
+- **Architecture backbone** every later slice reuses: feature-first layout; `Env` (`--dart-define=BASE_URL`,
+  default `10.0.2.2:3000` for the Android emulator, `Env.isDev` = debug); Material3 theme (primary `#C2521B`,
+  success `#1D6B4F`, 52dp buttons); sealed `Result<T>` + `FailureKind` + `failureKindFromStatus`; `TokenStore`
+  over secure-storage; freezed auth DTOs + `AuthRepository` returning `Result` (no raw dio/JSON above the data
+  layer). `/auth/*` contract verified against backend source (`verify`→{access,refresh,user};
+  `refresh`→{access,refresh} **no user**; `send`→{ok,devOtp?}).
+- **Single-flight auth interceptor** — attaches the bearer; on a 401 (non-`/auth/`) does ONE `/auth/refresh`
+  shared by all concurrent 401s (synchronous check-and-set closes the TOCTOU), stores the rotated pair, retries.
+  Refresh/retry run through a **bare, interceptor-free dio** so a re-401 can't recurse. Refresh failure clears
+  tokens + calls `onAuthLost` (→ session unauthenticated → router pushes phone) + surfaces the 401.
+- **Auth flow + navigation** — `AuthController` (@riverpod, `Future<Session>` build reads the token → authed
+  placeholder-user / unauthed; a later slice fetches `/me/profile`) + sealed `Session`; go_router token-gate
+  with a `refreshListenable` bound to the controller so redirects re-run on login/logout/session-lost; splash /
+  phone-entry / OTP-entry (dev-`devOtp` autofill on **debug only**, resend, wrong-code inline error) / home stub.
+- **Quality:** built via SDD (6 tasks, each spec+quality reviewed). Tasks 5-6 executed inline when the org
+  monthly-spend limit began 429-ing subagent dispatches. Review fix: dropped an unreachable `SessionUnknown`
+  (boot is `AsyncLoading`) and split router error-handling from loading (a `build()` throw routes to phone, not
+  an endless splash). 15 tests (repository / single-flight interceptor / token-gate router / OTP widget flow);
+  `flutter analyze` clean; build_runner idempotent (generated files committed). Final whole-branch review +
+  golden-rules / flutter-widget reviewers + `/code-review` pending before PR.
+
 ## 2026-07-28 — B7 final gates + `/code-review` (branch finalized, ready for PR)
 
 - **Final gates:** opus whole-branch review found a **Critical** the per-task reviews rationalized as
