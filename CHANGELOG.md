@@ -8,7 +8,34 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
-## 2026-09-05 — Customer app: design-faithful auth screens (on branch)
+## 2026-09-05 — Customer app Slice 2: boot hydration + profile + addresses + maps (on branch)
+
+- **Second app slice** on the Slice-1 backbone. Two new feature modules (`profile/`, `address/`), the real-user
+  boot flow, and the address management that booking (Slice 3) depends on.
+- **Boot hydration** — `AuthController.build()` fetches `GET /me/profile` on cold boot; `SessionAuthenticated`
+  now carries `CustomerProfileDto` (real name) + a `hydrated` flag. 401 → clear tokens → login; a network blip
+  keeps the user logged in (no eject, no name-gate) — the gate only fires on a successful fetch with an empty
+  name. `submitOtp` re-fetches the profile after login (verify's user has no name). Replaces the Slice-1
+  placeholder user.
+- **Profile** — first-run **name capture** (`/name`, gated after login when name empty) + an **Account** screen
+  (name edit, phone read-only from secure storage, "My addresses", sign out). Home avatar → Account.
+- **Addresses** — `AddressDto`/`ZoneDto`/`ServiceabilityDto` + repository (list/create/update/delete/
+  serviceability, all `Result`); **address list** (`@riverpod` controller, cards, serviceability chip, default
+  badge, edit/delete/set-default with failures surfaced via SnackBar) + **add/edit form** (label/line1/line2/
+  landmark/pincode, debounced ~400ms live pincode serviceability, edit pre-fill, `isDefault`, save-failure
+  surfaced inline). Out-of-area warns but still saves (backend 201).
+- **Google Maps pin-picker** (`google_maps_flutter` 2.18.0) for lat/lng — **degrades gracefully without an API
+  key**: an `Env.mapsEnabled` (`--dart-define=MAPS_ENABLED`) gate means `GoogleMap` is never constructed keyless
+  (a placeholder renders), so the app builds/tests/runs before the key is provisioned. Key never committed
+  (Android manifest `${MAPS_API_KEY}` + gradle env fallback; iOS AppDelegate guarded). Runbook in the app README.
+- **Quality** — built via SDD (11 tasks, each spec+quality reviewed). The review gates caught 5 real defects
+  green tests had missed: two contract tests that only subset-matched request bodies (hardened to exact-body
+  matching), two silent error-swallows (Account name-edit + address list actions — now surfaced), and a blank
+  edit-address form (now pre-fills). Contract-guarded repo tests (exact bodies + `{code,message}` envelope).
+  64 tests; `flutter analyze` clean; build_runner idempotent (generated files committed). Final whole-branch
+  review + `/code-review` pending before PR.
+
+## 2026-09-05 — Customer app: design-faithful auth screens (merged PR #24)
 
 - **Closed the design-fidelity gap.** Slice 1 shipped the auth flow with only the two brand colors + a
   system-font fallback, so it looked like generic Material, not the FixCare design. This PR ports the full

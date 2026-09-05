@@ -2,12 +2,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/address/data/address_dtos.dart';
+import '../../features/address/presentation/address_form_screen.dart';
+import '../../features/address/presentation/address_list_screen.dart';
 import '../../features/auth/domain/session.dart';
 import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/otp_entry_screen.dart';
 import '../../features/auth/presentation/phone_entry_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
+import '../../features/profile/presentation/account_screen.dart';
+import '../../features/profile/presentation/name_capture_screen.dart';
 
 /// Bridges the Riverpod auth state to a [Listenable] so GoRouter re-runs its
 /// redirect whenever the session changes (login, logout, session-lost).
@@ -56,9 +61,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       switch (session) {
         case SessionUnauthenticated():
           return onAuthScreen ? null : '/phone';
-        case SessionAuthenticated():
-          // An authed user has no business on splash/phone/otp.
-          return (loc == '/splash' || onAuthScreen) ? '/home' : null;
+        case SessionAuthenticated(hydrated: final hydrated, name: final name):
+          // Hydrated but nameless → force name capture (allow only /name).
+          if (hydrated && name.trim().isEmpty) {
+            return loc == '/name' ? null : '/name';
+          }
+          // Named (or unhydrated): keep them out of splash/auth/name screens.
+          if (loc == '/splash' || onAuthScreen || loc == '/name') return '/home';
+          return null;
       }
     },
     routes: [
@@ -75,6 +85,17 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
+      GoRoute(path: '/name', builder: (_, _) => const NameCaptureScreen()),
+      GoRoute(path: '/account', builder: (_, _) => const AccountScreen()),
+      GoRoute(path: '/addresses', builder: (_, _) => const AddressListScreen()),
+      GoRoute(path: '/address/new', builder: (_, _) => const AddressFormScreen(addressId: null)),
+      GoRoute(
+        path: '/address/:id/edit',
+        builder: (_, state) => AddressFormScreen(
+          addressId: state.pathParameters['id'],
+          initial: state.extra as AddressDto?,
+        ),
+      ),
     ],
   );
 });

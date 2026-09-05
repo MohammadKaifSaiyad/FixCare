@@ -3,8 +3,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 
 import 'package:fixcare_customer/core/router/app_router.dart';
+import 'package:fixcare_customer/core/result.dart';
+import 'package:fixcare_customer/features/profile/data/profile_repository.dart';
+
+/// Fake profile repo: getProfile returns a named profile so boot hydration lands on home.
+class _FakeProfileRepo extends ProfileRepository {
+  _FakeProfileRepo() : super(Dio());
+  @override
+  Future<Result<CustomerProfileDto>> getProfile() async =>
+      const Ok(CustomerProfileDto(id: 'u1', role: 'CUSTOMER', name: 'Ravi', status: 'ACTIVE'));
+  @override
+  Future<Result<CustomerProfileDto>> updateName(String name) async =>
+      Ok(CustomerProfileDto(id: 'u1', role: 'CUSTOMER', name: name, status: 'ACTIVE'));
+}
 
 /// The router's redirect is driven by AuthController.build(), which reads the
 /// access token from secure storage. We mock the secure-storage channel to an
@@ -49,6 +63,7 @@ void main() {
     late GoRouter router;
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [profileRepositoryProvider.overrideWithValue(_FakeProfileRepo())],
         child: Consumer(
           builder: (context, ref, _) {
             router = ref.watch(goRouterProvider);

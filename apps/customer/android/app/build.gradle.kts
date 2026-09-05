@@ -31,6 +31,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Google Maps API key resolved into the manifest placeholder above.
+        // Defaults to empty so the build never fails when the key is unset —
+        // the app then falls back to the map placeholder (MAPS_ENABLED gate
+        // in Dart). Never commit a real key here.
+        manifestPlaceholders["MAPS_API_KEY"] = System.getenv("MAPS_API_KEY") ?: ""
     }
 
     buildTypes {

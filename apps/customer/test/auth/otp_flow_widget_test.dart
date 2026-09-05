@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fixcare_customer/core/result.dart';
 import 'package:fixcare_customer/core/router/app_router.dart';
 import 'package:fixcare_customer/features/auth/data/auth_repository.dart';
+import 'package:fixcare_customer/features/profile/data/profile_repository.dart';
 
 /// Fake repo: send + verify always succeed; verify returns a real user so the
 /// controller flips to Authenticated and the router lands on home.
@@ -31,6 +32,17 @@ class _FakeAuthRepository extends AuthRepository {
       user: UserDto(id: 'u1', role: 'CUSTOMER', status: 'ACTIVE'),
     ));
   }
+}
+
+/// Fake profile repo: getProfile returns a named profile so boot hydration lands on home.
+class _FakeProfileRepo extends ProfileRepository {
+  _FakeProfileRepo() : super(Dio());
+  @override
+  Future<Result<CustomerProfileDto>> getProfile() async =>
+      const Ok(CustomerProfileDto(id: 'u1', role: 'CUSTOMER', name: 'Ravi', status: 'ACTIVE'));
+  @override
+  Future<Result<CustomerProfileDto>> updateName(String name) async =>
+      Ok(CustomerProfileDto(id: 'u1', role: 'CUSTOMER', name: name, status: 'ACTIVE'));
 }
 
 void main() {
@@ -69,7 +81,10 @@ void main() {
     final fakeRepo = _FakeAuthRepository();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWithValue(fakeRepo)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(fakeRepo),
+          profileRepositoryProvider.overrideWithValue(_FakeProfileRepo()),
+        ],
         child: Consumer(
           builder: (context, ref, _) =>
               MaterialApp.router(routerConfig: ref.watch(goRouterProvider)),
@@ -108,7 +123,10 @@ void main() {
     final repo = _WrongCodeRepo();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWithValue(repo)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repo),
+          profileRepositoryProvider.overrideWithValue(_FakeProfileRepo()),
+        ],
         child: Consumer(
           builder: (context, ref, _) =>
               MaterialApp.router(routerConfig: ref.watch(goRouterProvider)),
