@@ -8,7 +8,29 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
-## 2026-09-05 — Customer app: add iOS target, drop web (ADR-0005, on branch)
+## 2026-09-05 — Customer app: design-faithful auth screens (on branch)
+
+- **Closed the design-fidelity gap.** Slice 1 shipped the auth flow with only the two brand colors + a
+  system-font fallback, so it looked like generic Material, not the FixCare design. This PR ports the full
+  design system and rebuilds every auth screen to match the mockup
+  (`Claude Design/…/FixCare Customer App.dc.html`).
+- **Design system** (`lib/core/theme.dart`): `FixCareColors` + `FixCareRadii` tokens (exact palette from the
+  design — cream `#FBF7F4` bg, warm text tiers, `#EADFD8`/`#D8C9C0` borders, terracotta/green), Outfit
+  typography scale, and component themes (56px CTAs, 14px fields, per-state input borders).
+- **Outfit font bundled** (`assets/fonts/`, variable font, OFL license) — offline, no runtime fetch, covers
+  weights 300–700.
+- **Logo** (`lib/core/widgets/fixcare_logo.dart`): the wrench+check monogram drawn with a CustomPainter from
+  the design's SVG geometry (no `flutter_svg` dep) — mark, white app-tile, and horizontal wordmark lockup.
+  Verified via a golden render.
+- **Screens rebuilt to spec:** splash (terracotta + logo tile + wordmark + tagline + loader), phone entry
+  (brand tile, +91·divider·digits field, "Send code" CTA, legal microcopy), OTP entry (6-box input, dev-code
+  hint, error state, resend), home shell (address header, search stub, "What needs fixing?" + category grid,
+  bottom tab bar). Copy aligned to the design.
+- **Extracted spec:** `docs/designs/2026-09-05-auth-screens-visual-spec.md` (per-screen colors/type/spacing,
+  the source of truth for the rebuild). Phone screen + logo verified on an iOS simulator; founder approved the
+  full flow. 16 tests, `flutter analyze` clean.
+
+## 2026-09-05 — Customer app: add iOS target, drop web (ADR-0005, merged PR #23)
 
 - **Scope change (ADR-0005):** V1 mobile is now **Android + iOS** (both first-priority, both apps —
   customer now, technician when it starts); **web is dropped**. Reverses the prior "Android only V1" stance.

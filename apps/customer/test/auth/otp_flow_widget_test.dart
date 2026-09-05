@@ -100,7 +100,8 @@ void main() {
     await tester.tap(find.byKey(const Key('verifyBtn')));
     await tester.pumpAndSettle();
     expect(fakeRepo.verifyCalls, 1);
-    expect(find.text("You're logged in"), findsOneWidget);
+    // Landed on the home shell.
+    expect(find.text('What needs fixing?'), findsOneWidget);
   });
 
   testWidgets('wrong code shows inline error, stays on OTP', (tester) async {
@@ -124,7 +125,7 @@ void main() {
     await tester.tap(find.byKey(const Key('verifyBtn')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Wrong or expired code.'), findsOneWidget);
+    expect(find.text("That code isn't right."), findsOneWidget);
     expect(find.byKey(const Key('otpField')), findsOneWidget);
   });
 }

@@ -30,7 +30,14 @@ monthly-spend limit was killing subagent dispatches). **Next: final whole-branch
 flutter-widget reviewers + `/code-review`, then PR → `main`.**
 
 ## Last shipped
-- **Customer app — iOS target + web dropped** (`feature/customer-app-ios-drop-web`, on branch): scope
+- **Customer app — design-faithful auth screens** (`feature/customer-app-auth-design-fidelity`, on branch):
+  ported the full design system into `theme.dart` (FixCareColors/FixCareRadii tokens, exact palette, Outfit
+  typography), **bundled the Outfit font** (offline, OFL), drew the wrench+check logo via CustomPainter (no
+  svg dep), and rebuilt splash/phone/OTP/home to the design mockup. Closes the fidelity gap from Slice 1
+  (which used only 2 colors + system font). Spec at `docs/designs/2026-09-05-auth-screens-visual-spec.md`.
+  Phone screen + logo verified on iOS simulator; founder approved. 16 tests, analyze clean. On branch,
+  review pending.
+- **Customer app — iOS target + web dropped** (`feature/customer-app-ios-drop-web`, **merged PR #23**): scope
   reversal recorded in **ADR-0005** — V1 is now **Android + iOS** (both apps, first-priority); **web dropped**.
   Scaffolded `apps/customer/ios/` (bundle `in.fixcare.fixcareCustomer`, iOS 15+); `localhost`-only ATS
   cleartext exception in `Info.plist` (release HTTPS-only); removed `web/` + Chrome commands. Docs updated
