@@ -186,18 +186,24 @@ class _AddressStep extends StatelessWidget {
       child: addressesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const Center(child: Text('Could not load addresses.')),
-        data: (addresses) => ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            for (final a in addresses)
-              _AddressTile(address: a, selected: a.id == selectedId, onTap: () => onSelect(a.id)),
-            const SizedBox(height: 8),
-            TextButton(
-              key: const Key('wizardAddAddress'),
-              onPressed: () => context.push('/address/new'),
-              child: const Text('Add address'),
-            ),
-          ],
+        data: (addresses) => RadioGroup<String>(
+          groupValue: selectedId,
+          onChanged: (id) {
+            if (id != null) onSelect(id);
+          },
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              for (final a in addresses)
+                _AddressTile(address: a, selected: a.id == selectedId, onTap: () => onSelect(a.id)),
+              const SizedBox(height: 8),
+              TextButton(
+                key: const Key('wizardAddAddress'),
+                onPressed: () => context.push('/address/new'),
+                child: const Text('Add address'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -227,8 +233,6 @@ class _AddressTile extends StatelessWidget {
           children: [
             Radio<String>(
               value: address.id,
-              groupValue: selected ? address.id : null,
-              onChanged: (_) => onTap(),
               activeColor: FixCareColors.primary,
             ),
             Expanded(
