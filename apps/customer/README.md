@@ -48,8 +48,10 @@ each reaches the host machine differently:
 
 iOS needs the full **Xcode** (App Store) + **CocoaPods** (`sudo gem install cocoapods`).
 Then `flutter doctor` should show iOS ✓, and `open -a Simulator` launches an iPhone.
-The debug build's cleartext-HTTP allowance for the dev backend is scoped to `localhost`
-only in `ios/Runner/Info.plist` (release stays HTTPS-only). A **simulator is free**; an
+The debug build's cleartext-HTTP allowance for the dev backend lives in
+`ios/Runner/Info-Debug.plist` (scoped to `localhost` only) and is wired to the **Debug
+build config only** — Release/Profile use the clean `Info.plist`, so shipped builds are
+HTTPS-only. A **simulator is free**; an
 Apple Developer account ($99/yr) is only needed to run on a physical iPhone or ship.
 
 Generate code (freezed / json_serializable / riverpod_generator):

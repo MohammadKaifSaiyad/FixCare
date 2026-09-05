@@ -80,7 +80,7 @@ These aren't decided yet — make the call before you hit them:
 ## What NOT to Do Yet
 
 - ❌ Don't build the merchant app (WhatsApp suffices for V1)
-- ❌ Don't add iOS (Android-only V1)
+- ✅ ~~Don't add iOS~~ **iOS IS a V1 target now** (both apps, Android + iOS, no web — ADR-0005)
 - ❌ Don't build merchant bidding (preferred-merchant routing V1)
 - ❌ Don't add Kubernetes / microservices / GraphQL
 - ❌ Don't promise external launch dates before Month 8

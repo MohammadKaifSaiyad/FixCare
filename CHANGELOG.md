@@ -15,11 +15,12 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   The Dart codebase is already platform-neutral (no `dart:io`/platform channels; every dep is
   cross-platform), so this is scaffold + config, not a rewrite — one shared `lib/` runs on both.
 - **iOS scaffolded** (`apps/customer/ios/`) via `flutter create --platforms=ios` (bundle id
-  `in.fixcare.fixcareCustomer`, iOS 15+). Added a **`localhost`-only** App Transport Security exception in
-  `Info.plist` so the debug build reaches the dev backend over HTTP — scoped to localhost, inert in release
-  (release stays HTTPS-only; the iOS mirror of Android's debug-only `network_security_config.xml`).
-  `flutter_secure_storage` confirmed iOS-supported. Deleted the template `widget_test.dart` the scaffold
-  generated.
+  `in.fixcare.fixcareCustomer`, iOS 15+). The debug backend's cleartext-HTTP allowance is a **`localhost`-only**
+  App Transport Security exception in a **separate `Info-Debug.plist` wired to the Debug build config only**
+  (via `INFOPLIST_FILE` in `project.pbxproj`) — Release/Profile use the clean `Info.plist`, so shipped builds
+  are HTTPS-only. (Review caught that a single shared `Info.plist` would have leaked the exception into Release;
+  fixed by splitting the plist per-config — the true iOS mirror of Android's debug-only `network_security_config.xml`.)
+  `flutter_secure_storage` confirmed iOS-supported. Deleted the template `widget_test.dart` the scaffold generated.
 - **Web removed** — deleted `apps/customer/web/`, the Chrome run command, and the `web/**` analyzer exclude.
 - **Docs:** ADR-0005 + index; CLAUDE.md ("Android only V1" → "Android + iOS V1, no web"); `mobile-stack.md`
   (iOS 15+, no web); slice-1 design out-of-scope + run commands (iOS sim URL is `localhost`, not the

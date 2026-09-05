@@ -1,6 +1,7 @@
 # apps/technician — FixCare Technician App
 
-Flutter 3.x (Android only V1) + Riverpod + go_router + dio. The technician-side
+Flutter 3.x (**Android + iOS** V1, no web — [ADR-0005](../../docs/adrs/ADR-0005-mobile-platforms-android-ios.md);
+scaffolded with both platforms when this app is built) + Riverpod + go_router + dio. The technician-side
 app: onboarding + KYC, go online/offline, accept jobs, navigate, the arrival &
 completion handshakes, 3 mandatory repair photos, wallet + cash debt + trust score.
 

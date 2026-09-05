@@ -26,10 +26,17 @@ Android + iOS from the start.
 Concretely:
 
 - **Add iOS:** each app scaffolds an `ios/` project and carries iOS platform config
-  (e.g. `NSAppTransportSecurity` for the dev backend's cleartext HTTP, `Info.plist`,
-  bundle id `in.fixcare.fixcare_customer` / the technician equivalent). App **Dart is
-  already platform-neutral** — Riverpod / go_router / dio / secure-storage all run on iOS
-  unchanged — so this is scaffolding + platform config + testing, not a rewrite.
+  (a **Debug-only** `NSAppTransportSecurity` `localhost` exception for the dev backend's
+  cleartext HTTP — wired via a separate `Info-Debug.plist` on the Debug build config only,
+  so Release/Profile stay HTTPS-only). **App IDs differ by platform, by convention, and
+  that is expected:** Android `applicationId = in.fixcare.fixcare_customer` (underscores
+  allowed); iOS `PRODUCT_BUNDLE_IDENTIFIER = in.fixcare.fixcareCustomer` (iOS bundle ids
+  conventionally omit underscores, so `flutter create` camelCases the suffix). They are
+  independent identifiers — do NOT force them equal. Whatever cross-platform identity
+  matching needs (OneSignal, deep links, analytics) must be configured per-platform with
+  each app's real id. App **Dart is already platform-neutral** — Riverpod / go_router /
+  dio / secure-storage all run on iOS unchanged — so this is scaffolding + platform config
+  + testing, not a rewrite.
 - **Drop web:** remove the `web/` scaffold and the Chrome run commands from the apps'
   READMEs. Dev is done on the Android emulator / iOS simulator / real devices.
 

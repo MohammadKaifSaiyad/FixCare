@@ -2,12 +2,29 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- App Transport Security: this RELEASE/Profile Info.plist has NO cleartext
-	     exception — production is HTTPS-only. The localhost cleartext allowance the
-	     dev backend needs lives in Info-Debug.plist, which is wired ONLY to the
-	     Debug build configuration (INFOPLIST_FILE in project.pbxproj). That is what
-	     makes it genuinely debug-only — the iOS mirror of Android's debug source
-	     set (src/debug/res/xml/network_security_config.xml). -->
+	<!-- DEBUG-ONLY Info.plist. Identical to Runner/Info.plist EXCEPT for the
+	     App Transport Security block below. This file is wired ONLY to the Debug
+	     build configuration (INFOPLIST_FILE in project.pbxproj); Release and
+	     Profile use the clean Runner/Info.plist with no exception, so production
+	     is HTTPS-only. iOS blocks cleartext HTTP by default; the local dev backend
+	     is http://localhost:3000 (the iOS simulator reaches the host as `localhost`
+	     directly — unlike the Android emulator's 10.0.2.2). The exception is scoped
+	     to `localhost` ONLY. This is the iOS mirror of Android's debug source set
+	     (src/debug/res/xml/network_security_config.xml).
+	     NOTE: keep the non-ATS keys here in sync with Runner/Info.plist. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
