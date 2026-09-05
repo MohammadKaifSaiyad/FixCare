@@ -4,6 +4,7 @@ import '../env.dart';
 import '../storage/token_store.dart';
 import 'auth_interceptor.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../../features/auth/presentation/auth_controller.dart';
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(
@@ -30,12 +31,13 @@ final dioProvider = Provider<Dio>((ref) {
   dio.interceptors.add(AuthInterceptor(
     store,
     refreshRepo.refresh,
-    // TODO(task5): replace with the real auth controller's session-lost
-    // handler, e.g. `() => ref.read(authControllerProvider.notifier).onAuthLost()`.
-    // Left as a no-op for this task since authControllerProvider does not
-    // exist yet — Task 5 wires the real callback.
-    () {},
-    dio,
+    // Lazy ref.read at call time (not build time) so we don't force the
+    // auth controller to build during dio construction, and to avoid a
+    // provider cycle. When a refresh fails, drop to unauthenticated.
+    () => ref.read(authControllerProvider.notifier).onAuthLost(),
+    // Retry through the bare, interceptor-free dio — a retried request that
+    // 401s again must NOT re-enter this interceptor (no recursive refresh).
+    refreshDio,
   ));
 
   return dio;
