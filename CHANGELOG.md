@@ -8,6 +8,41 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-05 — Customer app Slice 1: scaffold + phone-OTP auth (Flutter, on branch)
+
+- **First app slice.** Backend booking module now complete (B1→B7 merged, incl. B7 disputes PR #21), so
+  the build order (ADR-0004) advances to the customer app. `apps/customer`: Flutter/Android-first,
+  Riverpod 3.x `@riverpod` codegen + go_router 18 + dio 5 + flutter_secure_storage 11 + freezed 4.
+- **Architecture backbone** every later slice reuses: feature-first layout; `Env` (`--dart-define=BASE_URL`,
+  default `10.0.2.2:3000` for the Android emulator, `Env.isDev` = debug); Material3 theme (primary `#C2521B`,
+  success `#1D6B4F`, 52dp buttons); sealed `Result<T>` + `FailureKind` + `failureKindFromStatus`; `TokenStore`
+  over secure-storage; freezed auth DTOs + `AuthRepository` returning `Result` (no raw dio/JSON above the data
+  layer). `/auth/*` contract verified against backend source (`verify`→{access,refresh,user};
+  `refresh`→{access,refresh} **no user**; `send`→{ok,devOtp?}).
+- **Single-flight auth interceptor** — attaches the bearer; on a 401 (non-`/auth/`) does ONE `/auth/refresh`
+  shared by all concurrent 401s (synchronous check-and-set closes the TOCTOU), stores the rotated pair, retries.
+  Refresh/retry run through a **bare, interceptor-free dio** so a re-401 can't recurse. Refresh failure clears
+  tokens + calls `onAuthLost` (→ session unauthenticated → router pushes phone) + surfaces the 401.
+- **Auth flow + navigation** — `AuthController` (@riverpod, `Future<Session>` build reads the token → authed
+  placeholder-user / unauthed; a later slice fetches `/me/profile`) + sealed `Session`; go_router token-gate
+  with a `refreshListenable` bound to the controller so redirects re-run on login/logout/session-lost; splash /
+  phone-entry / OTP-entry (dev-`devOtp` autofill on **debug only**, resend, wrong-code inline error) / home stub.
+- **Quality:** built via SDD (6 tasks, each spec+quality reviewed). Tasks 5-6 executed inline when the org
+  monthly-spend limit began 429-ing subagent dispatches. Review fixes: dropped an unreachable `SessionUnknown`
+  (boot is `AsyncLoading`) and split router error-handling from loading (a `build()` throw routes to phone, not
+  an endless splash); `@Riverpod(keepAlive: true)` on the session controller (explicit app-session lifetime);
+  Android network (INTERNET in the main manifest so release has network, **debug-only** cleartext to the dev
+  API, `compileSdk 37` to unblock `flutter_secure_storage`).
+- **`/code-review` caught 3 contract breaks the mocked tests hid** — the app could not actually log in against
+  the real backend: `/auth/otp/send` and `/auth/otp/verify` both require `role` (omitted); verify's code field
+  is **`otp`** not `code`; the error envelope is `{code, message}` not `{error}` (so every backend message
+  collapsed to a generic string). Fixed: send `role: 'CUSTOMER'`, use `otp`, read `message`; also made the 2xx
+  body-cast safe and tightened the OTP guard to exactly 6 digits. The repository tests now assert the real
+  request bodies + `{code, message}` envelope (they'd fail against the old code), and the screen-context doc's
+  contract was corrected. 16 tests; `flutter analyze` clean; debug APK builds and reaches the network.
+- **Gates:** golden-rules (clean), flutter-widget (conventions pass), whole-branch opus (auth logic sound;
+  caught the device-network gap), `/code-review` (caught the contract breaks) — all findings fixed. Ready for PR.
+
 ## 2026-07-28 — B7 final gates + `/code-review` (branch finalized, ready for PR)
 
 - **Final gates:** opus whole-branch review found a **Critical** the per-task reviews rationalized as

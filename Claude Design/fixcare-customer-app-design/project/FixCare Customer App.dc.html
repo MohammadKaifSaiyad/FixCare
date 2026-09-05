@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#EFE6DF; }
+  a { color:#C2521B; text-decoration:none; }
+  a:hover { color:#9E3F11; }
+</style>
+</helmet>
+
+<div style="padding:56px 56px 96px;display:flex;flex-direction:column;gap:64px;background:#EFE6DF;font-family:Outfit,system-ui,sans-serif;color:#241A15">
+
+  <div style="display:flex;flex-direction:column;gap:16px;max-width:900px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:44px;height:44px;border-radius:14px;background:#C2521B;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:600">F</div>
+      <div style="font-size:34px;font-weight:600;letter-spacing:-0.02em">FixCare — Customer App</div>
+    </div>
+    <div style="font-size:17px;line-height:1.55;color:#5C4B43;max-width:720px;text-wrap:pretty">Android-first Flutter screens for the V1 customer flow: book a verified technician, confirm arrival, approve the diagnosis, release payment with an OTP. Every screen is driven by one <span style="font-weight:600;color:#241A15">BookingDto</span> and its state. No live map, no chat, no ratings — polling only.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1px solid #E3D6CD;border-radius:999px;font-size:13px;font-weight:500">
+        <span style="width:14px;height:14px;border-radius:4px;background:#C2521B"></span>Primary #C2521B
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1px solid #E3D6CD;border-radius:999px;font-size:13px;font-weight:500">
+        <span style="width:14px;height:14px;border-radius:4px;background:#1D6B4F"></span>Success #1D6B4F
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1px solid #E3D6CD;border-radius:999px;font-size:13px;font-weight:500">Outfit · one language per screen</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border:1px solid #E3D6CD;border-radius:999px;font-size:13px;font-weight:500">360 × 760 dp · targets ≥ 48dp</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">A · Auth &amp; session</div>
+      <div style="font-size:14px;color:#6E5C53">Slice 1 · POST /auth/otp/send · /auth/otp/verify · /auth/refresh</div>
+    </div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">A1 · Splash / token gate</div>
+        <div style="font-size:12.5px;color:#7A6A62">has token? → Home : Phone entry</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#C2521B;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px">
+            <div style="width:88px;height:88px;border-radius:28px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(36,26,21,.18)">
+              <svg width="52" height="52" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="FixCare logo">
+                <!-- wrench -->
+                <path d="M30.5 8.5a8 8 0 0 0-10.2 9.9L8.8 29.9a3.2 3.2 0 0 0 0 4.5l.8.8a3.2 3.2 0 0 0 4.5 0l11.5-11.5A8 8 0 0 0 35.5 13l-4.2 4.2-3.5-.9-.9-3.5 4.2-4.2a8 8 0 0 0-.6-.1Z" fill="#C2521B"/>
+                <!-- check badge -->
+                <circle cx="34" cy="34" r="10" fill="#1D6B4F"/>
+                <path d="M29.5 34.2l3 3 6-6.4" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px">
+              <svg width="26" height="26" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.5 8.5a8 8 0 0 0-10.2 9.9L8.8 29.9a3.2 3.2 0 0 0 0 4.5l.8.8a3.2 3.2 0 0 0 4.5 0l11.5-11.5A8 8 0 0 0 35.5 13l-4.2 4.2-3.5-.9-.9-3.5 4.2-4.2a8 8 0 0 0-.6-.1Z" fill="#fff"/><circle cx="34" cy="34" r="10" fill="#1D6B4F"/><path d="M29.5 34.2l3 3 6-6.4" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div style="font-size:32px;font-weight:700;color:#fff;letter-spacing:-0.01em">FixCare</div>
+            </div>
+            <div style="font-size:15px;color:#FBDCCB;font-weight:400">Sahi kaam, sahi daam.</div>
+            <div style="margin-top:28px;width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.28);overflow:hidden">
+              <div style="width:52px;height:4px;border-radius:2px;background:#fff"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">A2 · Phone entry</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /auth/otp/send { phone }</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:32px 20px 20px;gap:8px">
+              <div style="width:52px;height:52px;border-radius:16px;background:#FDECE2;display:flex;align-items:center;justify-content:center;color:#C2521B;font-size:26px;font-weight:600;margin-bottom:20px">F</div>
+              <div style="font-size:28px;font-weight:600;letter-spacing:-0.02em;line-height:1.2">Enter your mobile number</div>              <div style="font-size:14.5px;color:#7A6A62;line-height:1.5;margin-top:6px">We'll send a 6-digit code to verify it.</div>
+              <div style="margin-top:26px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #C2521B;border-radius:14px;padding:0 14px;height:60px">
+                <span style="font-size:19px;font-weight:500;color:#241A15">+91</span>
+                <span style="width:1px;height:26px;background:#EADFD8"></span>
+                <span style="font-size:22px;font-weight:600;letter-spacing:1.5px;color:#241A15">98250 41 <span style="opacity:.28">| </span></span>
+              </div>
+              <div style="margin-top:10px;font-size:13px;color:#7A6A62">Indian 10-digit mobile only</div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Send code</div>
+              <div style="margin-top:14px;font-size:12.5px;color:#8B7A71;text-align:center;line-height:1.5">By continuing you agree to FixCare's Terms and Privacy Policy.</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">A3 · OTP entry</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /auth/otp/verify · 401 wrong code · 429 resend throttle</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#241A15">←</div>
+              <div style="font-size:18px;font-weight:600">Verify number</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:16px 20px 20px;gap:6px">
+              <div style="font-size:15px;color:#5C4B43;line-height:1.5">Code sent to <span style="font-weight:600;color:#241A15">+91 98250 41xxx</span></div>
+              <div style="display:flex;gap:10px;margin-top:24px">
+                <div style="flex:1;height:62px;border-radius:14px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">4</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">1</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">9</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">2</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#fff;border:1.5px solid #C2521B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#C2521B">7</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#fff;border:1.5px dashed #D8C9C0"></div>
+              </div>
+              <div style="margin-top:18px;display:flex;align-items:center;gap:10px;background:#FFF6E8;border:1px solid #F0DDBC;border-radius:12px;padding:12px 14px">
+                <span style="font-size:15px">🛠</span>
+                <div style="font-size:13px;color:#6B5320;line-height:1.45">Dev build: <span style="font-weight:600">devOtp 419 273</span> returned by the send call.</div>
+              </div>
+              <div style="margin-top:18px;display:flex;align-items:center;justify-content:space-between">
+                <div style="font-size:14px;color:#7A6A62">Resend in 00:24</div>
+                <div style="font-size:14px;font-weight:600;color:#C1B0A7">Resend code</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Verify &amp; continue</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">A4 · OTP errors</div>
+        <div style="font-size:12.5px;color:#7A6A62">401 invalid · 429 throttled</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#241A15">←</div>
+              <div style="font-size:18px;font-weight:600">Verify number</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:16px 20px 20px;gap:6px">
+              <div style="font-size:15px;color:#5C4B43;line-height:1.5">Code sent to <span style="font-weight:600;color:#241A15">+91 98250 41xxx</span></div>
+              <div style="display:flex;gap:10px;margin-top:24px">
+                <div style="flex:1;height:62px;border-radius:14px;background:#FEF1EE;border:1.5px solid #C9442B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#A63116">1</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#FEF1EE;border:1.5px solid #C9442B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#A63116">1</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#FEF1EE;border:1.5px solid #C9442B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#A63116">1</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#FEF1EE;border:1.5px solid #C9442B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#A63116">1</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#FEF1EE;border:1.5px solid #C9442B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#A63116">1</div>
+                <div style="flex:1;height:62px;border-radius:14px;background:#FEF1EE;border:1.5px solid #C9442B;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:#A63116">1</div>
+              </div>
+              <div style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:13.5px;color:#A63116;font-weight:500">
+                <span>⚠</span><span>That code isn't right. 2 tries left.</span>
+              </div>
+              <div style="margin-top:22px;background:#fff;border:1px solid #EADFD8;border-radius:14px;padding:16px">
+                <div style="font-size:14px;font-weight:600;margin-bottom:6px">Too many requests</div>
+                <div style="font-size:13.5px;color:#7A6A62;line-height:1.5">You've asked for a few codes in a row. Try again in 4 minutes, or check your SMS inbox.</div>              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#EFE1D8;color:#B09B90;font-size:17px;font-weight:600">Verify &amp; continue</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">B · First run: name &amp; address</div>
+      <div style="font-size:14px;color:#6E5C53">PATCH /me/profile · POST /me/addresses · GET /serviceability?pincode=</div>
+    </div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">B1 · Your name</div>
+        <div style="font-size:12.5px;color:#7A6A62">PATCH /me/profile { name }</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="padding:20px 20px 0"><div style="display:flex;gap:6px"><div style="flex:1;height:4px;border-radius:2px;background:#C2521B"></div><div style="flex:1;height:4px;border-radius:2px;background:#E7D8CF"></div></div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:28px 20px 20px;gap:8px">
+              <div style="font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.25">What should we call you?</div>
+              <div style="font-size:14.5px;color:#7A6A62;line-height:1.5">Your technician sees this name when they accept a job.</div>
+              <div style="margin-top:26px;font-size:13px;font-weight:600;color:#5C4B43">Full name</div>
+              <div style="margin-top:8px;display:flex;align-items:center;background:#fff;border:1.5px solid #C2521B;border-radius:14px;padding:0 16px;height:58px;font-size:18px;font-weight:500">Rakesh Patel</div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Continue</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">B2 · Add address — serviceable</div>
+        <div style="font-size:12.5px;color:#7A6A62">GET /serviceability → { serviceable: true, zone }</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div>
+              <div style="font-size:18px;font-weight:600">Add address</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:12px 20px 20px;gap:14px;overflow:hidden">
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:13px;font-weight:600;color:#5C4B43">Pincode</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #EADFD8;border-radius:14px;padding:0 16px;height:56px">
+                  <span style="font-size:18px;font-weight:600;letter-spacing:1px">391440</span>
+                  <span style="font-size:13px;font-weight:600;color:#1D6B4F">✓ Padra zone</span>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px;background:#E9F5EF;border:1px solid #C4E4D5;border-radius:12px;padding:11px 13px">
+                  <span style="font-size:14px;color:#1D6B4F">✓</span>
+                  <div style="font-size:13px;color:#1B5A43;line-height:1.45">We serve this area. Technicians usually reach Padra within 90 minutes.</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:13px;font-weight:600;color:#5C4B43">Flat / house, building</div>
+                <div style="display:flex;align-items:center;background:#fff;border:1.5px solid #EADFD8;border-radius:14px;padding:0 16px;height:56px;font-size:16px">B-402, Shreeji Residency</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:13px;font-weight:600;color:#5C4B43">Area, street</div>
+                <div style="display:flex;align-items:center;background:#fff;border:1.5px solid #EADFD8;border-radius:14px;padding:0 16px;height:56px;font-size:16px">Jarod Road</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:13px;font-weight:600;color:#5C4B43">Landmark <span style="font-weight:400;color:#9A8A81">(optional)</span></div>
+                <div style="display:flex;align-items:center;background:#fff;border:1.5px solid #EADFD8;border-radius:14px;padding:0 16px;height:56px;font-size:16px;color:#9A8A81">Near Padra bus stand</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:4px 2px">
+                <div style="width:48px;height:28px;border-radius:14px;background:#C2521B;display:flex;align-items:center;justify-content:flex-end;padding:3px"><div style="width:22px;height:22px;border-radius:11px;background:#fff"></div></div>
+                <div style="font-size:15px;font-weight:500">Set as default address</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Save address</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">B3 · Out of area</div>
+        <div style="font-size:12.5px;color:#7A6A62">{ serviceable: false } — still saves (201), flagged</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div>
+              <div style="font-size:18px;font-weight:600">Add address</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:12px 20px 20px;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:13px;font-weight:600;color:#5C4B43">Pincode</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #E0A33C;border-radius:14px;padding:0 16px;height:56px">
+                  <span style="font-size:18px;font-weight:600;letter-spacing:1px">380015</span>
+                  <span style="font-size:13px;font-weight:600;color:#9A6B00">Out of area</span>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px;background:#FFF6E8;border:1px solid #F0DDBC;border-radius:12px;padding:11px 13px">
+                  <span style="font-size:14px">ⓘ</span>
+                  <div style="font-size:13px;color:#6B5320;line-height:1.45">We don't serve Ahmedabad yet. You can still save this address — we'll tell you when we arrive.</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:13px;font-weight:600;color:#5C4B43">Flat / house, building</div>
+                <div style="display:flex;align-items:center;background:#fff;border:1.5px solid #EADFD8;border-radius:14px;padding:0 16px;height:56px;font-size:16px">12, Satyam Flats</div>
+              </div>
+              <div style="margin-top:8px;font-size:13px;font-weight:600;color:#5C4B43">Your addresses</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:14px;padding:14px">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div style="font-size:15px;font-weight:600">Home · Padra</div>
+                    <div style="font-size:11px;font-weight:600;color:#1D6B4F;background:#E9F5EF;padding:4px 9px;border-radius:999px">SERVICEABLE</div>
+                  </div>
+                  <div style="font-size:13.5px;color:#7A6A62;margin-top:5px;line-height:1.45">B-402 Shreeji Residency, Jarod Road, 391440</div>
+                </div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:14px;padding:14px">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div style="font-size:15px;font-weight:600">Parents · Ahmedabad</div>
+                    <div style="font-size:11px;font-weight:600;color:#9A6B00;background:#FFF6E8;padding:4px 9px;border-radius:999px">OUT OF AREA</div>
+                  </div>
+                  <div style="font-size:13.5px;color:#7A6A62;margin-top:5px;line-height:1.45">12 Satyam Flats, Vastrapur, 380015</div>
+                </div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Save anyway</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">C · Discovery &amp; booking</div>
+      <div style="font-size:14px;color:#6E5C53">GET /catalog/categories · /catalog/services · POST /me/bookings</div>
+    </div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">C1 · Home — category grid</div>
+        <div style="font-size:12.5px;color:#7A6A62">GET /catalog/categories</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="padding:12px 20px 16px;display:flex;justify-content:space-between;align-items:flex-start">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="font-size:12.5px;color:#7A6A62;font-weight:500">SERVICE AT</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:16px;font-weight:600">Home · Padra <span style="font-size:11px;color:#7A6A62">▾</span></div>
+              </div>
+              <div style="width:42px;height:42px;border-radius:21px;background:#FDECE2;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#C2521B">RP</div>
+            </div>
+            <div style="padding:0 20px;display:flex;flex-direction:column;gap:18px;flex:1;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #EADFD8;border-radius:14px;height:52px;padding:0 14px">
+                <span style="font-size:16px;color:#9A8A81">⌕</span>
+                <span style="font-size:15px;color:#9A8A81">Search — fridge, AC, washing machine</span>
+              </div>
+              <div style="background:#241A15;border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:11.5px;font-weight:600;color:#F6C7AE;letter-spacing:.06em">IN PROGRESS · FC-2841</div>
+                  <div style="font-size:11px;font-weight:600;color:#241A15;background:#F6C7AE;padding:4px 9px;border-radius:999px">EN ROUTE</div>
+                </div>
+                <div style="font-size:17px;font-weight:600;color:#fff">Refrigerator not cooling</div>
+                <div style="font-size:13.5px;color:#C9B7AE">Mahesh S. is on the way · today 12:00–14:00</div>
+                <div style="margin-top:4px;display:flex;align-items:center;justify-content:center;height:44px;border-radius:12px;background:#C2521B;color:#fff;font-size:15px;font-weight:600">Track booking</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between">
+                  <div style="font-size:18px;font-weight:600">What needs fixing?</div>                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:104px">
+                    <div style="width:40px;height:40px;border-radius:12px;background:#FDECE2;display:flex;align-items:center;justify-content:center;font-size:19px">🧊</div>
+                    <div><div style="font-size:15px;font-weight:600">Refrigerator</div></div>
+                  </div>
+                  <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:104px">
+                    <div style="width:40px;height:40px;border-radius:12px;background:#E7F0F6;display:flex;align-items:center;justify-content:center;font-size:19px">❄</div>
+                    <div><div style="font-size:15px;font-weight:600">Air conditioner</div></div>
+                  </div>
+                  <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:104px">
+                    <div style="width:40px;height:40px;border-radius:12px;background:#EDEBF7;display:flex;align-items:center;justify-content:center;font-size:19px">🌀</div>
+                    <div><div style="font-size:15px;font-weight:600">Washing machine</div></div>
+                  </div>
+                  <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:104px">
+                    <div style="width:40px;height:40px;border-radius:12px;background:#E9F5EF;display:flex;align-items:center;justify-content:center;font-size:19px">💧</div>
+                    <div><div style="font-size:15px;font-weight:600">Water purifier</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;border-top:1px solid #EADFD8;background:#fff;padding:8px 0 10px">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C2521B"><span style="font-size:19px">⌂</span><span style="font-size:11.5px;font-weight:600">Home</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#8B7A71"><span style="font-size:19px">☰</span><span style="font-size:11.5px;font-weight:500">Bookings</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#8B7A71"><span style="font-size:19px">☺</span><span style="font-size:11.5px;font-weight:500">Account</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">C2 · Service list</div>
+        <div style="font-size:12.5px;color:#7A6A62">GET /catalog/services?category= · tier, requiredSkill</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div>
+              <div style="font-size:18px;font-weight:600">Refrigerator</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:12px">
+              <div style="font-size:13.5px;color:#7A6A62;line-height:1.5">Pick what's wrong. A technician diagnoses on site — you approve the repair before any work starts.</div>
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px">
+                <div style="background:#fff;border:1.5px solid #C2521B;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                    <div style="font-size:16.5px;font-weight:600;line-height:1.3">Not cooling / poor cooling</div>
+                    <div style="font-size:10.5px;font-weight:700;color:#C2521B;background:#FDECE2;padding:4px 8px;border-radius:6px;white-space:nowrap">TIER 2</div>
+                  </div>
+                  <div style="font-size:13.5px;color:#7A6A62;line-height:1.45">Gas, compressor, thermostat and fan checks. Needs a refrigeration-certified technician.</div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+                    <span style="font-size:14px;font-weight:600">Visit fee ₹199</span>
+                    <span style="font-size:12.5px;color:#7A6A62">· credited if you approve</span>
+                  </div>
+                </div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                    <div style="font-size:16.5px;font-weight:600">Water leaking</div>
+                    <div style="font-size:10.5px;font-weight:700;color:#7A6A62;background:#F3EAE4;padding:4px 8px;border-radius:6px">TIER 1</div>
+                  </div>
+                  <div style="font-size:13.5px;color:#7A6A62;line-height:1.45">Drain block, door seal, defrost drain.</div>
+                  <div style="font-size:14px;font-weight:600;margin-top:2px">Visit fee ₹199</div>
+                </div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                    <div style="font-size:16.5px;font-weight:600">Noisy or not starting</div>
+                    <div style="font-size:10.5px;font-weight:700;color:#7A6A62;background:#F3EAE4;padding:4px 8px;border-radius:6px">TIER 2</div>
+                  </div>
+                  <div style="font-size:13.5px;color:#7A6A62;line-height:1.45">Compressor, relay, PCB, fan motor.</div>
+                  <div style="font-size:14px;font-weight:600;margin-top:2px">Visit fee ₹199</div>
+                </div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px">
+                  <div style="font-size:16.5px;font-weight:600">Something else</div>
+                  <div style="font-size:13.5px;color:#7A6A62;line-height:1.45">Describe it and the technician will diagnose on site.</div>
+                </div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Continue</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">C3 · Wizard — address &amp; slot</div>
+        <div style="font-size:12.5px;color:#7A6A62">default address preselected · scheduledSlot (ISO)</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div>
+              <div style="font-size:18px;font-weight:600">When &amp; where</div>
+            </div>
+            <div style="padding:0 20px 8px"><div style="display:flex;gap:6px"><div style="flex:1;height:4px;border-radius:2px;background:#C2521B"></div><div style="flex:1;height:4px;border-radius:2px;background:#C2521B"></div><div style="flex:1;height:4px;border-radius:2px;background:#E7D8CF"></div></div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:12px 20px 20px;gap:20px">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="font-size:15px;font-weight:600">Address</div>
+                <div style="background:#fff;border:1.5px solid #C2521B;border-radius:16px;padding:15px;display:flex;gap:12px;align-items:flex-start">
+                  <div style="width:20px;height:20px;border-radius:10px;border:6px solid #C2521B;margin-top:2px"></div>
+                  <div style="flex:1">
+                    <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:15.5px;font-weight:600">Home · Padra</div><div style="font-size:10.5px;font-weight:700;color:#C2521B;background:#FDECE2;padding:3px 7px;border-radius:5px">DEFAULT</div></div>
+                    <div style="font-size:13.5px;color:#7A6A62;margin-top:4px;line-height:1.45">B-402 Shreeji Residency, Jarod Road, 391440</div>
+                  </div>
+                </div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;gap:12px;align-items:flex-start;opacity:.55">
+                  <div style="width:20px;height:20px;border-radius:10px;border:2px solid #C1B0A7;margin-top:2px"></div>
+                  <div style="flex:1">
+                    <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:15.5px;font-weight:600">Parents · Ahmedabad</div><div style="font-size:10.5px;font-weight:700;color:#9A6B00;background:#FFF6E8;padding:3px 7px;border-radius:5px">OUT OF AREA</div></div>
+                    <div style="font-size:13.5px;color:#7A6A62;margin-top:4px">12 Satyam Flats, Vastrapur</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="font-size:15px;font-weight:600">Arrival slot</div>
+                <div style="display:flex;gap:10px">
+                  <div style="flex:1;background:#C2521B;color:#fff;border-radius:12px;padding:12px 8px;text-align:center"><div style="font-size:11.5px;font-weight:500;opacity:.85">TODAY</div><div style="font-size:17px;font-weight:600;margin-top:2px">4 Sep</div></div>
+                  <div style="flex:1;background:#fff;border:1px solid #EADFD8;border-radius:12px;padding:12px 8px;text-align:center"><div style="font-size:11.5px;font-weight:500;color:#7A6A62">FRI</div><div style="font-size:17px;font-weight:600;margin-top:2px">5 Sep</div></div>
+                  <div style="flex:1;background:#fff;border:1px solid #EADFD8;border-radius:12px;padding:12px 8px;text-align:center"><div style="font-size:11.5px;font-weight:500;color:#7A6A62">SAT</div><div style="font-size:17px;font-weight:600;margin-top:2px">6 Sep</div></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <div style="background:#F3EAE4;border:1px solid #EADFD8;border-radius:12px;height:52px;display:flex;align-items:center;justify-content:center;font-size:14.5px;color:#B09B90;text-decoration:line-through">10:00 – 12:00</div>
+                  <div style="background:#fff;border:1.5px solid #C2521B;border-radius:12px;height:52px;display:flex;align-items:center;justify-content:center;font-size:14.5px;font-weight:600;color:#C2521B">12:00 – 14:00</div>
+                  <div style="background:#fff;border:1px solid #EADFD8;border-radius:12px;height:52px;display:flex;align-items:center;justify-content:center;font-size:14.5px">14:00 – 16:00</div>
+                  <div style="background:#fff;border:1px solid #EADFD8;border-radius:12px;height:52px;display:flex;align-items:center;justify-content:center;font-size:14.5px">16:00 – 18:00</div>
+                </div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Review booking</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">C4 · Confirm booking</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /me/bookings → state DISPATCHED · 422 unpriced</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;height:56px">
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div>
+              <div style="font-size:18px;font-weight:600">Confirm booking</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:12px 20px 20px;gap:16px">
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px">
+                <div>
+                  <div style="font-size:11.5px;font-weight:600;color:#7A6A62;letter-spacing:.06em">SERVICE</div>
+                  <div style="font-size:17px;font-weight:600;margin-top:4px">Refrigerator — not cooling</div>
+                </div>
+                <div style="height:1px;background:#F0E6E0"></div>
+                <div>
+                  <div style="font-size:11.5px;font-weight:600;color:#7A6A62;letter-spacing:.06em">WHEN</div>
+                  <div style="font-size:16px;font-weight:600;margin-top:4px">Today, 4 Sep · 12:00 – 14:00</div>
+                </div>
+                <div style="height:1px;background:#F0E6E0"></div>
+                <div>
+                  <div style="font-size:11.5px;font-weight:600;color:#7A6A62;letter-spacing:.06em">WHERE</div>
+                  <div style="font-size:15.5px;font-weight:500;margin-top:4px;line-height:1.45">B-402 Shreeji Residency, Jarod Road, Padra 391440</div>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:15px;font-weight:500">Visit fee</div>
+                  <div style="font-size:17px;font-weight:600">₹199</div>
+                </div>
+                <div style="background:#FDF5F0;border-radius:12px;padding:12px 13px;font-size:13px;color:#6B4A38;line-height:1.5">The technician diagnoses the problem, then shows you a fixed catalog quote. If you approve, this ₹199 is credited against the total. Nothing else is charged without your OTP.</div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:9px;padding:0 2px">
+                <div style="width:22px;height:22px;border-radius:6px;background:#C2521B;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">✓</div>
+                <div style="font-size:13px;color:#5C4B43;line-height:1.5">I understand the visit fee applies even if I decline the repair.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Book technician</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">C5 · Bookings list</div>
+        <div style="font-size:12.5px;color:#7A6A62">GET /me/bookings — number, service, state badge, amount</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="padding:12px 20px 12px;font-size:24px;font-weight:600;letter-spacing:-0.02em">Your bookings</div>
+            <div style="padding:0 20px 12px;display:flex;gap:8px">
+              <div style="padding:8px 14px;border-radius:999px;background:#241A15;color:#fff;font-size:13.5px;font-weight:600">Active</div>
+              <div style="padding:8px 14px;border-radius:999px;background:#fff;border:1px solid #EADFD8;font-size:13.5px;font-weight:500;color:#5C4B43">Completed</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:0 20px;gap:12px;overflow:hidden">
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;font-weight:600;color:#7A6A62;letter-spacing:.04em">FC-2841</div>
+                  <div style="font-size:10.5px;font-weight:700;color:#fff;background:#C2521B;padding:4px 9px;border-radius:999px">EN ROUTE</div>
+                </div>
+                <div style="font-size:16.5px;font-weight:600">Refrigerator — not cooling</div>
+                <div style="font-size:13.5px;color:#7A6A62">Today 12:00–14:00 · Mahesh S.</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+                  <div style="font-size:13px;color:#7A6A62">Visit fee ₹199</div>
+                  <div style="font-size:13.5px;font-weight:600;color:#C2521B">Track →</div>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;font-weight:600;color:#7A6A62;letter-spacing:.04em">FC-2790</div>
+                  <div style="font-size:10.5px;font-weight:700;color:#fff;background:#9A6B00;padding:4px 9px;border-radius:999px">AWAITING PAYMENT</div>
+                </div>
+                <div style="font-size:16.5px;font-weight:600">Washing machine — not spinning</div>
+                <div style="font-size:13.5px;color:#7A6A62">2 Sep · Nilesh P.</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+                  <div style="font-size:15px;font-weight:600">₹1,031</div>
+                  <div style="font-size:13.5px;font-weight:600;color:#C2521B">Pay now →</div>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;font-weight:600;color:#7A6A62;letter-spacing:.04em">FC-2612</div>
+                  <div style="font-size:10.5px;font-weight:700;color:#1D6B4F;background:#E9F5EF;padding:4px 9px;border-radius:999px">CLOSED</div>
+                </div>
+                <div style="font-size:16.5px;font-weight:600">AC — not cooling</div>
+                <div style="font-size:13.5px;color:#7A6A62">21 Aug · paid by UPI</div>
+                <div style="font-size:15px;font-weight:600">₹2,470</div>
+              </div>
+            </div>
+            <div style="display:flex;border-top:1px solid #EADFD8;background:#fff;padding:8px 0 10px;margin-top:12px">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#8B7A71"><span style="font-size:19px">⌂</span><span style="font-size:11.5px;font-weight:500">Home</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C2521B"><span style="font-size:19px">☰</span><span style="font-size:11.5px;font-weight:600">Bookings</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#8B7A71"><span style="font-size:19px">☺</span><span style="font-size:11.5px;font-weight:500">Account</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">C6 · Empty &amp; offline</div>
+        <div style="font-size:12.5px;color:#7A6A62">no bookings · read failure with retry affordance</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">✕ ▮ 86%</span></div>
+            <div style="background:#241A15;color:#F6C7AE;font-size:12.5px;font-weight:500;padding:8px 20px;display:flex;align-items:center;gap:8px">
+              <span>⚠</span><span>You're offline. Showing last saved data.</span>
+            </div>
+            <div style="padding:12px 20px 12px;font-size:24px;font-weight:600;letter-spacing:-0.02em">Your bookings</div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 32px;gap:14px;text-align:center">
+              <div style="width:76px;height:76px;border-radius:24px;background:#F3EAE4;display:flex;align-items:center;justify-content:center;font-size:32px">🧰</div>
+              <div style="font-size:20px;font-weight:600">No bookings yet</div>
+              <div style="font-size:14.5px;color:#7A6A62;line-height:1.55">When something at home breaks, book a verified technician here. Catalog prices, no haggling.</div>
+              <div style="margin-top:8px;display:flex;align-items:center;justify-content:center;height:52px;padding:0 26px;border-radius:16px;background:#C2521B;color:#fff;font-size:16px;font-weight:600">Book a repair</div>
+            </div>
+            <div style="margin:0 20px 20px;background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:15px;font-weight:600">Couldn't refresh</div>
+              <div style="font-size:13.5px;color:#7A6A62;line-height:1.45">We'll retry automatically. Anything you tapped while offline is queued and sent when you reconnect.</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:46px;border-radius:12px;border:1.5px solid #C2521B;color:#C2521B;font-size:15px;font-weight:600">Retry now</div>
+            </div>
+            <div style="display:flex;border-top:1px solid #EADFD8;background:#fff;padding:8px 0 10px">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#8B7A71"><span style="font-size:19px">⌂</span><span style="font-size:11.5px;font-weight:500">Home</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C2521B"><span style="font-size:19px">☰</span><span style="font-size:11.5px;font-weight:600">Bookings</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#8B7A71"><span style="font-size:19px">☺</span><span style="font-size:11.5px;font-weight:500">Account</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">D · Tracking &amp; the two handshakes</div>
+      <div style="font-size:14px;color:#6E5C53">GET /me/bookings/:id polled every 15s · /confirm-arrival · /approve · /request-completion-otp</div>
+    </div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">D1 · DISPATCHED</div>
+        <div style="font-size:12.5px;color:#7A6A62">Finding a technician · action: Cancel</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;height:56px">
+              <div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div><div style="font-size:16px;font-weight:600">FC-2841</div><div style="font-size:12px;color:#7A6A62">Refrigerator — not cooling</div></div></div>
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#7A6A62">⟳</div>
+            </div>
+            <div style="background:#241A15;padding:26px 20px 24px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+              <div style="font-size:10.5px;font-weight:700;color:#241A15;background:#F6C7AE;padding:5px 10px;border-radius:999px;letter-spacing:.05em">DISPATCHED</div>
+              <div style="font-size:25px;font-weight:600;color:#fff;line-height:1.25">Finding you a technician…</div>
+              <div style="font-size:13.5px;color:#C9B7AE;line-height:1.5">Sent to verified technicians in Padra zone. Most jobs are accepted within 10 minutes.</div>
+              <div style="margin-top:6px;width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,.16);overflow:hidden"><div style="width:38%;height:4px;background:#C2521B"></div></div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:14px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#8B7A71"><span>⟳</span><span>Updated 6 seconds ago · pull down to refresh</span></div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+                <div style="font-size:14px;font-weight:600">Booking details</div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Slot</span><span style="font-weight:500">Today 12:00–14:00</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Address</span><span style="font-weight:500">Home · Padra</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Visit fee</span><span style="font-weight:500">₹199</span></div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:54px;border-radius:16px;border:1.5px solid #D8C9C0;color:#5C4B43;font-size:16px;font-weight:600">Cancel booking</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">D2 · ACCEPTED / EN_ROUTE</div>
+        <div style="font-size:12.5px;color:#7A6A62">technician { name, maskedPhone } appears here for the first time</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;height:56px">
+              <div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div><div style="font-size:16px;font-weight:600">FC-2841</div><div style="font-size:12px;color:#7A6A62">Refrigerator — not cooling</div></div></div>
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#7A6A62">⟳</div>
+            </div>
+            <div style="background:#241A15;padding:24px 20px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+              <div style="font-size:10.5px;font-weight:700;color:#241A15;background:#F6C7AE;padding:5px 10px;border-radius:999px;letter-spacing:.05em">EN ROUTE</div>
+              <div style="font-size:25px;font-weight:600;color:#fff;line-height:1.25">Mahesh is on the way</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:14px">
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;align-items:center;gap:13px">
+                  <div style="width:52px;height:52px;border-radius:26px;background:#FDECE2;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#C2521B">MS</div>
+                  <div style="flex:1">
+                    <div style="font-size:17px;font-weight:600">Mahesh Solanki</div>
+                    <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#1D6B4F;font-weight:600;margin-top:3px"><span>✓</span><span>ID &amp; skill verified · refrigeration</span></div>
+                  </div>
+                </div>
+                <div style="height:1px;background:#F0E6E0"></div>
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <div><div style="font-size:12px;color:#7A6A62">Masked number</div><div style="font-size:15px;font-weight:600;letter-spacing:.5px;margin-top:2px">+91 •••• •• 4471</div></div>
+                  <div style="display:flex;align-items:center;gap:7px;height:44px;padding:0 16px;border-radius:12px;background:#FDECE2;color:#C2521B;font-size:14.5px;font-weight:600">✆ Call</div>
+                </div>
+                <div style="font-size:12px;color:#8B7A71;line-height:1.45">Calls go through FixCare. Neither of you sees the other's real number.</div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="width:11px;height:11px;border-radius:6px;background:#1D6B4F"></div><div style="width:2px;height:26px;background:#1D6B4F"></div></div>
+                  <div><div style="font-size:14.5px;font-weight:600">Accepted</div><div style="font-size:12.5px;color:#7A6A62">11:32 AM</div></div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-top:-10px">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:2px"><div style="width:11px;height:11px;border-radius:6px;background:#C2521B"></div><div style="width:2px;height:26px;background:#E7D8CF"></div></div>
+                  <div><div style="font-size:14.5px;font-weight:600">On the way</div><div style="font-size:12.5px;color:#7A6A62">11:48 AM · arriving in the 12:00–14:00 slot</div></div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-top:-10px">
+                  <div style="width:11px;height:11px;border-radius:6px;border:2px solid #D8C9C0;margin-left:0"></div>
+                  <div style="font-size:14.5px;color:#9A8A81;margin-left:1px">Arrival — you'll confirm with a code</div>
+                </div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:54px;border-radius:16px;border:1.5px solid #D8C9C0;color:#5C4B43;font-size:16px;font-weight:600">Cancel booking</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">D3 · ARRIVED — keystone #1</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /me/bookings/:id/confirm-arrival { code }</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">Confirm arrival</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:16px">
+              <div style="background:#FDECE2;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:10.5px;font-weight:700;color:#C2521B;letter-spacing:.06em">ARRIVED</div>
+                <div style="font-size:22px;font-weight:600;line-height:1.25">Mahesh says he's at your door</div>
+                <div style="font-size:13.5px;color:#6B4A38;line-height:1.5">Ask him for the 4-digit arrival code on his app and enter it below. Work starts only after this.</div>
+              </div>
+              <div style="display:flex;gap:12px;margin-top:4px">
+                <div style="flex:1;height:70px;border-radius:16px;background:#fff;border:1.5px solid #C2521B;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:600">7</div>
+                <div style="flex:1;height:70px;border-radius:16px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:600;color:#C1B0A7">—</div>
+                <div style="flex:1;height:70px;border-radius:16px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:600;color:#C1B0A7">—</div>
+                <div style="flex:1;height:70px;border-radius:16px;background:#fff;border:1.5px solid #EADFD8;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:600;color:#C1B0A7">—</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:14px;border:1.5px solid #D8C9C0;font-size:15px;font-weight:600;color:#5C4B43;gap:8px">▣ Scan his QR instead</div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;gap:11px;align-items:flex-start">
+                <span style="font-size:15px">🛡</span>
+                <div style="font-size:13px;color:#5C4B43;line-height:1.5">Someone at the door who isn't Mahesh Solanki? Don't share the code — tap Report and we'll cancel the visit.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Confirm arrival</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:48px;font-size:15px;font-weight:600;color:#A63116">Report a problem</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">D4 · DIAGNOSED — the quote</div>
+        <div style="font-size:12.5px;color:#7A6A62">estimate { laborPaise, partsPaise, visitFeeCreditPaise, totalPayablePaise } · /approve · /decline</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">Repair quote</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:6px 20px 16px;gap:14px;overflow:hidden">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:10.5px;font-weight:700;color:#C2521B;letter-spacing:.06em">DIAGNOSED</div>
+                <div style="font-size:21px;font-weight:600;line-height:1.3">Compressor start relay failed</div>
+                <div style="font-size:13.5px;color:#7A6A62;line-height:1.5">Mahesh checked the gas pressure and the relay. Cooling stops because the relay isn't kicking the compressor in.</div>
+              </div>
+              <div style="display:flex;gap:9px">
+                <div style="flex:1;height:74px;border-radius:12px;background:#E7DED8;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8B7A71;text-align:center;line-height:1.3">Diagnosis<br>photo 1</div>
+                <div style="flex:1;height:74px;border-radius:12px;background:#E7DED8;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8B7A71;text-align:center;line-height:1.3">Nameplate</div>
+                <div style="flex:1;height:74px;border-radius:12px;background:#E7DED8;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8B7A71;text-align:center;line-height:1.3">Relay<br>close-up</div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:14px;font-weight:600;margin-bottom:2px">What you'll pay</div>
+                <div style="display:flex;justify-content:space-between;font-size:14.5px"><span style="color:#5C4B43">Labour · tier 2</span><span style="font-weight:500">₹450</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14.5px"><span style="color:#5C4B43">Start relay (OEM) × 1</span><span style="font-weight:500">₹780</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14.5px"><span style="color:#1D6B4F">Visit fee already counted</span><span style="font-weight:500;color:#1D6B4F">− ₹199</span></div>
+                <div style="height:1px;background:#F0E6E0;margin:3px 0"></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:16px;font-weight:600">Total payable</span><span style="font-size:24px;font-weight:600">₹1,031</span></div>
+                <div style="font-size:12px;color:#8B7A71;line-height:1.45">Catalog price ceiling. The technician cannot change it, and you pay only after you confirm the work is done.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Approve repair — ₹1,031</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:14px;border:1.5px solid #D8C9C0;color:#5C4B43;font-size:15px;font-weight:600">Decline · pay ₹199 visit fee</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">D5 · Repair in progress</div>
+        <div style="font-size:12.5px;color:#7A6A62">CUSTOMER_APPROVED → PARTS_* → REPAIR_IN_PROGRESS · photos arrive in `photos`</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;height:56px">
+              <div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div><div style="font-size:16px;font-weight:600">FC-2841</div><div style="font-size:12px;color:#7A6A62">Approved ₹1,031</div></div></div>
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#7A6A62">⟳</div>
+            </div>
+            <div style="background:#241A15;padding:24px 20px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+              <div style="font-size:10.5px;font-weight:700;color:#241A15;background:#F6C7AE;padding:5px 10px;border-radius:999px;letter-spacing:.05em">REPAIR IN PROGRESS</div>
+              <div style="font-size:25px;font-weight:600;color:#fff;line-height:1.25">Repair under way</div>
+              <div style="font-size:13.5px;color:#C9B7AE">Relay collected from the partner shop · fitting now</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:0">
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;align-items:center"><div style="width:11px;height:11px;border-radius:6px;background:#1D6B4F"></div><div style="width:2px;height:28px;background:#1D6B4F"></div></div><div><div style="font-size:14.5px;font-weight:600">You approved the repair</div><div style="font-size:12.5px;color:#7A6A62">12:41 PM</div></div></div>
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;align-items:center"><div style="width:11px;height:11px;border-radius:6px;background:#1D6B4F"></div><div style="width:2px;height:28px;background:#1D6B4F"></div></div><div><div style="font-size:14.5px;font-weight:600">Part collected</div><div style="font-size:12.5px;color:#7A6A62">1:05 PM · Padra Electricals</div></div></div>
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;align-items:center"><div style="width:11px;height:11px;border-radius:6px;background:#C2521B"></div><div style="width:2px;height:28px;background:#E7D8CF"></div></div><div><div style="font-size:14.5px;font-weight:600">Fitting the relay</div><div style="font-size:12.5px;color:#7A6A62">1:12 PM</div></div></div>
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="width:11px;height:11px;border-radius:6px;border:2px solid #D8C9C0"></div><div style="font-size:14.5px;color:#9A8A81">Work done — you'll release payment with an OTP</div></div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600">Repair photos</div><div style="font-size:12px;color:#8B7A71">3 so far</div></div>
+                <div style="display:flex;gap:9px">
+                  <div style="flex:1;height:68px;border-radius:10px;background:#E7DED8;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#8B7A71">BEFORE</div>
+                  <div style="flex:1;height:68px;border-radius:10px;background:#E7DED8;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#8B7A71">PART</div>
+                  <div style="flex:1;height:68px;border-radius:10px;background:#E7DED8;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#8B7A71">IN PROGRESS</div>
+                </div>
+                <div style="font-size:12px;color:#8B7A71">Links expire after 15 minutes — reopen the booking to refresh them.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#8B7A71;justify-content:center"><span>⟳</span><span>Auto-refreshing every 15 seconds</span></div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">D6 · REPAIR_COMPLETE — keystone #2</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /request-completion-otp → read the code to the technician</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">Confirm the work</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:10.5px;font-weight:700;color:#1D6B4F;letter-spacing:.06em">WORK DONE</div>
+                <div style="font-size:22px;font-weight:600;line-height:1.25">Check the fridge, then share this code</div>
+                <div style="font-size:13.5px;color:#7A6A62;line-height:1.5">Reading the code to Mahesh closes the job and unlocks payment. Don't share it if the repair isn't right.</div>
+              </div>
+              <div style="background:#241A15;border-radius:20px;padding:18px 20px;display:flex;flex-direction:column;align-items:center;gap:10px">
+                <div style="font-size:11.5px;font-weight:600;color:#C9B7AE;letter-spacing:.08em">COMPLETION CODE</div>
+                <div style="font-size:44px;font-weight:600;color:#fff;letter-spacing:10px;padding-left:10px">8 2 4 1</div>
+                <div style="font-size:12.5px;color:#C9B7AE">Expires in 09:47</div>
+              </div>
+              <div style="background:#FFF6E8;border:1px solid #F0DDBC;border-radius:14px;padding:13px 14px;font-size:12.5px;color:#6B5320;line-height:1.5">Dev build: <span style="font-weight:600">devOtp 8241</span> comes back in the request response. In production it arrives by SMS.</div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:14px;font-weight:600">Then you'll pay ₹1,031</div>
+                <div style="font-size:13px;color:#7A6A62;line-height:1.5">UPI or cash. Money moves only after you confirm — never before.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Resend code</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:48px;font-size:15px;font-weight:600;color:#A63116">Work isn't done properly</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">E · Payment, receipt &amp; dispute</div>
+      <div style="font-size:14px;color:#6E5C53">POST /pay (Razorpay test) · /pay-cash · /raise-dispute · 48-hour window</div>
+    </div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E1 · CUSTOMER_CONFIRMED — pay</div>
+        <div style="font-size:12.5px;color:#7A6A62">amount = estimate.totalPayablePaise (103100)</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">Payment</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:center;padding:14px 0 6px">
+                <div style="font-size:13px;color:#7A6A62">Amount due · FC-2841</div>
+                <div style="font-size:44px;font-weight:600;letter-spacing:-0.02em">₹1,031</div>
+                <div style="font-size:12.5px;color:#7A6A62">Labour ₹450 + parts ₹780 − visit fee ₹199</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="background:#fff;border:1.5px solid #C2521B;border-radius:16px;padding:16px;display:flex;align-items:center;gap:13px">
+                  <div style="width:20px;height:20px;border-radius:10px;border:6px solid #C2521B"></div>
+                  <div style="flex:1">
+                    <div style="font-size:16px;font-weight:600">Pay by UPI</div>
+                    <div style="font-size:12.5px;color:#7A6A62;margin-top:2px">GPay, PhonePe, Paytm · instant receipt</div>
+                  </div>
+                  <div style="font-size:11px;font-weight:700;color:#1D6B4F;background:#E9F5EF;padding:4px 8px;border-radius:6px">SAFER</div>
+                </div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:16px;display:flex;align-items:center;gap:13px">
+                  <div style="width:20px;height:20px;border-radius:10px;border:2px solid #C1B0A7"></div>
+                  <div style="flex:1">
+                    <div style="font-size:16px;font-weight:600">Pay cash to the technician</div>
+                    <div style="font-size:12.5px;color:#7A6A62;margin-top:2px">You'll get a receipt code to read out</div>
+                  </div>
+                </div>
+              </div>
+              <div style="background:#FFF6E8;border:1px solid #F0DDBC;border-radius:14px;padding:13px 14px;font-size:12.5px;color:#6B5320;line-height:1.5">Cash is capped at ₹2,000 per job. Above that, UPI only.</div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Pay ₹1,031 by UPI</div>
+              <div style="font-size:12px;color:#8B7A71;text-align:center;line-height:1.5">Payment is held by FixCare and released to the technician after the 48-hour window.</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E2 · UPI checkout handoff</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /pay → { orderId, amountPaise, keyId } → Razorpay sheet</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column;position:relative">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="opacity:.35;display:flex;flex-direction:column;padding:8px 20px;gap:16px">
+              <div style="font-size:17px;font-weight:600">Payment</div>
+              <div style="font-size:40px;font-weight:600">₹1,031</div>
+              <div style="height:72px;background:#fff;border:1px solid #EADFD8;border-radius:16px"></div>
+              <div style="height:72px;background:#fff;border:1px solid #EADFD8;border-radius:16px"></div>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:24px 24px 30px 30px;padding:20px 20px 24px;box-shadow:0 -8px 30px rgba(36,26,21,.2);display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;justify-content:center"><div style="width:44px;height:4px;border-radius:2px;background:#E0D2CA"></div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div><div style="font-size:16px;font-weight:600">FixCare</div><div style="font-size:12.5px;color:#7A6A62">Order pay_R8kQ2fT · test mode</div></div>
+                <div style="font-size:19px;font-weight:600">₹1,031</div>
+              </div>
+              <div style="height:1px;background:#F0E6E0"></div>
+              <div style="font-size:13px;font-weight:600;color:#5C4B43">Pay using</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="border:1.5px solid #C2521B;border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#E9F5EF;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#1D6B4F">G</div><div style="flex:1;font-size:15px;font-weight:600">Google Pay</div><div style="font-size:13px;color:#7A6A62">UPI</div></div>
+                <div style="border:1px solid #EADFD8;border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#EDEBF7;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#5B4C9E">P</div><div style="flex:1;font-size:15px;font-weight:600">PhonePe</div><div style="font-size:13px;color:#7A6A62">UPI</div></div>
+                <div style="border:1px solid #EADFD8;border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F3EAE4;display:flex;align-items:center;justify-content:center;font-size:15px">⌨</div><div style="flex:1;font-size:15px;font-weight:600">Enter UPI ID</div></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:center;height:54px;border-radius:14px;background:#C2521B;color:#fff;font-size:16.5px;font-weight:600">Pay ₹1,031</div>
+              <div style="font-size:11.5px;color:#9A8A81;text-align:center">Secured by Razorpay</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E3 · Cash receipt code</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /pay-cash → receipt OTP to the customer</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">Cash payment</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:22px;font-weight:600;line-height:1.25">Hand ₹1,031 to Mahesh, then read this code</div>
+                <div style="font-size:13.5px;color:#7A6A62;line-height:1.5">The code is your receipt. The job is marked paid only when he enters it.</div>
+              </div>
+              <div style="background:#241A15;border-radius:20px;padding:22px 20px;display:flex;flex-direction:column;align-items:center;gap:12px">
+                <div style="font-size:11.5px;font-weight:600;color:#C9B7AE;letter-spacing:.08em">RECEIPT CODE</div>
+                <div style="font-size:44px;font-weight:600;color:#fff;letter-spacing:10px;padding-left:10px">3 0 6 5</div>
+                <div style="font-size:12.5px;color:#C9B7AE">Cash · ₹1,031 · FC-2841</div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:9px">
+                <div style="font-size:14px;font-weight:600">Count the notes first</div>
+                <div style="font-size:13px;color:#7A6A62;line-height:1.5">Give the code only after you've handed over the full amount. If he asks for more than ₹1,031, don't pay — report it.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:14px;border:1.5px solid #D8C9C0;color:#5C4B43;font-size:15px;font-weight:600">Switch to UPI instead</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E4 · PAYMENT_RECEIVED</div>
+        <div style="font-size:12.5px;color:#7A6A62">payment CAPTURED · 48-hour dispute window open</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="background:#1D6B4F;padding:30px 20px 26px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+              <div style="width:46px;height:46px;border-radius:23px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:23px;color:#fff">✓</div>
+              <div style="font-size:26px;font-weight:600;color:#fff;line-height:1.2">Paid ₹1,031</div>
+              <div style="font-size:13.5px;color:#CBE5DA">UPI · 4 Sep, 1:58 PM · FC-2841</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:14px">
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:14px;font-weight:600">Receipt</div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Refrigerator — start relay</span><span style="font-weight:500">₹780</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Labour · tier 2</span><span style="font-weight:500">₹450</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Visit fee credit</span><span style="font-weight:500">− ₹199</span></div>
+                <div style="height:1px;background:#F0E6E0"></div>
+                <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600"><span>Paid</span><span>₹1,031</span></div>
+                <div style="display:flex;align-items:center;justify-content:center;height:44px;border-radius:12px;background:#F3EAE4;color:#5C4B43;font-size:14px;font-weight:600;margin-top:4px">Download receipt</div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14.5px;font-weight:600">Something not right?</div><div style="font-size:12px;font-weight:600;color:#9A6B00;background:#FFF6E8;padding:4px 9px;border-radius:999px">47h left</div></div>
+                <div style="font-size:13px;color:#7A6A62;line-height:1.5">You have 48 hours to raise an issue. The technician's payout stays on hold until it's settled.</div>
+                <div style="display:flex;align-items:center;justify-content:center;height:48px;border-radius:12px;border:1.5px solid #C2521B;color:#C2521B;font-size:15px;font-weight:600;margin-top:2px">Raise an issue</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:54px;border-radius:16px;background:#C2521B;color:#fff;font-size:16.5px;font-weight:600">Done</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ showDisputeFlow }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E5 · Raise a dispute</div>
+        <div style="font-size:12.5px;color:#7A6A62">POST /raise-dispute { reason } → state DISPUTED, payout held</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">Raise an issue</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:15px">
+              <div style="font-size:13.5px;color:#7A6A62;line-height:1.5">Tell us what went wrong with FC-2841. We hold the technician's payout while we review.</div>
+              <div style="font-size:13px;font-weight:600;color:#5C4B43">What happened?</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="background:#fff;border:1.5px solid #C2521B;border-radius:14px;padding:15px;display:flex;align-items:center;gap:12px"><div style="width:20px;height:20px;border-radius:10px;border:6px solid #C2521B"></div><div style="font-size:15px;font-weight:600">The problem came back</div></div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:14px;padding:15px;display:flex;align-items:center;gap:12px"><div style="width:20px;height:20px;border-radius:10px;border:2px solid #C1B0A7"></div><div style="font-size:15px;font-weight:500">Repair was incomplete</div></div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:14px;padding:15px;display:flex;align-items:center;gap:12px"><div style="width:20px;height:20px;border-radius:10px;border:2px solid #C1B0A7"></div><div style="font-size:15px;font-weight:500">Charged more than the quote</div></div>
+                <div style="background:#fff;border:1px solid #EADFD8;border-radius:14px;padding:15px;display:flex;align-items:center;gap:12px"><div style="width:20px;height:20px;border-radius:10px;border:2px solid #C1B0A7"></div><div style="font-size:15px;font-weight:500">Damage to my appliance or home</div></div>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:#5C4B43;margin-top:2px">Add detail</div>
+              <div style="background:#fff;border:1.5px solid #EADFD8;border-radius:14px;padding:14px;min-height:88px;font-size:14.5px;color:#241A15;line-height:1.5">Cooling stopped again the next morning. Freezer stays warm.</div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#C2521B;color:#fff;font-size:17px;font-weight:600">Submit issue</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E6 · DISPUTED</div>
+        <div style="font-size:12.5px;color:#7A6A62">dispute { status: OPEN } · reason is admin-only, not read back</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">FC-2841</div></div>
+            <div style="background:#9A6B00;padding:26px 20px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+              <div style="font-size:10.5px;font-weight:700;color:#4A3300;background:#FFE0A3;padding:5px 10px;border-radius:999px;letter-spacing:.05em">DISPUTE OPEN</div>
+              <div style="font-size:24px;font-weight:600;color:#fff;line-height:1.25">We're reviewing your issue</div>
+              <div style="font-size:13.5px;color:#F5E3C4;line-height:1.5">Raised 5 Sep, 9:12 AM. Most reviews close within two working days.</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:14px">
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Status</span><span style="font-weight:600;color:#9A6B00">Under review</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Amount paid</span><span style="font-weight:500">₹1,031</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Technician payout</span><span style="font-weight:500">On hold</span></div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:9px">
+                <div style="font-size:14.5px;font-weight:600">What happens next</div>
+                <div style="font-size:13px;color:#7A6A62;line-height:1.55">Our team looks at the diagnosis and repair photos, and may call you on your masked number. You'll get a notification when there's an outcome.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:52px;border-radius:14px;border:1.5px solid #D8C9C0;color:#5C4B43;font-size:15px;font-weight:600">View booking history</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E7 · CLOSED (partial refund)</div>
+        <div style="font-size:12.5px;color:#7A6A62">dispute RESOLVED · outcome PARTIAL · refundPaise 40000</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px">←</div><div style="font-size:17px;font-weight:600">FC-2841</div></div>
+            <div style="background:#241A15;padding:26px 20px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+              <div style="font-size:10.5px;font-weight:700;color:#241A15;background:#C4E4D5;padding:5px 10px;border-radius:999px;letter-spacing:.05em">CLOSED</div>
+              <div style="font-size:24px;font-weight:600;color:#fff;line-height:1.25">Settled — ₹400 refunded</div>
+              <div style="font-size:13.5px;color:#C9B7AE;line-height:1.5">Resolved 6 Sep in your favour, in part. The refund reaches your UPI app in 3–5 working days.</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:14px">
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px">
+                <div style="font-size:14px;font-weight:600">Final summary</div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Paid</span><span style="font-weight:500">₹1,031</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#7A6A62">Refunded</span><span style="font-weight:600;color:#1D6B4F">₹400</span></div>
+                <div style="height:1px;background:#F0E6E0"></div>
+                <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600"><span>Net</span><span>₹631</span></div>
+              </div>
+              <div style="background:#fff;border:1px solid #EADFD8;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:14.5px;font-weight:600">Booking timeline</div>
+                <div style="font-size:13px;color:#7A6A62;line-height:1.7">Booked 4 Sep · Arrival confirmed 12:34 PM · Diagnosed 12:38 PM · Approved ₹1,031 · Repair complete 1:52 PM · Paid by UPI 1:58 PM · Issue raised 5 Sep · Settled 6 Sep</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:54px;border-radius:16px;background:#C2521B;color:#fff;font-size:16.5px;font-weight:600">Book another repair</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#D8C9C0"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">E8 · 409 stale screen</div>
+        <div style="font-size:12.5px;color:#7A6A62">"not in the right state" → refetch and re-render</div>
+        <div style="padding:8px;background:#2A211C;border-radius:38px;box-shadow:0 10px 28px rgba(36,26,21,.16)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#FBF7F4;display:flex;flex-direction:column;position:relative">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#241A15"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="opacity:.3;display:flex;flex-direction:column;padding:10px 20px;gap:14px">
+              <div style="font-size:17px;font-weight:600">Repair quote</div>
+              <div style="font-size:21px;font-weight:600">Compressor start relay failed</div>
+              <div style="height:150px;background:#fff;border:1px solid #EADFD8;border-radius:18px"></div>
+              <div style="height:56px;background:#C2521B;border-radius:16px"></div>
+            </div>
+            <div style="position:absolute;inset:0;background:rgba(36,26,21,.45)"></div>
+            <div style="position:absolute;left:16px;right:16px;bottom:28px;background:#fff;border-radius:22px;padding:22px;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 34px rgba(36,26,21,.28)">
+              <div style="width:44px;height:44px;border-radius:14px;background:#FFF6E8;display:flex;align-items:center;justify-content:center;font-size:21px">⟳</div>
+              <div style="font-size:19px;font-weight:600;line-height:1.3">This booking moved on</div>
+              <div style="font-size:14px;color:#5C4B43;line-height:1.5">You already approved this repair from another screen. We've refreshed to the current status.</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:52px;border-radius:14px;background:#C2521B;color:#fff;font-size:16px;font-weight:600;margin-top:4px">Show current status</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <sc-if value="{{ showStateGallery }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">F · State machine, customer-side</div>
+      <div style="font-size:14px;color:#6E5C53">What the tracking hero says and what the customer can do, for every state the API can return</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:14px;max-width:1240px">
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">CREATED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Finding you a technician…</div>
+        <div style="font-size:12.5px;color:#7A6A62">Booking accepted by the platform, not yet opened to the pool.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#C2521B;background:#FDECE2;padding:6px 10px;border-radius:8px;align-self:flex-start">Cancel</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">DISPATCHED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Finding you a technician…</div>
+        <div style="font-size:12.5px;color:#7A6A62">Open to verified technicians in the zone. Progress bar, no ETA promise.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#C2521B;background:#FDECE2;padding:6px 10px;border-radius:8px;align-self:flex-start">Cancel</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">ACCEPTED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Mahesh will start soon</div>
+        <div style="font-size:12.5px;color:#7A6A62">First state with a technician card: real name, masked phone, skill badge.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#C2521B;background:#FDECE2;padding:6px 10px;border-radius:8px;align-self:flex-start">Cancel · Call</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">EN_ROUTE</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Technician is on the way</div>
+        <div style="font-size:12.5px;color:#7A6A62">Timeline step, not a map. Polling every 15s.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#C2521B;background:#FDECE2;padding:6px 10px;border-radius:8px;align-self:flex-start">Cancel · Call</div>
+      </div>
+
+      <div style="background:#fff;border:2px solid #C2521B;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#C2521B">ARRIVED</div><div style="font-size:10px;font-weight:700;color:#fff;background:#C2521B;padding:3px 7px;border-radius:5px">KEYSTONE 1</div></div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">He's at your door — confirm to start</div>
+        <div style="font-size:12.5px;color:#7A6A62">Customer enters the technician's 4-digit arrival code. Work is gated on this.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#fff;background:#C2521B;padding:6px 10px;border-radius:8px;align-self:flex-start">Confirm arrival</div>
+      </div>
+
+      <div style="background:#fff;border:2px solid #C2521B;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#C2521B">DIAGNOSED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Compressor start relay failed · ₹1,031</div>
+        <div style="font-size:12.5px;color:#7A6A62">Issue name, parts list, visit-fee credit, total payable. The decision screen.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#fff;background:#C2521B;padding:6px 10px;border-radius:8px;align-self:flex-start">Approve · Decline</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">CUSTOMER_APPROVED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Repair approved</div>
+        <div style="font-size:12.5px;color:#7A6A62">Milestone 1 of 4 in the progress card.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Watch</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">PARTS_REQUESTED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Getting the part</div>
+        <div style="font-size:12.5px;color:#7A6A62">Named milestone so a long gap doesn't read as a stall.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Watch</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">PARTS_ACQUIRED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Part collected</div>
+        <div style="font-size:12.5px;color:#7A6A62">Shop name shown if the platform has it.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Watch</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">REPAIR_IN_PROGRESS</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Repair under way</div>
+        <div style="font-size:12.5px;color:#7A6A62">Repair photos appear here as they're captured. Signed URLs, 15-min TTL.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Watch</div>
+      </div>
+
+      <div style="background:#fff;border:2px solid #C2521B;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#C2521B">REPAIR_COMPLETE</div><div style="font-size:10px;font-weight:700;color:#fff;background:#C2521B;padding:3px 7px;border-radius:5px">KEYSTONE 2</div></div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Work done — confirm to release payment</div>
+        <div style="font-size:12.5px;color:#7A6A62">Customer requests an OTP and reads it to the technician. Nothing is charged yet.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#fff;background:#C2521B;padding:6px 10px;border-radius:8px;align-self:flex-start">Get completion code</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">CUSTOMER_CONFIRMED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Confirmed — pay ₹1,031</div>
+        <div style="font-size:12.5px;color:#7A6A62">UPI or cash. Cash capped at ₹2,000; above that the 422 message routes to UPI.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#fff;background:#C2521B;padding:6px 10px;border-radius:8px;align-self:flex-start">Pay UPI · Pay cash</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#9A6B00">DECLINED_BY_CUSTOMER</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">You declined the repair — ₹199 due</div>
+        <div style="font-size:12.5px;color:#7A6A62">Same payment screen, visit fee only. No credit applies.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#fff;background:#9A6B00;padding:6px 10px;border-radius:8px;align-self:flex-start">Pay visit fee</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#1D6B4F">PAYMENT_RECEIVED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Paid ✓ — 48 hours to raise an issue</div>
+        <div style="font-size:12.5px;color:#7A6A62">Receipt plus a countdown. Payout held until the window closes.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#C2521B;background:#FDECE2;padding:6px 10px;border-radius:8px;align-self:flex-start">Raise dispute</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#9A6B00">DISPUTED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Dispute open — under review</div>
+        <div style="font-size:12.5px;color:#7A6A62">Status and amounts only; the reason is not read back to the customer.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Wait</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#1D6B4F">CLOSED</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Completed</div>
+        <div style="font-size:12.5px;color:#7A6A62">Final payment and dispute outcome, refund amount if any. Terminal.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Book again</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">CANCELLED_BY_CUSTOMER</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Cancelled by you</div>
+        <div style="font-size:12.5px;color:#7A6A62">Terminal. Row greys out in the list.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#8B7A71;background:#F3EAE4;padding:6px 10px;border-radius:8px;align-self:flex-start">Book again</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E3D6CD;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#7A6A62">CANCELLED_BY_TECHNICIAN</div>
+        <div style="font-size:16px;font-weight:600;line-height:1.35">Cancelled — rebook in one tap</div>
+        <div style="font-size:12.5px;color:#7A6A62">Terminal, but the hero offers to re-dispatch the same service and slot.</div>
+        <div style="margin-top:auto;font-size:12px;font-weight:600;color:#fff;background:#C2521B;padding:6px 10px;border-radius:8px;align-self:flex-start">Rebook</div>
+      </div>
+
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ showDarkSet }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;flex-direction:column;gap:28px">
+    <div style="display:flex;flex-direction:column;gap:6px;border-left:4px solid #C2521B;padding-left:16px">
+      <div style="font-size:24px;font-weight:600">G · Dark theme</div>
+      <div style="font-size:14px;color:#6E5C53">Same geometry, warm dark surfaces. Primary lifts to #FF8A50 for contrast on dark.</div>
+    </div>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">G1 · Phone entry</div>
+        <div style="padding:8px;background:#0E0A08;border-radius:38px;box-shadow:0 10px 28px rgba(0,0,0,.3)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#17110E;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#F5EBE5"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:32px 20px 20px;gap:8px">
+              <div style="width:52px;height:52px;border-radius:16px;background:#3A231A;display:flex;align-items:center;justify-content:center;color:#FF8A50;font-size:26px;font-weight:600;margin-bottom:20px">F</div>
+              <div style="font-size:28px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;color:#F5EBE5">Enter your mobile number</div>
+              <div style="font-size:14.5px;color:#A08D84;line-height:1.5;margin-top:6px">We'll send a 6-digit code to verify it.</div>
+              <div style="margin-top:26px;display:flex;align-items:center;gap:10px;background:#221A16;border:1.5px solid #FF8A50;border-radius:14px;padding:0 14px;height:60px">
+                <span style="font-size:19px;font-weight:500;color:#F5EBE5">+91</span>
+                <span style="width:1px;height:26px;background:#3A2C25"></span>
+                <span style="font-size:22px;font-weight:600;letter-spacing:1.5px;color:#F5EBE5">98250 41</span>
+              </div>
+              <div style="margin-top:10px;font-size:13px;color:#A08D84">Indian 10-digit mobile only</div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#FF8A50;color:#2A1408;font-size:17px;font-weight:600">Send code</div>
+              <div style="margin-top:14px;font-size:12.5px;color:#8A776E;text-align:center;line-height:1.5">By continuing you agree to FixCare's Terms and Privacy Policy.</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#3A2C25"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">G2 · EN_ROUTE tracking</div>
+        <div style="padding:8px;background:#0E0A08;border-radius:38px;box-shadow:0 10px 28px rgba(0,0,0,.3)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#17110E;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#F5EBE5"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;height:56px">
+              <div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#F5EBE5">←</div><div><div style="font-size:16px;font-weight:600;color:#F5EBE5">FC-2841</div><div style="font-size:12px;color:#A08D84">Refrigerator — not cooling</div></div></div>
+              <div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#A08D84">⟳</div>
+            </div>
+            <div style="background:#221A16;padding:24px 20px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+              <div style="font-size:10.5px;font-weight:700;color:#2A1408;background:#FF8A50;padding:5px 10px;border-radius:999px;letter-spacing:.05em">EN ROUTE</div>
+              <div style="font-size:25px;font-weight:600;color:#F5EBE5;line-height:1.25">Mahesh is on the way</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:18px 20px 20px;gap:14px">
+              <div style="background:#221A16;border:1px solid #3A2C25;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;align-items:center;gap:13px">
+                  <div style="width:52px;height:52px;border-radius:26px;background:#3A231A;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#FF8A50">MS</div>
+                  <div style="flex:1">
+                    <div style="font-size:17px;font-weight:600;color:#F5EBE5">Mahesh Solanki</div>
+                    <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#67C99E;font-weight:600;margin-top:3px"><span>✓</span><span>ID &amp; skill verified</span></div>
+                  </div>
+                </div>
+                <div style="height:1px;background:#3A2C25"></div>
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <div><div style="font-size:12px;color:#A08D84">Masked number</div><div style="font-size:15px;font-weight:600;letter-spacing:.5px;margin-top:2px;color:#F5EBE5">+91 •••• •• 4471</div></div>
+                  <div style="display:flex;align-items:center;gap:7px;height:44px;padding:0 16px;border-radius:12px;background:#3A231A;color:#FF8A50;font-size:14.5px;font-weight:600">✆ Call</div>
+                </div>
+              </div>
+              <div style="background:#221A16;border:1px solid #3A2C25;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="width:11px;height:11px;border-radius:6px;background:#67C99E;margin-top:4px"></div><div><div style="font-size:14.5px;font-weight:600;color:#F5EBE5">Accepted</div><div style="font-size:12.5px;color:#A08D84">11:32 AM</div></div></div>
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="width:11px;height:11px;border-radius:6px;background:#FF8A50;margin-top:4px"></div><div><div style="font-size:14.5px;font-weight:600;color:#F5EBE5">On the way</div><div style="font-size:12.5px;color:#A08D84">11:48 AM</div></div></div>
+                <div style="display:flex;gap:12px;align-items:flex-start"><div style="width:11px;height:11px;border-radius:6px;border:2px solid #4A3A32;margin-top:4px"></div><div style="font-size:14.5px;color:#8A776E">Arrival — you'll confirm with a code</div></div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:54px;border-radius:16px;border:1.5px solid #4A3A32;color:#D8C9C0;font-size:16px;font-weight:600">Cancel booking</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#3A2C25"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">G3 · Repair quote</div>
+        <div style="padding:8px;background:#0E0A08;border-radius:38px;box-shadow:0 10px 28px rgba(0,0,0,.3)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#17110E;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#F5EBE5"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#F5EBE5">←</div><div style="font-size:17px;font-weight:600;color:#F5EBE5">Repair quote</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:6px 20px 16px;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:10.5px;font-weight:700;color:#FF8A50;letter-spacing:.06em">DIAGNOSED</div>
+                <div style="font-size:21px;font-weight:600;line-height:1.3;color:#F5EBE5">Compressor start relay failed</div>
+                <div style="font-size:13.5px;color:#A08D84;line-height:1.5">Cooling stops because the relay isn't kicking the compressor in.</div>
+              </div>
+              <div style="display:flex;gap:9px">
+                <div style="flex:1;height:74px;border-radius:12px;background:#2B211B;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8A776E">PHOTO 1</div>
+                <div style="flex:1;height:74px;border-radius:12px;background:#2B211B;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8A776E">NAMEPLATE</div>
+                <div style="flex:1;height:74px;border-radius:12px;background:#2B211B;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8A776E">RELAY</div>
+              </div>
+              <div style="background:#221A16;border:1px solid #3A2C25;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:14px;font-weight:600;color:#F5EBE5">What you'll pay</div>
+                <div style="display:flex;justify-content:space-between;font-size:14.5px"><span style="color:#A08D84">Labour · tier 2</span><span style="font-weight:500;color:#F5EBE5">₹450</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14.5px"><span style="color:#A08D84">Start relay (OEM) × 1</span><span style="font-weight:500;color:#F5EBE5">₹780</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:14.5px"><span style="color:#67C99E">Visit fee already counted</span><span style="font-weight:500;color:#67C99E">− ₹199</span></div>
+                <div style="height:1px;background:#3A2C25;margin:3px 0"></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:16px;font-weight:600;color:#F5EBE5">Total payable</span><span style="font-size:24px;font-weight:600;color:#F5EBE5">₹1,031</span></div>
+                <div style="font-size:12px;color:#8A776E;line-height:1.45">Catalog price ceiling. You pay only after you confirm the work is done.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#FF8A50;color:#2A1408;font-size:17px;font-weight:600">Approve repair — ₹1,031</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:14px;border:1.5px solid #4A3A32;color:#D8C9C0;font-size:15px;font-weight:600">Decline · pay ₹199 visit fee</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#3A2C25"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:600">G4 · Completion code</div>
+        <div style="padding:8px;background:#0E0A08;border-radius:38px;box-shadow:0 10px 28px rgba(0,0,0,.3)">
+          <div style="width:360px;height:760px;border-radius:30px;overflow:hidden;background:#17110E;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:12px;font-weight:500;color:#F5EBE5"><span>9:41</span><span style="letter-spacing:2px">▲ ▮ 86%</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;height:56px"><div style="width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#F5EBE5">←</div><div style="font-size:17px;font-weight:600;color:#F5EBE5">Confirm the work</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;padding:8px 20px 20px;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:10.5px;font-weight:700;color:#67C99E;letter-spacing:.06em">WORK DONE</div>
+                <div style="font-size:22px;font-weight:600;line-height:1.25;color:#F5EBE5">Check the fridge, then share this code</div>
+                <div style="font-size:13.5px;color:#A08D84;line-height:1.5">Reading the code to Mahesh closes the job and unlocks payment.</div>
+              </div>
+              <div style="background:#2B211B;border-radius:20px;padding:22px 20px;display:flex;flex-direction:column;align-items:center;gap:12px">
+                <div style="font-size:11.5px;font-weight:600;color:#A08D84;letter-spacing:.08em">COMPLETION CODE</div>
+                <div style="font-size:44px;font-weight:600;color:#FF8A50;letter-spacing:10px;padding-left:10px">8 2 4 1</div>
+                <div style="font-size:12.5px;color:#A08D84">Expires in 09:47</div>
+              </div>
+              <div style="background:#221A16;border:1px solid #3A2C25;border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:14px;font-weight:600;color:#F5EBE5">Then you'll pay ₹1,031</div>
+                <div style="font-size:13px;color:#A08D84;line-height:1.5">UPI or cash. Money moves only after you confirm.</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:16px;background:#FF8A50;color:#2A1408;font-size:17px;font-weight:600">Resend code</div>
+              <div style="display:flex;align-items:center;justify-content:center;height:48px;font-size:15px;font-weight:600;color:#FF9B8A">Work isn't done properly</div>
+            </div>
+            <div style="height:22px;display:flex;align-items:center;justify-content:center"><div style="width:112px;height:4px;border-radius:2px;background:#3A2C25"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showStateGallery&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Board contents&quot;},&quot;showDarkSet&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Board contents&quot;},&quot;showDisputeFlow&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Board contents&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showStateGallery: this.props.showStateGallery ?? true,
+      showDarkSet: this.props.showDarkSet ?? true,
+      showDisputeFlow: this.props.showDisputeFlow ?? true
+    };
+  }
+}
+</script>
+</body>
+</html>
