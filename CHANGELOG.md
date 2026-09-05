@@ -8,7 +8,34 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
-## 2026-09-05 — Customer app Slice 2: boot hydration + profile + addresses + maps (on branch)
+## 2026-09-05 — Customer app Slice 3: discovery + create booking (on branch)
+
+- **Third app slice — the core value path.** Turns the stub Home into the real catalog and lets a customer
+  create a booking. Two new feature modules (`catalog/`, `booking/`) on the Slices 1-2 backbone.
+- **Catalog** — `CategoryDto`/`ServiceDto` + repository (`GET /catalog/categories`, `GET /catalog/services?zoneId=&categoryId=`;
+  services are priced per-zone: `laborPaise` nullable when unpriced, `visitFeePaise` from the zone).
+- **Home rebuilt** — resolves the default address's zone → categories + per-category services with price teasers
+  (₹, integer paise). No default address → category grid + an "add an address to see services & book" CTA (no
+  crash — a zone is required to price services).
+- **Booking wizard** — service-first (tapped from Home, `ServiceDto` passed via route `extra`): address step
+  (default preselected, RadioGroup) → slot step (date chips today…+7 + preset windows Morning/Afternoon/Evening →
+  a future ISO via `slotToIso`, past windows disabled) → confirm (visit fee from the chosen address's zone) →
+  `POST /me/bookings {addressId, serviceId, scheduledSlot}`. On success → the tracking screen; on 422 ("we don't
+  serve this area" / "service unavailable in your area") the backend message is surfaced inline (never swallowed).
+- **Tracking stub** (`/booking/:id`) — loads the `BookingDto`, shows bookingNumber, "Finding you a technician…",
+  service/slot/address/visit-fee, a Cancel action (failure → SnackBar, not swallowed), and a "live tracking coming
+  soon" banner. Full state-driven tracking (17 states, polling, arrival/approve/OTP) is Slice 4.
+- **Carry-forwards honored** (Slice-2 whole-branch review): the app sends ONLY `{addressId, serviceId, scheduledSlot}`
+  — never a customer id (backend derives from the JWT), never a client-snapshotted price. The create test asserts
+  the body's exact key set (an added extra field fails it), so no id/price can leak.
+- **Quality** — built via SDD (7 tasks, each spec+quality reviewed). The gates caught: two `flutter analyze` lints
+  slipping past the zero-issues bar, a **`required`-but-nullable `DisputeSummaryDto.outcome`** that would have
+  crashed Slice-4's tracking screen for any OPEN dispute (masked by a fictitious enum value in the test — fixed
+  with a real null-outcome regression test), an otp-flow test coverage regression, and a deprecated Radio API.
+  Contract-guarded repo tests (exact-body matcher + `{code,message}` envelope). 88 tests; `flutter analyze` clean;
+  build_runner idempotent (generated files committed). Final whole-branch review + `/code-review` pending before PR.
+
+## 2026-09-05 — Customer app Slice 2: boot hydration + profile + addresses + maps (merged PR #25 + fix #26)
 
 - **Second app slice** on the Slice-1 backbone. Two new feature modules (`profile/`, `address/`), the real-user
   boot flow, and the address management that booking (Slice 3) depends on.
