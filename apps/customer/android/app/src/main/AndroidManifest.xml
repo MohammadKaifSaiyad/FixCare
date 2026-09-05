@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app talks to the FixCare backend over the network in every build
+         type (debug hits the dev API, release hits production over HTTPS), so
+         INTERNET belongs in the main manifest, not only the Flutter-tool
+         debug/profile manifests. Release traffic is HTTPS-only; cleartext for
+         the local dev API is enabled debug-only (see src/debug). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="fixcare_customer"
         android:name="${applicationName}"

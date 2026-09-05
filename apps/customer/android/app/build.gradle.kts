@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "in.fixcare.fixcare_customer"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_secure_storage requires compiling against Android SDK 37; Flutter's
+    // default (flutter.compileSdkVersion) is 36 for this toolchain, so pin the
+    // higher SDK explicitly (compileSdk is backward-compatible). Revisit when the
+    // Flutter default catches up and this override becomes redundant.
+    compileSdk = maxOf(flutter.compileSdkVersion, 37)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

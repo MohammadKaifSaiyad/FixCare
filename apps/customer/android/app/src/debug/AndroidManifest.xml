@@ -4,4 +4,11 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Debug-only: allow cleartext HTTP to the local dev backend (see
+         res/xml/network_security_config.xml). The manifest merger folds this
+         networkSecurityConfig into the main <application>; it is absent from
+         release builds, which stay HTTPS-only. -->
+    <application
+        android:networkSecurityConfig="@xml/network_security_config" />
 </manifest>
