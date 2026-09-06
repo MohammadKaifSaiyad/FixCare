@@ -6,12 +6,23 @@ import '../../../core/result.dart';
 import '../../../core/theme.dart';
 import '../../address/data/address_repository.dart';
 import '../../address/presentation/address_controller.dart';
+import '../../auth/domain/session.dart';
+import '../../auth/presentation/auth_controller.dart';
 import '../../catalog/data/catalog_repository.dart';
 
 /// ₹ from integer paise, no trailing .00 when whole rupees.
 String rupees(int paise) {
   final r = paise / 100;
   return r == r.roundToDouble() ? '₹${r.toInt()}' : '₹${r.toStringAsFixed(2)}';
+}
+
+/// The customer's avatar initials from their name: first letters of the first
+/// two words, uppercased. "Kaif Saiyad" → "KS", "Raj" → "R". Empty name → "?".
+String initialsOf(String name) {
+  final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return '?';
+  if (words.length == 1) return words.first.characters.first.toUpperCase();
+  return (words[0].characters.first + words[1].characters.first).toUpperCase();
 }
 
 /// Home shell — the logged-in landing. Header shows the default address'
@@ -25,6 +36,8 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final addressesAsync = ref.watch(addressControllerProvider);
+    final session = ref.watch(authControllerProvider).value;
+    final name = session is SessionAuthenticated ? session.name : '';
     return Scaffold(
       body: SafeArea(
         child: addressesAsync.when(
@@ -36,7 +49,7 @@ class HomeScreen extends ConsumerWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Header(label: def?.label, zoneName: zone?.name),
+                _Header(label: def?.label, zoneName: zone?.name, initials: initialsOf(name)),
                 Expanded(
                   child: zone == null ? const _NoAddress() : _Catalog(zoneId: zone.id),
                 ),
@@ -51,9 +64,10 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.label, required this.zoneName});
+  const _Header({required this.label, required this.zoneName, required this.initials});
   final String? label;
   final String? zoneName;
+  final String initials;
 
   @override
   Widget build(BuildContext context) {
@@ -102,8 +116,8 @@ class _Header extends StatelessWidget {
                 height: 42,
                 decoration: const BoxDecoration(color: FixCareColors.primaryTint, shape: BoxShape.circle),
                 alignment: Alignment.center,
-                child: const Text('RP',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: FixCareColors.primary)),
+                child: Text(initials,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: FixCareColors.primary)),
               ),
             ),
           ),
