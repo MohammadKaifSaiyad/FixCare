@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-09-05_
+_Last updated: 2026-09-06_
 
 ---
 
@@ -12,31 +12,42 @@ _Last updated: 2026-09-05_
 **Month 5 — customer app (Flutter).** Backend booking module COMPLETE (B1→B7 merged, PR #21). Build order
 (ADR-0004) advanced to the **customer app** (`apps/customer`, Android + iOS per ADR-0005; Riverpod codegen +
 go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/web-drop (#23), design-fidelity
-(#24). **Slice 2 (boot hydration + profile + addresses + maps) complete on branch, in final review.** Money
-still on Razorpay test keys until KYC.
+(#24), Slice 2 (#25/#26), **Slice 3 discovery+booking (#27)**, **founder bug-fixes (#28)**. Money still on
+Razorpay test keys until KYC.
 
 ## Active task
-**Customer app Slice 3** complete on `feature/customer-app-slice3-discovery-booking` — **discovery + create
-booking**. Home rebuilt to the **real catalog**: resolves the default address's zone → `GET /catalog/categories`
-+ `GET /catalog/services?zoneId=&categoryId=` with per-zone price teasers; no default address → category grid +
-"add an address" CTA (no crash). A **booking wizard** (service → address → slot → confirm): service-first (from
-Home), default address preselected, date+preset-window slot picker (→ future ISO, past windows disabled), confirm
-shows the visit fee for the chosen address's zone → `POST /me/bookings {addressId, serviceId, scheduledSlot}` →
-lands on a **tracking stub** (`/booking/:id`: bookingNumber, "Finding you a technician…", service/slot/address/
-fee, Cancel, "live tracking coming soon"). Full state-driven tracking is Slice 4. **Carry-forwards honored:** the
-app sends only the 3 IDs — never a customer id (backend derives from JWT), never a client-snapshotted price. Built
-via SDD (7 tasks, each spec+quality reviewed — fix-loops caught: 2 analyze-bar lints, a `required`-but-nullable
-`DisputeSummaryDto.outcome` that would've crashed Slice-4 tracking for any OPEN dispute, an otp-flow coverage
-regression, a deprecated Radio API). 88 tests; `flutter analyze` clean; build_runner idempotent. Design:
-`docs/designs/2026-09-05-customer-app-slice3-discovery-booking-design.md`.
-**Next: final whole-branch review + `/code-review`, then PR → `main`.**
+**Backend contract-smoke test** on `feature/customer-app-backend-contract-smoke` — commit `d2dacfe`, ready for PR.
+Closes the recurring "only a real backend catches it" gap: the hermetic `flutter test` mocks the transport, so a
+green suite proved logic but never that the app's real dio requests satisfy the real Fastify backend — which is
+exactly how two bugs shipped (a bodyless DELETE carrying `application/json` → `FST_ERR_CTP_EMPTY_JSON_BODY`;
+request-shape drift the mocks agreed with). New `test/contract/backend_contract_smoke_test.dart` drives the app's
+**real repositories over real dio against a running backend + seeded dev DB**: auth (send→verify→tokens) →
+profile (get→updateName→get) → address (create serviceable→list→**DELETE**→gone, the bug guard) → catalog
+(categories + per-zone services) → booking (create→get→cancel). Deliberately **not** in the default suite: with
+no `BASE_URL` the app targets the emulator host (`10.0.2.2`), unreachable from the runner, so the group probes
+`/health` and **skips cleanly** — offline `flutter test` stays green (`+96 ~5`). Nulls out the
+`TestWidgetsFlutterBinding` global `HttpOverrides` for the file lifetime (restored in `tearDownAll`) so real dio
+reaches the network; a fresh random phone per run keeps it re-runnable. Verified both ways: `+5 All tests passed`
+against the live seeded backend; `+96 ~5 All tests passed` (0 failures) hermetic; `flutter analyze` clean. README
+documents how to run it.
+**Next: PR → `main` (founder pushes/merges). Then Slice 4 (full booking tracking).**
 
 ## Last shipped
-- **Customer app Slice 3** (`apps/customer`, on branch, final review) — discovery + create booking. Catalog module
+- **Customer app — backend contract-smoke test** (`feature/customer-app-backend-contract-smoke`, on branch,
+  `d2dacfe`) — one test that exercises real dio → real backend → seeded dev DB across auth/profile/address/
+  catalog/booking. Guards the DELETE-content-type class of bug the mocked suite can't see. Skips cleanly with no
+  backend so the default suite stays green. README documents the run steps. Analyze clean; 5/5 live, hermetic green.
+- **Customer app — founder bug-fixes** (`fix/home-avatar-initials`, **merged PR #28**): (1) empty `fixcare_dev`
+  DB → ran `NODE_ENV=development pnpm db:seed` (no code change; "391440 not serviceable" was missing seed data);
+  (2) home avatar shows the customer's **real initials** via `initialsOf(name)` ("Kaif Saiyad"→"KS") instead of a
+  hardcoded "RP"; (3) **DELETE address 400** fixed — removed the global dio `contentType: application/json` that
+  stamped bodyless GET/DELETE and made Fastify reject them (`FST_ERR_CTP_EMPTY_JSON_BODY`); added a regression test
+  (`dio_content_type_test.dart`). Analyze clean.
+- **Customer app Slice 3** (`apps/customer`, **merged PR #27**) — discovery + create booking. Catalog module
   (Category/Service DTOs + repo); full BookingDto + repo (create/get/cancel); Home real-catalog by default-address
   zone; booking wizard (address/slot/confirm + create, 422 surfaced not swallowed); tracking stub. 88 tests,
   analyze clean.
-- **Customer app Slice 2** (`apps/customer`, on branch, final review) — profile + addresses + boot hydration +
+- **Customer app Slice 2** (`apps/customer`, **merged PR #25/#26**) — profile + addresses + boot hydration +
   maps. Profile module (`CustomerProfileDto` + repo); session carries the profile; boot hydration + name-gate;
   Account screen; address module (`AddressDto`/`ZoneDto`/`ServiceabilityDto` + repo, contract-guarded tests);
   address list + `@riverpod` controller + serviceability chip; add/edit form (debounced serviceability + edit
@@ -184,14 +195,11 @@ regression, a deprecated Radio API). 88 tests; `flutter analyze` clean; build_ru
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **Customer app Slice 2** — home + profile + addresses: home/bookings list (`GET /me/bookings`),
-   profile capture (`GET/PATCH /me/profile`), address CRUD (`/me/addresses`) with live pincode
-   serviceability (`GET /serviceability`). Replace the Slice-1 placeholder user (fetch `/me/profile`
-   on boot). Reuse the Slice-1 `Result`/repository/interceptor backbone.
-2. **Customer app Slice 3** — discovery + booking creation: catalog browse
-   (`/catalog/categories`,`/catalog/services`) → booking wizard (`POST /me/bookings`) → tracking screen
-   (polling `GET /me/bookings/:id`, the 17-state hero). Provision Cloudflare R2 (`R2_*`) before the
-   photo-evidence slice.
+1. **PR the contract-smoke branch** → `main` (founder pushes/merges `feature/customer-app-backend-contract-smoke`).
+2. **Customer app Slice 4** — full booking tracking: replace the tracking stub with the state-driven hero
+   (17-state), polling `GET /me/bookings/:id`; confirm-arrival, approve/decline diagnosis, completion-OTP read-out.
+   Backend `BookingDto.address` only carries `{id}` today — Slice 4 wants a fuller address label (backend tweak).
+   Provision Cloudflare R2 (`R2_*`) before the photo-evidence slice.
 3. **Backend B2b — accept-timer** (deferred; 30-sec unclaimed-job re-broadcast; reuse `shared/queue/`
    from B6c) — pick up when the app work needs it, else after the core customer flow. Apply for
    Razorpay KYC + Route NOW if not already in flight.
