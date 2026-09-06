@@ -8,6 +8,30 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-06 — Backend contract-smoke test + founder bug-fixes
+
+- **Backend contract-smoke test** (`feature/customer-app-backend-contract-smoke`, on branch, `d2dacfe`) —
+  `test/contract/backend_contract_smoke_test.dart`: the one test that drives the app's **real repositories over
+  real dio against a running backend + seeded dev DB** (auth → profile → address create/**DELETE**/gone → catalog
+  → booking create/cancel). Closes the "only a real backend catches it" gap — the hermetic suite mocks the
+  transport, which is exactly how two bugs shipped (the DELETE content-type bug below; request-shape drift the
+  mocks agreed with). **Not** part of the default suite: no `BASE_URL` → app targets the emulator host
+  (`10.0.2.2`), unreachable from the runner → the group probes `/health` and **skips cleanly**, so offline
+  `flutter test` stays green (`+96 ~5`). Nulls out the `TestWidgetsFlutterBinding` global `HttpOverrides` for the
+  file lifetime (restored in `tearDownAll`) so real dio reaches the network; fresh random phone per run = no
+  shared-state footprint. Verified `+5` live / `+96 ~5` hermetic (0 failures); analyze clean. README documents the run.
+- **Founder bug-fixes** (`fix/home-avatar-initials`, **merged PR #28**):
+  - **Add-address / "391440 not serviceable"** — root cause was an **empty `fixcare_dev` DB** (zero seed data),
+    not code. Ran `NODE_ENV=development pnpm db:seed` (idempotent: 2 zones, 2 categories, 2 services, 4 prices,
+    2 parts, 3 pincodes, 3 issues). Verified end-to-end via curl. No code change.
+  - **Home avatar initials** — the top-right avatar now shows the customer's real initials via `initialsOf(name)`
+    ("Kaif Saiyad"→"KS", "Raj Patel"→"RP", single word → 1 letter, empty → "?") instead of a hardcoded "RP".
+    Reads the profile name from the authenticated session.
+  - **DELETE address 400** ("Body cannot be empty when content-type is set to 'application/json'") — removed the
+    **global dio `contentType: application/json`** from `BaseOptions`, which stamped that header on bodyless
+    GET/DELETE and made Fastify reject them (`FST_ERR_CTP_EMPTY_JSON_BODY`). dio still sets it automatically for
+    Map-bodied POST/PATCH. Added `dio_content_type_test.dart` regression guard.
+
 ## 2026-09-05 — Customer app Slice 3: discovery + create booking (on branch)
 
 - **Third app slice — the core value path.** Turns the stub Home into the real catalog and lets a customer

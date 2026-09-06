@@ -78,6 +78,40 @@ Analyze (must be clean before every commit):
 flutter analyze
 ```
 
+## Backend contract smoke test
+
+`flutter test` is hermetic — every unit/widget test mocks the transport, so a
+green suite proves the app's *logic* but says nothing about whether the real dio
+requests actually satisfy the real backend. Two shipped bugs slipped past the
+mocked suite for exactly this reason (a bodyless `DELETE` that carried
+`content-type: application/json`, which Fastify rejected with
+`FST_ERR_CTP_EMPTY_JSON_BODY`; and request-shape drift the mocks happened to
+agree with).
+
+`test/contract/backend_contract_smoke_test.dart` closes that gap: it drives the
+app's **real repositories over real dio against a running backend + seeded dev
+DB** (auth → profile → address create/delete → catalog → booking create/cancel).
+
+It is deliberately **not** part of the default suite. With no `BASE_URL` the app
+points at the emulator host (`10.0.2.2`), which the test runner can't reach, so
+the group probes `/health`, finds nothing, and **skips cleanly** — `flutter test`
+stays green offline. To actually run it against a live backend:
+
+```bash
+# 1. from repo root
+docker compose up -d
+# 2. from apps/backend — run the API
+set -a && source .env && set +a && pnpm dev
+# 3. from apps/backend — seed zones/pincodes/catalog (idempotent)
+NODE_ENV=development pnpm db:seed
+# 4. from apps/customer — point the test at the live backend
+flutter test test/contract/backend_contract_smoke_test.dart \
+  --dart-define=BASE_URL=http://localhost:3000
+```
+
+Each run registers a fresh random phone (auto-registered as a CUSTOMER), so it
+leaves no shared-state footprint and is safely re-runnable.
+
 ## Known toolchain gap — custom_lint / riverpod_lint
 
 As of 2026-09-04, `custom_lint` (all published versions) caps `analyzer <9.0.0`,
