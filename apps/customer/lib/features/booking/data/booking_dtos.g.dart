@@ -115,6 +115,15 @@ Map<String, dynamic> _$DisputeSummaryDtoToJson(_DisputeSummaryDto instance) =>
       'refundPaise': instance.refundPaise,
     };
 
+_CompletionOtpDto _$CompletionOtpDtoFromJson(Map<String, dynamic> json) =>
+    _CompletionOtpDto(
+      ok: json['ok'] as bool,
+      devOtp: json['devOtp'] as String?,
+    );
+
+Map<String, dynamic> _$CompletionOtpDtoToJson(_CompletionOtpDto instance) =>
+    <String, dynamic>{'ok': instance.ok, 'devOtp': instance.devOtp};
+
 _BookingDto _$BookingDtoFromJson(Map<String, dynamic> json) => _BookingDto(
   id: json['id'] as String,
   bookingNumber: json['bookingNumber'] as String,

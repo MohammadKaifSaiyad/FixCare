@@ -23,6 +23,12 @@ class BookingRepository {
     return Failure(failureKindFromStatus(status), _msg(res.data));
   }
 
+  Result<void> _okVoid(Response res) {
+    final status = res.statusCode ?? 0;
+    if (status >= 200 && status < 300) return const Ok(null);
+    return Failure(failureKindFromStatus(status), _msg(res.data));
+  }
+
   Future<Result<T>> _guard<T>(Future<Result<T>> Function() run) async {
     try {
       return await run();
@@ -54,9 +60,27 @@ class BookingRepository {
 
   Future<Result<void>> cancel(String id) => _guard(() async {
     final res = await _dio.post('/me/bookings/$id/cancel');
-    final status = res.statusCode ?? 0;
-    if (status >= 200 && status < 300) return const Ok(null);
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return _okVoid(res);
+  });
+
+  Future<Result<void>> confirmArrival(String id, String code) => _guard(() async {
+    final res = await _dio.post('/me/bookings/$id/confirm-arrival', data: {'code': code});
+    return _okVoid(res);
+  });
+
+  Future<Result<void>> approve(String id) => _guard(() async {
+    final res = await _dio.post('/me/bookings/$id/approve');
+    return _okVoid(res);
+  });
+
+  Future<Result<void>> decline(String id) => _guard(() async {
+    final res = await _dio.post('/me/bookings/$id/decline');
+    return _okVoid(res);
+  });
+
+  Future<Result<CompletionOtpDto>> requestCompletionOtp(String id) => _guard(() async {
+    final res = await _dio.post('/me/bookings/$id/request-completion-otp');
+    return _ok<CompletionOtpDto>(res, (data) => CompletionOtpDto.fromJson((data as Map).cast<String, dynamic>()));
   });
 }
 
