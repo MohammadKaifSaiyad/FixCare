@@ -16,22 +16,26 @@ go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/we
 still on Razorpay test keys until KYC.
 
 ## Active task
-**Customer app Slice 2** complete on `feature/customer-app-slice2-profile-addresses` — **boot hydration +
-profile + addresses (with live serviceability + a Google Maps pin-picker)**. Replaces the Slice-1 placeholder
-user: `AuthController.build()` now fetches `GET /me/profile` on boot (`SessionAuthenticated(CustomerProfileDto,
-hydrated)`; 401→clear→login; network-blip→stay logged in, no name-gate). First-run **name capture** gated after
-login when name empty. **Account** screen (name edit, phone read-only from secure storage, sign out). Full
-**address CRUD** (list/add/edit/delete/set-default) with debounced live pincode **serviceability** (warn but
-allow out-of-area, per backend 201), and a **Google Maps** pin-drop for lat/lng that **degrades gracefully
-without a key** (`MAPS_ENABLED`-gated placeholder — the app builds/tests/runs keyless; only the live map needs
-one). Built via SDD (11 tasks, each spec+quality reviewed — 5 fix-loops caught real defects: 2 weak contract
-tests, 2 silent error-swallows, 1 blank-edit-form). 64 tests; `flutter analyze` clean; build_runner idempotent
-(generated files committed). Design: `docs/designs/2026-09-05-customer-app-slice2-profile-addresses-design.md`.
-**Next: final whole-branch review + golden-rules/flutter-widget reviewers + `/code-review`, then PR → `main`.**
-**Founder action for full testing: provision a Google Maps API key (runbook in apps/customer/README.md) — the
-map picker shows a placeholder until then; everything else works.**
+**Customer app Slice 3** complete on `feature/customer-app-slice3-discovery-booking` — **discovery + create
+booking**. Home rebuilt to the **real catalog**: resolves the default address's zone → `GET /catalog/categories`
++ `GET /catalog/services?zoneId=&categoryId=` with per-zone price teasers; no default address → category grid +
+"add an address" CTA (no crash). A **booking wizard** (service → address → slot → confirm): service-first (from
+Home), default address preselected, date+preset-window slot picker (→ future ISO, past windows disabled), confirm
+shows the visit fee for the chosen address's zone → `POST /me/bookings {addressId, serviceId, scheduledSlot}` →
+lands on a **tracking stub** (`/booking/:id`: bookingNumber, "Finding you a technician…", service/slot/address/
+fee, Cancel, "live tracking coming soon"). Full state-driven tracking is Slice 4. **Carry-forwards honored:** the
+app sends only the 3 IDs — never a customer id (backend derives from JWT), never a client-snapshotted price. Built
+via SDD (7 tasks, each spec+quality reviewed — fix-loops caught: 2 analyze-bar lints, a `required`-but-nullable
+`DisputeSummaryDto.outcome` that would've crashed Slice-4 tracking for any OPEN dispute, an otp-flow coverage
+regression, a deprecated Radio API). 88 tests; `flutter analyze` clean; build_runner idempotent. Design:
+`docs/designs/2026-09-05-customer-app-slice3-discovery-booking-design.md`.
+**Next: final whole-branch review + `/code-review`, then PR → `main`.**
 
 ## Last shipped
+- **Customer app Slice 3** (`apps/customer`, on branch, final review) — discovery + create booking. Catalog module
+  (Category/Service DTOs + repo); full BookingDto + repo (create/get/cancel); Home real-catalog by default-address
+  zone; booking wizard (address/slot/confirm + create, 422 surfaced not swallowed); tracking stub. 88 tests,
+  analyze clean.
 - **Customer app Slice 2** (`apps/customer`, on branch, final review) — profile + addresses + boot hydration +
   maps. Profile module (`CustomerProfileDto` + repo); session carries the profile; boot hydration + name-gate;
   Account screen; address module (`AddressDto`/`ZoneDto`/`ServiceabilityDto` + repo, contract-guarded tests);
@@ -250,6 +254,10 @@ map picker shows a placeholder until then; everything else works.**
   MSG91 DLT (1-2 wks), Setu + Karza KYC sandbox, WhatsApp/Gupshup (3-6 wks).
 - Open decisions to settle (see `docs/07-reference/next-steps.md`): cash-model
   legal structure, customer-support channel, designer hire.
+- **Google Maps live tiles need billing enabled** on the Cloud project (deferred by founder).
+  The address map picker is wired + crash-safe (`MAPS_ENABLED`+key gate → placeholder without it);
+  runbook + Android SHA-1 in `apps/customer/README.md`. Enable billing to render the map; everything
+  else works without it.
 
 ## Pointers
 - **Build order:** Backend → Customer app → Technician app → Admin → Merchant

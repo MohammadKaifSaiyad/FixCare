@@ -33,3 +33,19 @@ abstract class ServiceabilityDto with _$ServiceabilityDto {
   const factory ServiceabilityDto({required bool serviceable, ZoneDto? zone, String? message}) = _ServiceabilityDto;
   factory ServiceabilityDto.fromJson(Map<String, dynamic> j) => _$ServiceabilityDtoFromJson(j);
 }
+
+/// Picks the address to resolve the catalog/booking zone against: the default
+/// address IF it's serviceable (has a zone), else the first serviceable
+/// address, else null. Shared by Home (catalog zone) and the booking wizard
+/// (preselect) so neither ever lands on a non-serviceable default — that would
+/// either hide a bookable catalog (Home) or preselect an address that is
+/// guaranteed to 422 on booking confirm (wizard).
+AddressDto? defaultServiceableAddress(List<AddressDto> addresses) {
+  if (addresses.isEmpty) return null;
+  final def = addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
+  if (def.serviceable && def.zone != null) return def;
+  for (final a in addresses) {
+    if (a.serviceable && a.zone != null) return a;
+  }
+  return null;
+}
