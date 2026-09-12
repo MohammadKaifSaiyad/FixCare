@@ -12,30 +12,36 @@ _Last updated: 2026-09-06_
 **Month 5 — customer app (Flutter).** Backend booking module COMPLETE (B1→B7 merged, PR #21). Build order
 (ADR-0004) advanced to the **customer app** (`apps/customer`, Android + iOS per ADR-0005; Riverpod codegen +
 go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/web-drop (#23), design-fidelity
-(#24), Slice 2 (#25/#26), **Slice 3 discovery+booking (#27)**, **founder bug-fixes (#28)**. Money still on
-Razorpay test keys until KYC.
+(#24), Slice 2 (#25/#26), **Slice 3 discovery+booking (#27)**, **founder bug-fixes (#28)**, **contract-smoke
+test (#29)**. **Slice 4 (booking tracking) complete on branch, ready for PR.** Money still on Razorpay test keys
+until KYC.
 
 ## Active task
-**Backend contract-smoke test** on `feature/customer-app-backend-contract-smoke` — commit `d2dacfe`, ready for PR.
-Closes the recurring "only a real backend catches it" gap: the hermetic `flutter test` mocks the transport, so a
-green suite proved logic but never that the app's real dio requests satisfy the real Fastify backend — which is
-exactly how two bugs shipped (a bodyless DELETE carrying `application/json` → `FST_ERR_CTP_EMPTY_JSON_BODY`;
-request-shape drift the mocks agreed with). New `test/contract/backend_contract_smoke_test.dart` drives the app's
-**real repositories over real dio against a running backend + seeded dev DB**: auth (send→verify→tokens) →
-profile (get→updateName→get) → address (create serviceable→list→**DELETE**→gone, the bug guard) → catalog
-(categories + per-zone services) → booking (create→get→cancel). Deliberately **not** in the default suite: with
-no `BASE_URL` the app targets the emulator host (`10.0.2.2`), unreachable from the runner, so the group probes
-`/health` and **skips cleanly** — offline `flutter test` stays green (`+96 ~5`). Nulls out the
-`TestWidgetsFlutterBinding` global `HttpOverrides` for the file lifetime (restored in `tearDownAll`) so real dio
-reaches the network; a fresh random phone per run keeps it re-runnable. Verified both ways: `+5 All tests passed`
-against the live seeded backend; `+96 ~5 All tests passed` (0 failures) hermetic; `flutter analyze` clean. README
-documents how to run it.
-**Next: PR → `main` (founder pushes/merges). Then Slice 4 (full booking tracking).**
+**Customer app Slice 4 — booking tracking** COMPLETE on `feature/customer-app-slice4-booking-tracking` (commits
+`bf5d4ac..8cd4a3b`), **ready for PR → `main`**. Replaces the Slice-3 tracking stub with the live, state-driven
+tracking screen: an `@riverpod` family controller **adaptively polls** `GET /me/bookings/:id` every 5s (stops at
+terminal, keeps last-good on a poll blip, `refetch()` on gate success + app resume); a **pure `phaseFor`** maps
+all **18** backend states → 12 customer phases (exhaustively unit-tested, unknown-state fallback); the screen
+renders a timeline + a phase-specific gate card and drives the three **customer keystone gates** —
+confirm-arrival (6-digit code the tech shows → `POST …/confirm-arrival {code}`), approve/decline diagnosis
+(decline behind a visit-fee confirm dialog), and completion-OTP mint (`…/request-completion-otp` → SMS to the
+customer; keystone asymmetry — **the customer only mints+displays, the technician enters it**; dev echoes `devOtp`
+behind `!kReleaseMode`). Address label is **joined app-side** from `/me/addresses` (backend `address` carries only
+`{id}`; no backend change). **Payment deferred to Slice 5** (placeholder + amount owed; Razorpay KYC still
+blocked). Built via SDD (5 tasks, each spec+quality reviewed; final whole-branch review MERGE-READY, no
+Critical/Important). 145 tests (`+138 ~5` hermetic, contract-smoke skips without BASE_URL); `flutter analyze`
+clean; build_runner idempotent. Design/plan: `docs/designs/2026-09-06-…-design.md`, `docs/plans/2026-09-06-…md`.
+**Next: PR → `main` (founder pushes/merges). Then Slice 5 (payment: Razorpay UPI + cash).**
 
 ## Last shipped
-- **Customer app — backend contract-smoke test** (`feature/customer-app-backend-contract-smoke`, on branch,
-  `d2dacfe`) — one test that exercises real dio → real backend → seeded dev DB across auth/profile/address/
-  catalog/booking. Guards the DELETE-content-type class of bug the mocked suite can't see. Skips cleanly with no
+- **Customer app Slice 4 — booking tracking** (`feature/customer-app-slice4-booking-tracking`, on branch,
+  `bf5d4ac..8cd4a3b`) — live 18-state tracking: adaptive-poll `@riverpod` controller (stop-at-terminal,
+  keep-last-good, refetch), pure `phaseFor` mapper, timeline + arrival/decision/completion gate cards, decline
+  confirm-dialog, dev-echo OTP behind `!kReleaseMode`, app-side address-label join. Payment deferred to Slice 5.
+  145 tests, analyze clean; final review MERGE-READY.
+- **Customer app — backend contract-smoke test** (**merged PR #29**) — one test that exercises real dio → real
+  backend → seeded dev DB across auth/profile/address/catalog/booking. Guards the DELETE-content-type class of
+  bug the mocked suite can't see. Skips cleanly with no
   backend so the default suite stays green. README documents the run steps. Analyze clean; 5/5 live, hermetic green.
 - **Customer app — founder bug-fixes** (`fix/home-avatar-initials`, **merged PR #28**): (1) empty `fixcare_dev`
   DB → ran `NODE_ENV=development pnpm db:seed` (no code change; "391440 not serviceable" was missing seed data);
@@ -195,16 +201,23 @@ documents how to run it.
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR the contract-smoke branch** → `main` (founder pushes/merges `feature/customer-app-backend-contract-smoke`).
-2. **Customer app Slice 4** — full booking tracking: replace the tracking stub with the state-driven hero
-   (17-state), polling `GET /me/bookings/:id`; confirm-arrival, approve/decline diagnosis, completion-OTP read-out.
-   Backend `BookingDto.address` only carries `{id}` today — Slice 4 wants a fuller address label (backend tweak).
-   Provision Cloudflare R2 (`R2_*`) before the photo-evidence slice.
+1. **PR the Slice-4 branch** → `main` (founder pushes/merges `feature/customer-app-slice4-booking-tracking`).
+2. **Customer app Slice 5** — payment: `POST /me/bookings/:id/pay` (Razorpay UPI: orderId/amountPaise/keyId +
+   checkout SDK) and `…/pay-cash` (cash-receipt OTP). Replaces the Slice-4 "payment coming soon" placeholder at
+   `CUSTOMER_CONFIRMED`/`PAYMENT_RECEIVED`/`DECLINED_BY_CUSTOMER`. **Blocked on Razorpay KYC + Route** (apply
+   now if not in flight). Provision Cloudflare R2 (`R2_*`) before the photo-evidence work.
 3. **Backend B2b — accept-timer** (deferred; 30-sec unclaimed-job re-broadcast; reuse `shared/queue/`
-   from B6c) — pick up when the app work needs it, else after the core customer flow. Apply for
-   Razorpay KYC + Route NOW if not already in flight.
+   from B6c) — pick up when the app work needs it, else after the core customer flow.
 
 ## Deferred follow-ups (carry forward)
+- **Slice 4 tracking follow-up (one ticket, non-blocking — final review MERGE-READY):** (a) **background-poll
+  pause** — the design said the 5s poll "pauses when backgrounded"; the controller only refetches on resume, so
+  the timer keeps firing while backgrounded (single timer, cleanly disposed — battery/spec-conformance nit, not
+  correctness); (b) missing widget tests for the completion **429/Failure SnackBar** (a spec-named no-swallow
+  path), the decline-dialog **"Keep repair"** cancel branch, and the **AppLifecycleListener resume→refetch**
+  (all correct by inspection, untested); (c) redundant pre-await `ref.mounted` check in `_poll` (cosmetic).
+  Also **real-backend smoke proof** of the new gate endpoints (confirm-arrival/approve/decline/completion) once
+  the contract-smoke harness can drive a booking to EN_ROUTE/DIAGNOSED/REPAIR_COMPLETE (needs a technician actor).
 - **B7 (disputes) deferred scope:** tier-based auto-resolve (small-refund disputes settled without
   admin review); customer/technician appeals on a RESOLVED dispute; abuse-detection (repeat-disputer
   flagging, feeds the trust system); admin dispute dashboard UI (queries exist, no UI until admin
