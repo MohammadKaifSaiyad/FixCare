@@ -8,6 +8,32 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-12 — Customer app Slice 4: booking tracking (on branch)
+
+- **Live, state-driven booking tracking** replaces the Slice-3 stub at `/booking/:id`. Built via SDD (5 tasks,
+  each spec+quality reviewed; final whole-branch review MERGE-READY, no Critical/Important). On
+  `feature/customer-app-slice4-booking-tracking` (`bf5d4ac..8cd4a3b`), ready for PR.
+- **Adaptive polling controller** (`@riverpod` family `BookingTracking`) — polls `GET /me/bookings/:id` every 5s
+  while active, **stops at terminal** states, **keeps last-good** on a poll blip (no error flash), `refetch()` on
+  gate success + app resume. `fakeAsync`-tested for cadence/terminal-stop/keep-last-good.
+- **Pure `phaseFor` mapper** — all **18** backend states → 12 customer phases + the active gate, exhaustively
+  unit-tested with an unknown-state fallback so no state ever renders blank. Flutter-free, trivially testable.
+- **Three customer keystone gates** on the screen: **confirm-arrival** (enter the 6-digit code the technician
+  shows → `POST …/confirm-arrival {code}`, inline error on 401/409/422); **approve/decline** diagnosis (approve
+  one tap; **decline behind a confirm dialog naming the visit fee owed**); **completion-OTP** mint
+  (`…/request-completion-otp` → SMS to the customer). **Keystone asymmetry preserved:** the customer screen only
+  mints + displays the code — no customer-side "verify"; the technician enters it. Dev builds echo `devOtp`
+  on-screen behind `!kReleaseMode` (never in release).
+- **App-side address join** — `bookingAddressLabelProvider` joins the booking's `address.id` (backend carries only
+  the id) to a label from the customer's own `/me/addresses`, falling back to the raw id. No backend change.
+- **Timeline** stepper + per-phase cards (technician block once assigned, parts/estimate at diagnosis, dispute
+  summary, terminal receipt). Cancel shown only while the state is cancellable.
+- **Payment deferred to Slice 5** — a "payment coming soon" placeholder + amount owed at the payable states
+  (Razorpay UPI / cash blocked on KYC). No live GPS map (backend exposes no customer location stream).
+- 145 tests (`+138 ~5` hermetic; contract-smoke skips without BASE_URL); `flutter analyze` clean; build_runner
+  idempotent. Design `docs/designs/2026-09-06-customer-app-slice4-booking-tracking-design.md`, plan
+  `docs/plans/2026-09-06-customer-app-slice4-booking-tracking.md`.
+
 ## 2026-09-06 — Backend contract-smoke test + founder bug-fixes
 
 - **Backend contract-smoke test** (`feature/customer-app-backend-contract-smoke`, on branch, `d2dacfe`) —

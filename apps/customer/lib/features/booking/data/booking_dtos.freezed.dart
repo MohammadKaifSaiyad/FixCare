@@ -2762,6 +2762,279 @@ as int?,
 
 
 /// @nodoc
+mixin _$CompletionOtpDto {
+
+ bool get ok; String? get devOtp;
+/// Create a copy of CompletionOtpDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CompletionOtpDtoCopyWith<CompletionOtpDto> get copyWith => _$CompletionOtpDtoCopyWithImpl<CompletionOtpDto>(this as CompletionOtpDto, _$identity);
+
+  /// Serializes this CompletionOtpDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as CompletionOtpDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CompletionOtpDto&&(identical(other.ok, _this.ok) || other.ok == _this.ok)&&(identical(other.devOtp, _this.devOtp) || other.devOtp == _this.devOtp));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as CompletionOtpDto;
+  return Object.hash(runtimeType,_this.ok,_this.devOtp);
+}
+
+@override
+String toString() {
+  final _this = this as CompletionOtpDto;
+  return 'CompletionOtpDto(ok: ${_this.ok}, devOtp: ${_this.devOtp})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CompletionOtpDtoCopyWith<$Res>  {
+  factory $CompletionOtpDtoCopyWith(CompletionOtpDto value, $Res Function(CompletionOtpDto) _then) = _$CompletionOtpDtoCopyWithImpl;
+@useResult
+$Res call({
+ bool ok, String? devOtp
+});
+
+
+
+
+}
+/// @nodoc
+class _$CompletionOtpDtoCopyWithImpl<$Res>
+    implements $CompletionOtpDtoCopyWith<$Res> {
+  _$CompletionOtpDtoCopyWithImpl(this._self, this._then);
+
+  final CompletionOtpDto _self;
+  final $Res Function(CompletionOtpDto) _then;
+
+/// Create a copy of CompletionOtpDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? ok = null,Object? devOtp = freezed,}) {
+  return _then(CompletionOtpDto(
+ok: null == ok ? _self.ok : ok // ignore: cast_nullable_to_non_nullable
+as bool,devOtp: freezed == devOtp ? _self.devOtp : devOtp // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [CompletionOtpDto].
+extension CompletionOtpDtoPatterns on CompletionOtpDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _CompletionOtpDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _CompletionOtpDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _CompletionOtpDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _CompletionOtpDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _CompletionOtpDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _CompletionOtpDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool ok,  String? devOtp)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _CompletionOtpDto() when $default != null:
+return $default(_that.ok,_that.devOtp);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool ok,  String? devOtp)  $default,) {final _that = this;
+switch (_that) {
+case _CompletionOtpDto():
+return $default(_that.ok,_that.devOtp);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool ok,  String? devOtp)?  $default,) {final _that = this;
+switch (_that) {
+case _CompletionOtpDto() when $default != null:
+return $default(_that.ok,_that.devOtp);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _CompletionOtpDto implements CompletionOtpDto {
+  const _CompletionOtpDto({required this.ok, this.devOtp});
+  factory _CompletionOtpDto.fromJson(Map<String, dynamic> json) => _$CompletionOtpDtoFromJson(json);
+
+@override final  bool ok;
+@override final  String? devOtp;
+
+/// Create a copy of CompletionOtpDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$CompletionOtpDtoCopyWith<_CompletionOtpDto> get copyWith => __$CompletionOtpDtoCopyWithImpl<_CompletionOtpDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$CompletionOtpDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CompletionOtpDto&&(identical(other.ok, ok) || other.ok == ok)&&(identical(other.devOtp, devOtp) || other.devOtp == devOtp));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,ok,devOtp);
+}
+
+@override
+String toString() {
+    return 'CompletionOtpDto(ok: $ok, devOtp: $devOtp)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$CompletionOtpDtoCopyWith<$Res> implements $CompletionOtpDtoCopyWith<$Res> {
+  factory _$CompletionOtpDtoCopyWith(_CompletionOtpDto value, $Res Function(_CompletionOtpDto) _then) = __$CompletionOtpDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ bool ok, String? devOtp
+});
+
+
+
+
+}
+/// @nodoc
+class __$CompletionOtpDtoCopyWithImpl<$Res>
+    implements _$CompletionOtpDtoCopyWith<$Res> {
+  __$CompletionOtpDtoCopyWithImpl(this._self, this._then);
+
+  final _CompletionOtpDto _self;
+  final $Res Function(_CompletionOtpDto) _then;
+
+/// Create a copy of CompletionOtpDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? ok = null,Object? devOtp = freezed,}) {
+  return _then(_CompletionOtpDto(
+ok: null == ok ? _self.ok : ok // ignore: cast_nullable_to_non_nullable
+as bool,devOtp: freezed == devOtp ? _self.devOtp : devOtp // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
 mixin _$BookingDto {
 
  String get id; String get bookingNumber; String get state; String get scheduledSlot; int get visitFeePaise; int get laborPaise; String get laborTier; BookingServiceDto get service; BookingZoneDto get zone; BookingAddressRefDto get address; TechnicianRefDto? get technician; DiagnosisDto? get diagnosis; List<PartDto> get parts; EstimateDto get estimate; List<PhotoDto> get photos; PaymentSummaryDto? get payment; DisputeSummaryDto? get dispute;

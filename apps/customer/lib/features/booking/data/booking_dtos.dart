@@ -69,6 +69,12 @@ abstract class DisputeSummaryDto with _$DisputeSummaryDto {
 }
 
 @freezed
+abstract class CompletionOtpDto with _$CompletionOtpDto {
+  const factory CompletionOtpDto({required bool ok, String? devOtp}) = _CompletionOtpDto;
+  factory CompletionOtpDto.fromJson(Map<String, dynamic> j) => _$CompletionOtpDtoFromJson(j);
+}
+
+@freezed
 abstract class BookingDto with _$BookingDto {
   const factory BookingDto({
     required String id,

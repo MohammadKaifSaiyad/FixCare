@@ -161,4 +161,71 @@ void main() {
     expect(r, isA<Failure<BookingDto>>());
     expect((r as Failure<BookingDto>).kind, FailureKind.server);
   });
+
+  test('confirmArrival POSTs EXACTLY {code} and 200 -> Ok(void)', () async {
+    adapter.onPost('/me/bookings/b1/confirm-arrival', (s) => s.reply(200, {'state': 'ARRIVED'}),
+        data: {'code': '123456'});
+    final r = await repo.confirmArrival('b1', '123456');
+    expect(r, isA<Ok<void>>());
+  });
+
+  test('confirmArrival 401 -> Failure(unauthorized) with backend message', () async {
+    adapter.onPost('/me/bookings/b1/confirm-arrival',
+        (s) => s.reply(401, {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired arrival code'}),
+        data: {'code': '000000'});
+    final r = await repo.confirmArrival('b1', '000000');
+    final f = r as Failure;
+    expect(f.kind, FailureKind.unauthorized);
+    expect(f.message, 'Invalid or expired arrival code');
+  });
+
+  test('confirmArrival 409 (tech not arrived yet) -> Failure with message', () async {
+    adapter.onPost('/me/bookings/b1/confirm-arrival',
+        (s) => s.reply(409, {'code': 'CONFLICT', 'message': 'The technician has not marked arrival yet'}),
+        data: {'code': '123456'});
+    final r = await repo.confirmArrival('b1', '123456');
+    expect((r as Failure).message, 'The technician has not marked arrival yet');
+  });
+
+  test('approve is a BODYLESS POST and 200 -> Ok(void)', () async {
+    adapter.onPost('/me/bookings/b1/approve', (s) => s.reply(200, {'state': 'CUSTOMER_APPROVED'}));
+    final r = await repo.approve('b1');
+    expect(r, isA<Ok<void>>());
+  });
+
+  test('approve 409 (not awaiting a decision) -> Failure with message', () async {
+    adapter.onPost('/me/bookings/b1/approve',
+        (s) => s.reply(409, {'code': 'CONFLICT', 'message': 'Booking is not awaiting a decision'}));
+    final r = await repo.approve('b1');
+    expect((r as Failure).message, 'Booking is not awaiting a decision');
+  });
+
+  test('decline is a BODYLESS POST and 200 -> Ok(void)', () async {
+    adapter.onPost('/me/bookings/b1/decline', (s) => s.reply(200, {'state': 'DECLINED_BY_CUSTOMER'}));
+    final r = await repo.decline('b1');
+    expect(r, isA<Ok<void>>());
+  });
+
+  test('requestCompletionOtp bodyless POST 200 -> Ok(CompletionOtpDto with devOtp)', () async {
+    adapter.onPost('/me/bookings/b1/request-completion-otp', (s) => s.reply(200, {'ok': true, 'devOtp': '654321'}));
+    final r = await repo.requestCompletionOtp('b1');
+    final dto = (r as Ok<CompletionOtpDto>).value;
+    expect(dto.ok, isTrue);
+    expect(dto.devOtp, '654321');
+  });
+
+  test('requestCompletionOtp 200 without devOtp (prod shape) -> Ok(ok:true, devOtp:null)', () async {
+    adapter.onPost('/me/bookings/b1/request-completion-otp', (s) => s.reply(200, {'ok': true}));
+    final r = await repo.requestCompletionOtp('b1');
+    expect((r as Ok<CompletionOtpDto>).value.devOtp, isNull);
+  });
+
+  test('requestCompletionOtp 429 throttle -> Failure(rateLimited) with message', () async {
+    adapter.onPost('/me/bookings/b1/request-completion-otp',
+        (s) => s.reply(429, {'code': 'TOO_MANY_REQUESTS', 'message': 'Too many code requests. Try again later.'}));
+    final r = await repo.requestCompletionOtp('b1');
+    final f = r as Failure;
+    expect(f.kind, FailureKind.rateLimited);
+    expect(f.message, 'Too many code requests. Try again later.');
+  });
 }
