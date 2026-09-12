@@ -124,6 +124,31 @@ _CompletionOtpDto _$CompletionOtpDtoFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$CompletionOtpDtoToJson(_CompletionOtpDto instance) =>
     <String, dynamic>{'ok': instance.ok, 'devOtp': instance.devOtp};
 
+_PaymentInitDto _$PaymentInitDtoFromJson(Map<String, dynamic> json) =>
+    _PaymentInitDto(
+      orderId: json['orderId'] as String,
+      amountPaise: (json['amountPaise'] as num).toInt(),
+      keyId: json['keyId'] as String?,
+    );
+
+Map<String, dynamic> _$PaymentInitDtoToJson(_PaymentInitDto instance) =>
+    <String, dynamic>{
+      'orderId': instance.orderId,
+      'amountPaise': instance.amountPaise,
+      'keyId': instance.keyId,
+    };
+
+_CashInitDto _$CashInitDtoFromJson(Map<String, dynamic> json) => _CashInitDto(
+  amountPaise: (json['amountPaise'] as num).toInt(),
+  devOtp: json['devOtp'] as String?,
+);
+
+Map<String, dynamic> _$CashInitDtoToJson(_CashInitDto instance) =>
+    <String, dynamic>{
+      'amountPaise': instance.amountPaise,
+      'devOtp': instance.devOtp,
+    };
+
 _BookingDto _$BookingDtoFromJson(Map<String, dynamic> json) => _BookingDto(
   id: json['id'] as String,
   bookingNumber: json['bookingNumber'] as String,

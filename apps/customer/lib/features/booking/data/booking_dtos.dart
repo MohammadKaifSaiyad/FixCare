@@ -75,6 +75,19 @@ abstract class CompletionOtpDto with _$CompletionOtpDto {
 }
 
 @freezed
+abstract class PaymentInitDto with _$PaymentInitDto {
+  const factory PaymentInitDto({required String orderId, required int amountPaise, String? keyId}) =
+      _PaymentInitDto;
+  factory PaymentInitDto.fromJson(Map<String, dynamic> j) => _$PaymentInitDtoFromJson(j);
+}
+
+@freezed
+abstract class CashInitDto with _$CashInitDto {
+  const factory CashInitDto({required int amountPaise, String? devOtp}) = _CashInitDto;
+  factory CashInitDto.fromJson(Map<String, dynamic> j) => _$CashInitDtoFromJson(j);
+}
+
+@freezed
 abstract class BookingDto with _$BookingDto {
   const factory BookingDto({
     required String id,

@@ -228,4 +228,67 @@ void main() {
     expect(f.kind, FailureKind.rateLimited);
     expect(f.message, 'Too many code requests. Try again later.');
   });
+
+  test('initiatePayment is a BODYLESS POST, 200 -> Ok(PaymentInitDto)', () async {
+    adapter.onPost('/me/bookings/b1/pay',
+        (s) => s.reply(200, {'orderId': 'order_123', 'amountPaise': 45000, 'keyId': 'rzp_test_abc'}));
+    final r = await repo.initiatePayment('b1');
+    final v = (r as Ok<PaymentInitDto>).value;
+    expect(v.orderId, 'order_123');
+    expect(v.amountPaise, 45000);
+    expect(v.keyId, 'rzp_test_abc');
+  });
+
+  test('initiatePayment parses keyId: null (dev / no Razorpay keys)', () async {
+    adapter.onPost('/me/bookings/b1/pay',
+        (s) => s.reply(200, {'orderId': 'order_dev_1', 'amountPaise': 45000, 'keyId': null}));
+    final r = await repo.initiatePayment('b1');
+    expect((r as Ok<PaymentInitDto>).value.keyId, isNull);
+  });
+
+  test('initiatePayment 409 already paid -> Failure with backend message', () async {
+    adapter.onPost('/me/bookings/b1/pay',
+        (s) => s.reply(409, {'code': 'CONFLICT', 'message': 'This booking is already paid'}));
+    final r = await repo.initiatePayment('b1');
+    expect((r as Failure).message, 'This booking is already paid');
+  });
+
+  test('initiatePayment 422 nothing payable -> Failure(unknown) with message', () async {
+    adapter.onPost('/me/bookings/b1/pay',
+        (s) => s.reply(422, {'code': 'UNPROCESSABLE', 'message': 'Nothing is payable for this booking'}));
+    final r = await repo.initiatePayment('b1');
+    final f = r as Failure;
+    expect(f.kind, FailureKind.unknown); // failureKindFromStatus(422) == unknown
+    expect(f.message, 'Nothing is payable for this booking');
+  });
+
+  test('initiateCashPayment BODYLESS POST 200 -> Ok(CashInitDto with devOtp)', () async {
+    adapter.onPost('/me/bookings/b1/pay-cash', (s) => s.reply(200, {'amountPaise': 45000, 'devOtp': '654321'}));
+    final r = await repo.initiateCashPayment('b1');
+    final v = (r as Ok<CashInitDto>).value;
+    expect(v.amountPaise, 45000);
+    expect(v.devOtp, '654321');
+  });
+
+  test('initiateCashPayment 200 without devOtp (prod shape) -> devOtp null', () async {
+    adapter.onPost('/me/bookings/b1/pay-cash', (s) => s.reply(200, {'amountPaise': 45000}));
+    final r = await repo.initiateCashPayment('b1');
+    expect((r as Ok<CashInitDto>).value.devOtp, isNull);
+  });
+
+  test('initiateCashPayment 422 cash unavailable -> Failure with message', () async {
+    adapter.onPost('/me/bookings/b1/pay-cash',
+        (s) => s.reply(422, {'code': 'UNPROCESSABLE', 'message': 'Cash is unavailable for this booking — please pay by UPI'}));
+    final r = await repo.initiateCashPayment('b1');
+    expect((r as Failure).message, 'Cash is unavailable for this booking — please pay by UPI');
+  });
+
+  test('initiateCashPayment 429 throttle -> Failure(rateLimited) with message', () async {
+    adapter.onPost('/me/bookings/b1/pay-cash',
+        (s) => s.reply(429, {'code': 'TOO_MANY_REQUESTS', 'message': 'Too many code requests. Try again later.'}));
+    final r = await repo.initiateCashPayment('b1');
+    final f = r as Failure;
+    expect(f.kind, FailureKind.rateLimited);
+    expect(f.message, 'Too many code requests. Try again later.');
+  });
 }
