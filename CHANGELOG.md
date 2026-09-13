@@ -34,6 +34,14 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 - 166 tests (`+166 ~5` hermetic; contract-smoke skips without `BASE_URL`); `flutter analyze` clean. Design
   `docs/designs/2026-09-12-customer-app-slice5-payment-design.md`, plan
   `docs/plans/2026-09-12-customer-app-slice5-payment.md`, ADR `docs/adrs/ADR-0006-razorpay-flutter-checkout.md`.
+- **`/code-review` fix wave** (`2991503`) — the project code-review gate caught 2 real razorpay-wrapper bugs the
+  SDD reviews missed, plus 5 lower-severity issues; all fixed + re-reviewed clean: (1) `EVENT_EXTERNAL_WALLET` was
+  treated as terminal (it's informational and precedes the real success/error) → the payment result was dropped;
+  (2) user-cancel arrives as `EVENT_PAYMENT_ERROR{code:2}`, not a separate event → was shown as an error snack,
+  now maps to a quiet `CheckoutDismissed`; (3) double-order window (kept `_busy` disabled across the post-success
+  refetch); (4) blank card for `PAYMENT_RECEIVED` without a `CAPTURED` payment → neutral "Payment received" card;
+  (5) timeline lit "Paid" before capture → gated on `payViewFor == paid`; (6) ProGuard rules wired into the
+  release block (minify still off). Full suite 175 pass / 5 skip / 0 fail.
 
 ## 2026-09-12 — Customer app Slice 4: booking tracking (merged PR #30)
 
