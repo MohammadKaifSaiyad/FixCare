@@ -8,7 +8,34 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
-## 2026-09-12 — Customer app Slice 4: booking tracking (on branch)
+## 2026-09-13 — Customer app Slice 5: payment (on branch)
+
+- **Real pay card** replaces the Slice-4 "payment coming soon" placeholder, at the two payable states
+  (`CUSTOMER_CONFIRMED` = approved total; `DECLINED_BY_CUSTOMER` = visit fee). Built via SDD (4 tasks, each
+  spec+quality reviewed; final whole-branch review **MERGE-READY**, Golden Rules 1/3 verified). On
+  `feature/customer-app-slice5-payment` (`5c337a3..ebe211b`), ready for PR.
+- **UPI path** — bodyless `POST /me/bookings/:id/pay` → `{orderId, amountPaise, keyId}` → the `razorpay_flutter`
+  native checkout sheet (new dep, **ADR-0006**). **Confirmation is webhook-driven server-side** → `PAYMENT_RECEIVED`;
+  the app never client-trusts a checkout-success callback as "paid" — it only refetches, and `paid` is derived
+  solely from a `CAPTURED` DTO via the Slice-4 poll (Golden Rule 1). **`keyId == null`** (dev / no Razorpay keys)
+  → a first-class "UPI unavailable, pay by cash" branch; the plugin is never opened.
+- **Cash path** — bodyless `POST /me/bookings/:id/pay-cash` → a 6-digit receipt OTP SMS'd to the customer, shown
+  to read to the technician who enters it (`/technician/jobs/:id/confirm-cash`). **Keystone asymmetry: the
+  customer app only displays the code, never submits it.** Dev echoes `devOtp` behind `!kReleaseMode`.
+- **Pure `payViewFor`** derives the pay sub-state (choose/upiPending/cashPending/paid/none) from booking state +
+  payment; exhaustively unit-tested. `RazorpayCheckout` wraps the callback-based plugin in a `Future` and always
+  `clear()`s its listeners; fakeable via a provider (real plugin runs on-device only).
+- Both pay calls are bodyless (server computes the amount); the app sends no amount / customer id / client price;
+  checkout opens with the server's `amountPaise`. No PII logged.
+- **Android** ProGuard keep rules added. **iOS pod integration deferred** — the first-time CocoaPods scaffolding
+  (pbxproj/xcworkspace/Podfile.lock) was left uncommitted because pod resolution was incomplete (no razorpay pod
+  in the lock); a clean `flutter build ios` on the Mac wires it. UPI is keyId-gated/untestable without Razorpay
+  keys anyway, so nothing user-facing regresses.
+- 166 tests (`+166 ~5` hermetic; contract-smoke skips without `BASE_URL`); `flutter analyze` clean. Design
+  `docs/designs/2026-09-12-customer-app-slice5-payment-design.md`, plan
+  `docs/plans/2026-09-12-customer-app-slice5-payment.md`, ADR `docs/adrs/ADR-0006-razorpay-flutter-checkout.md`.
+
+## 2026-09-12 — Customer app Slice 4: booking tracking (merged PR #30)
 
 - **Live, state-driven booking tracking** replaces the Slice-3 stub at `/booking/:id`. Built via SDD (5 tasks,
   each spec+quality reviewed; final whole-branch review MERGE-READY, no Critical/Important). On
