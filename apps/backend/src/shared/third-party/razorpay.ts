@@ -83,9 +83,14 @@ export class RazorpayGateway implements PaymentGateway {
   }
 }
 
-/** Factory: dev stub everywhere except production (same posture as makeOtpSender/makePhotoStorage). */
+/** Factory: use the REAL Razorpay gateway in production, OR whenever all three Razorpay
+ *  keys are configured (test-mode OR live keys — Razorpay's key prefix decides which; the
+ *  same api.razorpay.com is called either way). Falls back to the offline DevPaymentGateway
+ *  only when unconfigured, so a keyless boot, CI, and the (key-free) test suite stay offline.
+ *  Partial keys → stub (fail safe: never a half-configured real gateway). */
 export function makePaymentGateway(): PaymentGateway {
-  return config.NODE_ENV === 'production' ? new RazorpayGateway() : new DevPaymentGateway();
+  const configured = !!(config.RAZORPAY_KEY_ID && config.RAZORPAY_KEY_SECRET && config.RAZORPAY_WEBHOOK_SECRET);
+  return config.NODE_ENV === 'production' || configured ? new RazorpayGateway() : new DevPaymentGateway();
 }
 
 /** Module singleton — services import this; tests reach the Dev impl through it. */
