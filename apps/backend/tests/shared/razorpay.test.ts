@@ -63,6 +63,8 @@ describe('RazorpayGateway boot safety', () => {
   it('constructs WITHOUT creds; first USE fails with a clear config error (lazy, R2 posture)', async () => {
     // Deterministic regardless of the ambient .env: force the unconfigured case, since a
     // developer running with real Razorpay keys in .env would otherwise create a live order here.
+    // NOTE: vitest.config.ts already forces RAZORPAY_* empty for the whole suite; this local
+    // mock is belt-and-suspenders so THIS test stays correct even if that block is ever changed.
     vi.spyOn(config, 'RAZORPAY_KEY_ID', 'get').mockReturnValue(undefined);
     vi.spyOn(config, 'RAZORPAY_KEY_SECRET', 'get').mockReturnValue(undefined);
     vi.spyOn(config, 'RAZORPAY_WEBHOOK_SECRET', 'get').mockReturnValue(undefined);
