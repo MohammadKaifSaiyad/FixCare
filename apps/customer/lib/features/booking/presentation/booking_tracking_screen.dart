@@ -130,7 +130,7 @@ class _Tracking extends ConsumerWidget {
         const SizedBox(height: 10),
         _PhaseBadge(phase: phaseFor(booking)),
         const SizedBox(height: 20),
-        _Timeline(phase: phaseFor(booking)),
+        _Timeline(phase: phaseFor(booking), paid: payViewFor(booking) == PayView.paid),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(16),
@@ -531,6 +531,21 @@ class _PhaseSummary extends StatelessWidget {
         ],
       );
     }
+    // Payment phase with no pay-view (e.g. PAYMENT_RECEIVED whose summary lags —
+    // payment null or a non-captured attempt): render a neutral, DTO-derived
+    // status card, never a blank box. Do NOT claim "paid" — only a CAPTURED
+    // payment reads as paid (the `payViewFor == paid` branch above).
+    if (phase == TrackingPhase.payment) {
+      return const _CardShell(
+        title: 'Payment received',
+        children: [
+          Text(
+            'We have your payment and are finishing up. This can take a moment.',
+            style: TextStyle(fontSize: 13.5, color: FixCareColors.textMuted, height: 1.4),
+          ),
+        ],
+      );
+    }
     return const SizedBox.shrink();
   }
 }
@@ -580,13 +595,18 @@ class _PayCardState extends ConsumerState<_PayCard> {
         if (!mounted) return;
         switch (outcome) {
           case CheckoutSuccess():
-            // Success ≠ paid. Refetch; the poll + webhook confirm capture.
-            setState(() => _busy = false);
+            // Success ≠ paid. Keep the buttons disabled ACROSS the refetch so a
+            // second tap can't start a second order for an already-paid booking
+            // (the refetch may keep-last-good, or the backend may not yet show
+            // payment=CREATED). Only clear _busy once the refetch resolves.
             await widget.onRefetch();
+            if (mounted) setState(() => _busy = false);
           case CheckoutFailed(message: final m):
+            // Real failure — re-enable so the customer can retry.
             setState(() => _busy = false);
             widget.onSnack(m);
           case CheckoutDismissed():
+            // Benign cancel — re-enable, stay quiet (no snack).
             setState(() => _busy = false);
         }
     }
@@ -799,10 +819,19 @@ class _PhaseBadge extends StatelessWidget {
 /// A compact milestone timeline. The current phase maps to one of the ordered
 /// milestones; everything up to and including it reads as "done/active".
 class _Timeline extends StatelessWidget {
-  const _Timeline({required this.phase});
+  const _Timeline({required this.phase, this.paid = false});
   final TrackingPhase phase;
 
+  /// Whether payment is actually captured (`payViewFor == paid`). The payment
+  /// phase alone does NOT mean paid — an unpaid payable booking sits in the
+  /// payment phase while the pay card still asks the customer to pay, so "Paid"
+  /// must stay un-highlighted until capture.
+  final bool paid;
+
   static const _milestones = ['Booked', 'Assigned', 'Arrived', 'Diagnosis', 'Repair', 'Done', 'Paid'];
+
+  static const _paidIndex = 6; // 'Paid'
+  static const _doneIndex = 5; // 'Done' — the step before 'Paid'
 
   /// The index of the currently-active milestone for a phase.
   int get _activeIndex => switch (phase) {
@@ -812,7 +841,10 @@ class _Timeline extends StatelessWidget {
         TrackingPhase.diagnosis => 3,
         TrackingPhase.repairing => 4,
         TrackingPhase.confirmCompletion => 5,
-        TrackingPhase.payment || TrackingPhase.completed => 6,
+        // Payment due but not yet captured stops at 'Done'; only a CAPTURED
+        // payment lights 'Paid'. A CLOSED booking is fully paid.
+        TrackingPhase.payment => paid ? _paidIndex : _doneIndex,
+        TrackingPhase.completed => _paidIndex,
         // Off-path terminal/dispute states: don't highlight a milestone.
         TrackingPhase.disputed || TrackingPhase.cancelled || TrackingPhase.declined => -1,
       };

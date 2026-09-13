@@ -26,8 +26,31 @@ class CheckoutDismissed extends CheckoutOutcome {
 CheckoutOutcome outcomeForSuccess(PaymentSuccessResponse r) =>
     CheckoutSuccess(paymentId: r.paymentId, signature: r.signature);
 
+/// The plugin has no separate "dismissed" event: a user backing out of the
+/// sheet arrives as an error with `code == Razorpay.PAYMENT_CANCELLED` (== 2).
+/// That is benign — map it to [CheckoutDismissed] (the caller stays quiet).
+/// Any other error code is a real failure the caller surfaces.
 CheckoutOutcome outcomeForError(PaymentFailureResponse r) =>
-    CheckoutFailed(code: r.code, message: r.message ?? 'Payment failed');
+    r.code == Razorpay.PAYMENT_CANCELLED
+        ? const CheckoutDismissed()
+        : CheckoutFailed(code: r.code, message: r.message ?? 'Payment failed');
+
+/// Routes ONE plugin event to a terminal outcome, or ignores it. Only success
+/// and error are terminal. `EVENT_EXTERNAL_WALLET` (`payment.external_wallet`)
+/// is informational (carries the wallet name) and fires BEFORE the real
+/// success/error in razorpay_flutter 1.4.6 — completing on it would drop the
+/// actual payment result, so it is deliberately ignored here. Pure + testable.
+void handleCheckoutEvent(String event, Object response, void Function(CheckoutOutcome) done) {
+  switch (event) {
+    case Razorpay.EVENT_PAYMENT_SUCCESS:
+      done(outcomeForSuccess(response as PaymentSuccessResponse));
+    case Razorpay.EVENT_PAYMENT_ERROR:
+      done(outcomeForError(response as PaymentFailureResponse));
+    case Razorpay.EVENT_EXTERNAL_WALLET:
+      // Informational, not terminal — keep waiting for success/error.
+      break;
+  }
+}
 
 /// Wraps the callback-based razorpay_flutter plugin in a Future. Always clears
 /// the plugin's native listeners. Payment SUCCESS here is NOT "paid" — the
@@ -48,11 +71,12 @@ class RazorpayCheckout {
     }
 
     rzp.on(Razorpay.EVENT_PAYMENT_SUCCESS,
-        (PaymentSuccessResponse r) => done(outcomeForSuccess(r)));
+        (PaymentSuccessResponse r) => handleCheckoutEvent(Razorpay.EVENT_PAYMENT_SUCCESS, r, done));
     rzp.on(Razorpay.EVENT_PAYMENT_ERROR,
-        (PaymentFailureResponse r) => done(outcomeForError(r)));
+        (PaymentFailureResponse r) => handleCheckoutEvent(Razorpay.EVENT_PAYMENT_ERROR, r, done));
+    // Informational, fires before the real outcome — must NOT complete/clear.
     rzp.on(Razorpay.EVENT_EXTERNAL_WALLET,
-        (ExternalWalletResponse r) => done(const CheckoutDismissed()));
+        (ExternalWalletResponse r) => handleCheckoutEvent(Razorpay.EVENT_EXTERNAL_WALLET, r, done));
 
     try {
       rzp.open({

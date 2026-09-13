@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,9 +81,18 @@ class _FakeBookingRepo extends BookingRepository {
   /// polled `get()` reflects the CREATED/CASH payment.
   Map<String, dynamic>? onCashInitPayment;
 
+  /// When set, `get()` awaits this before returning — lets a test hold a
+  /// refetch open and inspect the UI mid-flight (double-order guard).
+  Future<void>? gateNextGet;
+
   @override
   Future<Result<BookingDto>> get(String id) async {
     getCalls++;
+    final gate = gateNextGet;
+    if (gate != null) {
+      gateNextGet = null;
+      await gate;
+    }
     return Ok(BookingDto.fromJson(json));
   }
 
@@ -415,5 +426,82 @@ void main() {
 
     expect(repo.initiateCashPaymentCalls, ['b1']);
     expect(find.text('Too many code requests. Try again later.'), findsOneWidget);
+  });
+
+  testWidgets('9. CheckoutSuccess — pay buttons stay disabled across the refetch (no double-order)',
+      (tester) async {
+    final repo = _FakeBookingRepo(_booking('CUSTOMER_CONFIRMED', withTech: true));
+    final checkout = _FakeRazorpayCheckout()
+      ..outcome = const CheckoutSuccess(paymentId: 'pay_1', signature: 'sig_1');
+    await tester.pumpWidget(_harness(repo, checkout: checkout));
+    await _settle(tester);
+
+    // Hold the post-success refetch open so we can inspect the button mid-flight.
+    final gate = Completer<void>();
+    repo.gateNextGet = gate.future;
+
+    // Scroll the button into view, then tap WITHOUT settling (settling would
+    // flush past the gated refetch).
+    final upi = find.byKey(const Key('payUpiBtn'));
+    await tester.ensureVisible(upi);
+    await tester.pump();
+    await tester.tap(upi);
+    // Flush: initiatePayment -> open() -> onRefetch() get() (now blocked on gate).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(repo.initiatePaymentCalls, ['b1']);
+    expect(checkout.openCalls, 1);
+    // While the refetch is in flight, the UPI button must be disabled — a second
+    // tap must NOT start a second Razorpay order for an already-paid booking.
+    final btn = tester.widget<FilledButton>(upi);
+    expect(btn.onPressed, isNull, reason: 'busy must stay true across the post-success refetch');
+
+    // Release the refetch; the (still CUSTOMER_CONFIRMED) snapshot re-enables it.
+    gate.complete();
+    await _settle(tester);
+    expect(checkout.openCalls, 1);
+  });
+
+  testWidgets('10. PAYMENT_RECEIVED without a CAPTURED payment — renders a non-blank status card',
+      (tester) async {
+    // Summary lags: booking has advanced to PAYMENT_RECEIVED but the payment
+    // summary is null (or a non-captured attempt). Must not be a blank card.
+    final repo = _FakeBookingRepo(_booking('PAYMENT_RECEIVED', withTech: true));
+    await tester.pumpWidget(_harness(repo, checkout: _FakeRazorpayCheckout()));
+    await _settle(tester);
+
+    expect(find.textContaining('Payment received'), findsOneWidget);
+    // No stale pay buttons in this non-payable state.
+    expect(find.byKey(const Key('payUpiBtn')), findsNothing);
+    expect(find.byKey(const Key('payCashBtn')), findsNothing);
+  });
+
+  testWidgets('11. unpaid CUSTOMER_CONFIRMED — timeline does NOT light the "Paid" milestone',
+      (tester) async {
+    final repo = _FakeBookingRepo(_booking('CUSTOMER_CONFIRMED', withTech: true));
+    await tester.pumpWidget(_harness(repo, checkout: _FakeRazorpayCheckout()));
+    await _settle(tester);
+
+    // The pay card is asking for payment, so "Paid" must not read as reached.
+    // (The paid receipt card is absent here, so this is the sole "Paid" text.)
+    final paid = tester.widget<Text>(find.text('Paid'));
+    expect(paid.style?.fontWeight, isNot(FontWeight.w700),
+        reason: '"Paid" must not be the active milestone for an unpaid payable booking');
+  });
+
+  testWidgets('12. CAPTURED payment — timeline DOES light the "Paid" milestone', (tester) async {
+    final repo = _FakeBookingRepo(
+      _booking('PAYMENT_RECEIVED', withTech: true, payment: _pay('CAPTURED', 'UPI', 45000)),
+    );
+    await tester.pumpWidget(_harness(repo, checkout: _FakeRazorpayCheckout()));
+    await _settle(tester);
+
+    // "Paid" is both the receipt card title and the timeline milestone; the
+    // active timeline milestone is the bold (w700) one.
+    final bold = tester
+        .widgetList<Text>(find.text('Paid'))
+        .where((t) => t.style?.fontWeight == FontWeight.w700);
+    expect(bold, isNotEmpty, reason: '"Paid" milestone must be active once payment is CAPTURED');
   });
 }
