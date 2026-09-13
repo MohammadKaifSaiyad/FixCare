@@ -23,10 +23,15 @@
 #                 the approve/decline card. Customer approves in the app (or run `approve`).
 #   approve     customer-side: approve the repair → CUSTOMER_APPROVED (skips the app)
 #   repair      + start-repair + insert 3 repair photos (SQL) + complete-repair (→ REPAIR_COMPLETE)
+#   request-completion-otp  customer-side: mint the completion OTP (== tapping "Confirm work is
+#                 done" in the app; prints devOtp). Normally done in the app, not here.
+#   confirm-completion <otp>  technician-side: enter the OTP the customer read out (the app shows
+#                 it after "Confirm work is done") → CUSTOMER_CONFIRMED. This is what makes the
+#                 app's payment card (Pay by UPI / Pay cash) appear.
 #   pay-cash    customer-side: request the cash receipt OTP (prints devOtp)
-#   confirm-cash  technician-side: enter the cash OTP → PAYMENT_RECEIVED (Paid)
-#   full        assign → … → REPAIR_COMPLETE, then STOPS. Completion + payment are
-#                 two-party OTP handshakes — run pay-cash / confirm-cash (or use the app).
+#   confirm-cash <otp>  technician-side: enter the cash OTP → PAYMENT_RECEIVED (Paid)
+#   full        assign → … → REPAIR_COMPLETE, then STOPS (completion + payment are two-party OTP
+#                 handshakes — do them in the app, or via confirm-completion / confirm-cash).
 #
 # Why some steps are SQL: the photo gate needs a real R2 upload (dev R2 presign URL
 # goes nowhere), and the two OTP handshakes are split customer/technician by design.
@@ -159,7 +164,21 @@ case "$STAGE" in
     echo "start-repair → $(tpost start-repair | jqpy state)"
     insert_photo REPAIR_OLD_PART; insert_photo REPAIR_NEW_PACKAGING; insert_photo REPAIR_INSTALLED
     echo "complete-repair → $(tpost complete-repair | jqpy state)"
-    echo "→ REPAIR_COMPLETE. Pay in the app (cash), or run: $0 $BOOKING_NUMBER pay-cash then confirm-cash" ;;
+    echo "→ REPAIR_COMPLETE. In the app tap 'Confirm work is done' (it shows a 6-digit code), then run: $0 $BOOKING_NUMBER confirm-completion <otp>" ;;
+  request-completion-otp)
+    # Customer-side: mint the completion OTP (same as tapping "Confirm work is done" in the app).
+    # Normally you do this IN THE APP; this is here so the whole flow can run without the app.
+    need_cust
+    r=$(curl -s -X POST "$B/me/bookings/$BID/request-completion-otp" -H "$(CAUTH)")
+    echo "request-completion-otp → COMPLETION OTP = $(echo "$r" | jqpy devOtp '(none)')  (read to technician, then: $0 $BOOKING_NUMBER confirm-completion <otp>)" ;;
+  confirm-completion)
+    # Technician-side: enter the completion OTP the CUSTOMER read out (the app shows it after
+    # tapping "Confirm work is done"). Drives REPAIR_COMPLETE → CUSTOMER_CONFIRMED, which makes
+    # the app's payment card (Pay by UPI / Pay cash) appear.
+    need_tech
+    CODE="${3:?usage: $0 $BOOKING_NUMBER confirm-completion <otp>  (the code the app showed under 'Confirm the work is done')}"
+    echo "confirm-completion → $(tpost confirm-completion "{\"code\":\"$CODE\"}" | jqpy state)"
+    echo "→ CUSTOMER_CONFIRMED. Pull-to-refresh the app: the payment card (Pay by UPI / Pay cash) now shows." ;;
   pay-cash)
     need_cust
     r=$(curl -s -X POST "$B/me/bookings/$BID/pay-cash" -H "$(CAUTH)")
@@ -170,7 +189,7 @@ case "$STAGE" in
     echo "confirm-cash → $(tpost confirm-cash "{\"code\":\"$CODE\"}" | jqpy state)" ;;
   full)
     do_assign; do_enroute; do_arrive
-    echo "STOP: enter the arrival code in the app (or confirm-arrival), then run diagnose → approve(app) → repair → pay-cash → confirm-cash." ;;
+    echo "STOP: enter the arrival code in the app (or confirm-arrival), then: diagnose → approve(app) → repair → 'Confirm work is done'(app) → confirm-completion <otp> → pay in app (or pay-cash → confirm-cash)." ;;
   *) echo "unknown stage: $STAGE"; exit 1 ;;
 esac
 
