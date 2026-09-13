@@ -69,7 +69,9 @@ echo "booking=$BOOKING_NUMBER id=$BID skill=$REQ_SKILL customer=$CUST_PHONE"
 # (3 sends / 900s). A cached token is reused if it still authenticates; else re-login.
 CACHE_DIR="${TMPDIR:-/tmp}/fixcare-dev-tokens"; mkdir -p "$CACHE_DIR"
 login() {
-  local phone="$1" role="$2" cache="$CACHE_DIR/$phone.token"
+  local phone="$1"
+  local role="$2"
+  local cache="$CACHE_DIR/$phone.token"
   if [ -f "$cache" ]; then
     local cached; cached=$(cat "$cache")
     # cheap liveness check against a protected route
