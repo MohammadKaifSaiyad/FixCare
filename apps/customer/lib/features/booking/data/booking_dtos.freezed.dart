@@ -3035,6 +3035,555 @@ as String?,
 
 
 /// @nodoc
+mixin _$PaymentInitDto {
+
+ String get orderId; int get amountPaise; String? get keyId;
+/// Create a copy of PaymentInitDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PaymentInitDtoCopyWith<PaymentInitDto> get copyWith => _$PaymentInitDtoCopyWithImpl<PaymentInitDto>(this as PaymentInitDto, _$identity);
+
+  /// Serializes this PaymentInitDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PaymentInitDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PaymentInitDto&&(identical(other.orderId, _this.orderId) || other.orderId == _this.orderId)&&(identical(other.amountPaise, _this.amountPaise) || other.amountPaise == _this.amountPaise)&&(identical(other.keyId, _this.keyId) || other.keyId == _this.keyId));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PaymentInitDto;
+  return Object.hash(runtimeType,_this.orderId,_this.amountPaise,_this.keyId);
+}
+
+@override
+String toString() {
+  final _this = this as PaymentInitDto;
+  return 'PaymentInitDto(orderId: ${_this.orderId}, amountPaise: ${_this.amountPaise}, keyId: ${_this.keyId})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PaymentInitDtoCopyWith<$Res>  {
+  factory $PaymentInitDtoCopyWith(PaymentInitDto value, $Res Function(PaymentInitDto) _then) = _$PaymentInitDtoCopyWithImpl;
+@useResult
+$Res call({
+ String orderId, int amountPaise, String? keyId
+});
+
+
+
+
+}
+/// @nodoc
+class _$PaymentInitDtoCopyWithImpl<$Res>
+    implements $PaymentInitDtoCopyWith<$Res> {
+  _$PaymentInitDtoCopyWithImpl(this._self, this._then);
+
+  final PaymentInitDto _self;
+  final $Res Function(PaymentInitDto) _then;
+
+/// Create a copy of PaymentInitDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? orderId = null,Object? amountPaise = null,Object? keyId = freezed,}) {
+  return _then(PaymentInitDto(
+orderId: null == orderId ? _self.orderId : orderId // ignore: cast_nullable_to_non_nullable
+as String,amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // ignore: cast_nullable_to_non_nullable
+as int,keyId: freezed == keyId ? _self.keyId : keyId // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PaymentInitDto].
+extension PaymentInitDtoPatterns on PaymentInitDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PaymentInitDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PaymentInitDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PaymentInitDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _PaymentInitDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PaymentInitDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PaymentInitDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String orderId,  int amountPaise,  String? keyId)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PaymentInitDto() when $default != null:
+return $default(_that.orderId,_that.amountPaise,_that.keyId);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String orderId,  int amountPaise,  String? keyId)  $default,) {final _that = this;
+switch (_that) {
+case _PaymentInitDto():
+return $default(_that.orderId,_that.amountPaise,_that.keyId);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String orderId,  int amountPaise,  String? keyId)?  $default,) {final _that = this;
+switch (_that) {
+case _PaymentInitDto() when $default != null:
+return $default(_that.orderId,_that.amountPaise,_that.keyId);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PaymentInitDto implements PaymentInitDto {
+  const _PaymentInitDto({required this.orderId, required this.amountPaise, this.keyId});
+  factory _PaymentInitDto.fromJson(Map<String, dynamic> json) => _$PaymentInitDtoFromJson(json);
+
+@override final  String orderId;
+@override final  int amountPaise;
+@override final  String? keyId;
+
+/// Create a copy of PaymentInitDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PaymentInitDtoCopyWith<_PaymentInitDto> get copyWith => __$PaymentInitDtoCopyWithImpl<_PaymentInitDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PaymentInitDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PaymentInitDto&&(identical(other.orderId, orderId) || other.orderId == orderId)&&(identical(other.amountPaise, amountPaise) || other.amountPaise == amountPaise)&&(identical(other.keyId, keyId) || other.keyId == keyId));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,orderId,amountPaise,keyId);
+}
+
+@override
+String toString() {
+    return 'PaymentInitDto(orderId: $orderId, amountPaise: $amountPaise, keyId: $keyId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PaymentInitDtoCopyWith<$Res> implements $PaymentInitDtoCopyWith<$Res> {
+  factory _$PaymentInitDtoCopyWith(_PaymentInitDto value, $Res Function(_PaymentInitDto) _then) = __$PaymentInitDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ String orderId, int amountPaise, String? keyId
+});
+
+
+
+
+}
+/// @nodoc
+class __$PaymentInitDtoCopyWithImpl<$Res>
+    implements _$PaymentInitDtoCopyWith<$Res> {
+  __$PaymentInitDtoCopyWithImpl(this._self, this._then);
+
+  final _PaymentInitDto _self;
+  final $Res Function(_PaymentInitDto) _then;
+
+/// Create a copy of PaymentInitDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? orderId = null,Object? amountPaise = null,Object? keyId = freezed,}) {
+  return _then(_PaymentInitDto(
+orderId: null == orderId ? _self.orderId : orderId // ignore: cast_nullable_to_non_nullable
+as String,amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // ignore: cast_nullable_to_non_nullable
+as int,keyId: freezed == keyId ? _self.keyId : keyId // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$CashInitDto {
+
+ int get amountPaise; String? get devOtp;
+/// Create a copy of CashInitDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CashInitDtoCopyWith<CashInitDto> get copyWith => _$CashInitDtoCopyWithImpl<CashInitDto>(this as CashInitDto, _$identity);
+
+  /// Serializes this CashInitDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as CashInitDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CashInitDto&&(identical(other.amountPaise, _this.amountPaise) || other.amountPaise == _this.amountPaise)&&(identical(other.devOtp, _this.devOtp) || other.devOtp == _this.devOtp));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as CashInitDto;
+  return Object.hash(runtimeType,_this.amountPaise,_this.devOtp);
+}
+
+@override
+String toString() {
+  final _this = this as CashInitDto;
+  return 'CashInitDto(amountPaise: ${_this.amountPaise}, devOtp: ${_this.devOtp})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CashInitDtoCopyWith<$Res>  {
+  factory $CashInitDtoCopyWith(CashInitDto value, $Res Function(CashInitDto) _then) = _$CashInitDtoCopyWithImpl;
+@useResult
+$Res call({
+ int amountPaise, String? devOtp
+});
+
+
+
+
+}
+/// @nodoc
+class _$CashInitDtoCopyWithImpl<$Res>
+    implements $CashInitDtoCopyWith<$Res> {
+  _$CashInitDtoCopyWithImpl(this._self, this._then);
+
+  final CashInitDto _self;
+  final $Res Function(CashInitDto) _then;
+
+/// Create a copy of CashInitDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? amountPaise = null,Object? devOtp = freezed,}) {
+  return _then(CashInitDto(
+amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // ignore: cast_nullable_to_non_nullable
+as int,devOtp: freezed == devOtp ? _self.devOtp : devOtp // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [CashInitDto].
+extension CashInitDtoPatterns on CashInitDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _CashInitDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _CashInitDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _CashInitDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _CashInitDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _CashInitDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _CashInitDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int amountPaise,  String? devOtp)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _CashInitDto() when $default != null:
+return $default(_that.amountPaise,_that.devOtp);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int amountPaise,  String? devOtp)  $default,) {final _that = this;
+switch (_that) {
+case _CashInitDto():
+return $default(_that.amountPaise,_that.devOtp);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int amountPaise,  String? devOtp)?  $default,) {final _that = this;
+switch (_that) {
+case _CashInitDto() when $default != null:
+return $default(_that.amountPaise,_that.devOtp);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _CashInitDto implements CashInitDto {
+  const _CashInitDto({required this.amountPaise, this.devOtp});
+  factory _CashInitDto.fromJson(Map<String, dynamic> json) => _$CashInitDtoFromJson(json);
+
+@override final  int amountPaise;
+@override final  String? devOtp;
+
+/// Create a copy of CashInitDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$CashInitDtoCopyWith<_CashInitDto> get copyWith => __$CashInitDtoCopyWithImpl<_CashInitDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$CashInitDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CashInitDto&&(identical(other.amountPaise, amountPaise) || other.amountPaise == amountPaise)&&(identical(other.devOtp, devOtp) || other.devOtp == devOtp));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,amountPaise,devOtp);
+}
+
+@override
+String toString() {
+    return 'CashInitDto(amountPaise: $amountPaise, devOtp: $devOtp)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$CashInitDtoCopyWith<$Res> implements $CashInitDtoCopyWith<$Res> {
+  factory _$CashInitDtoCopyWith(_CashInitDto value, $Res Function(_CashInitDto) _then) = __$CashInitDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ int amountPaise, String? devOtp
+});
+
+
+
+
+}
+/// @nodoc
+class __$CashInitDtoCopyWithImpl<$Res>
+    implements _$CashInitDtoCopyWith<$Res> {
+  __$CashInitDtoCopyWithImpl(this._self, this._then);
+
+  final _CashInitDto _self;
+  final $Res Function(_CashInitDto) _then;
+
+/// Create a copy of CashInitDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? amountPaise = null,Object? devOtp = freezed,}) {
+  return _then(_CashInitDto(
+amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // ignore: cast_nullable_to_non_nullable
+as int,devOtp: freezed == devOtp ? _self.devOtp : devOtp // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
 mixin _$BookingDto {
 
  String get id; String get bookingNumber; String get state; String get scheduledSlot; int get visitFeePaise; int get laborPaise; String get laborTier; BookingServiceDto get service; BookingZoneDto get zone; BookingAddressRefDto get address; TechnicianRefDto? get technician; DiagnosisDto? get diagnosis; List<PartDto> get parts; EstimateDto get estimate; List<PhotoDto> get photos; PaymentSummaryDto? get payment; DisputeSummaryDto? get dispute;

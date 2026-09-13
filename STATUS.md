@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-13_
 
 ---
 
@@ -13,32 +13,35 @@ _Last updated: 2026-09-06_
 (ADR-0004) advanced to the **customer app** (`apps/customer`, Android + iOS per ADR-0005; Riverpod codegen +
 go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/web-drop (#23), design-fidelity
 (#24), Slice 2 (#25/#26), **Slice 3 discovery+booking (#27)**, **founder bug-fixes (#28)**, **contract-smoke
-test (#29)**. **Slice 4 (booking tracking) complete on branch, ready for PR.** Money still on Razorpay test keys
-until KYC.
+test (#29)**, **Slice 4 booking tracking (#30)**. **Slice 5 (payment) complete on branch, ready for PR.** Money
+still on Razorpay test keys until KYC.
 
 ## Active task
-**Customer app Slice 4 — booking tracking** COMPLETE on `feature/customer-app-slice4-booking-tracking` (commits
-`bf5d4ac..8cd4a3b`), **ready for PR → `main`**. Replaces the Slice-3 tracking stub with the live, state-driven
-tracking screen: an `@riverpod` family controller **adaptively polls** `GET /me/bookings/:id` every 5s (stops at
-terminal, keeps last-good on a poll blip, `refetch()` on gate success + app resume); a **pure `phaseFor`** maps
-all **18** backend states → 12 customer phases (exhaustively unit-tested, unknown-state fallback); the screen
-renders a timeline + a phase-specific gate card and drives the three **customer keystone gates** —
-confirm-arrival (6-digit code the tech shows → `POST …/confirm-arrival {code}`), approve/decline diagnosis
-(decline behind a visit-fee confirm dialog), and completion-OTP mint (`…/request-completion-otp` → SMS to the
-customer; keystone asymmetry — **the customer only mints+displays, the technician enters it**; dev echoes `devOtp`
-behind `!kReleaseMode`). Address label is **joined app-side** from `/me/addresses` (backend `address` carries only
-`{id}`; no backend change). **Payment deferred to Slice 5** (placeholder + amount owed; Razorpay KYC still
-blocked). Built via SDD (5 tasks, each spec+quality reviewed; final whole-branch review MERGE-READY, no
-Critical/Important). 145 tests (`+138 ~5` hermetic, contract-smoke skips without BASE_URL); `flutter analyze`
-clean; build_runner idempotent. Design/plan: `docs/designs/2026-09-06-…-design.md`, `docs/plans/2026-09-06-…md`.
-**Next: PR → `main` (founder pushes/merges). Then Slice 5 (payment: Razorpay UPI + cash).**
+**Customer app Slice 5 — payment** COMPLETE on `feature/customer-app-slice5-payment` (commits `5c337a3..ebe211b`),
+**ready for PR → `main`**. Replaces the Slice-4 "payment coming soon" placeholder with a real pay card at the two
+payable states (`CUSTOMER_CONFIRMED` = approved total; `DECLINED_BY_CUSTOMER` = visit fee). Two paths: **UPI** via
+the `razorpay_flutter` native checkout (bodyless `POST …/pay` → `{orderId, amountPaise, keyId}` → checkout sheet;
+confirmation is **webhook-driven server-side**, the app only refetches — never client-trusts "paid"), and **Cash**
+(bodyless `POST …/pay-cash` → 6-digit receipt OTP SMS'd to the customer, displayed to read to the technician who
+enters it — keystone asymmetry, the customer never submits it; dev echoes `devOtp` behind `!kReleaseMode`). A pure
+`payViewFor` derives the pay sub-state (choose/upiPending/cashPending/paid/none) from state + payment. **`keyId ==
+null` (dev / no Razorpay keys) → a first-class "UPI unavailable, pay by cash" branch — the plugin is never opened.**
+New native dep recorded in **ADR-0006**. Built via SDD (4 tasks, each spec+quality reviewed; final whole-branch
+review MERGE-READY, Golden Rules 1/3 verified). 166 tests (`+166 ~5` hermetic, contract-smoke skips without
+BASE_URL); `flutter analyze` clean. Design/plan: `docs/designs/2026-09-12-…-design.md`, `docs/plans/2026-09-12-…md`.
+**iOS pod integration (razorpay_flutter's pod) is a founder-Mac follow-up** (`flutter build ios`; the pbxproj/
+Podfile.lock changes were intentionally NOT committed — pod resolution was incomplete).
+**Next: PR → `main` (founder pushes/merges). Then Razorpay TEST keys to exercise UPI end-to-end, or the next slice.**
 
 ## Last shipped
-- **Customer app Slice 4 — booking tracking** (`feature/customer-app-slice4-booking-tracking`, on branch,
-  `bf5d4ac..8cd4a3b`) — live 18-state tracking: adaptive-poll `@riverpod` controller (stop-at-terminal,
-  keep-last-good, refetch), pure `phaseFor` mapper, timeline + arrival/decision/completion gate cards, decline
-  confirm-dialog, dev-echo OTP behind `!kReleaseMode`, app-side address-label join. Payment deferred to Slice 5.
-  145 tests, analyze clean; final review MERGE-READY.
+- **Customer app Slice 5 — payment** (`feature/customer-app-slice5-payment`, on branch, `5c337a3..ebe211b`) — pay
+  card with UPI (`razorpay_flutter`, keyId-gated) + cash (receipt-OTP handshake, customer displays not submits).
+  Bodyless pay calls; paid only via poll/webhook (never client-trusted); pure `payViewFor` mapper; keyId-null
+  fallback. ADR-0006. 166 tests, analyze clean; final review MERGE-READY, Golden Rules 1/3 held.
+- **Customer app Slice 4 — booking tracking** (**merged PR #30**) — live 18-state tracking: adaptive-poll
+  `@riverpod` controller (stop-at-terminal, keep-last-good, refetch), pure `phaseFor` mapper, timeline +
+  arrival/decision/completion gate cards, decline confirm-dialog, dev-echo OTP behind `!kReleaseMode`, app-side
+  address-label join. 145 tests, analyze clean.
 - **Customer app — backend contract-smoke test** (**merged PR #29**) — one test that exercises real dio → real
   backend → seeded dev DB across auth/profile/address/catalog/booking. Guards the DELETE-content-type class of
   bug the mocked suite can't see. Skips cleanly with no
@@ -201,15 +204,26 @@ clean; build_runner idempotent. Design/plan: `docs/designs/2026-09-06-…-design
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR the Slice-4 branch** → `main` (founder pushes/merges `feature/customer-app-slice4-booking-tracking`).
-2. **Customer app Slice 5** — payment: `POST /me/bookings/:id/pay` (Razorpay UPI: orderId/amountPaise/keyId +
-   checkout SDK) and `…/pay-cash` (cash-receipt OTP). Replaces the Slice-4 "payment coming soon" placeholder at
-   `CUSTOMER_CONFIRMED`/`PAYMENT_RECEIVED`/`DECLINED_BY_CUSTOMER`. **Blocked on Razorpay KYC + Route** (apply
-   now if not in flight). Provision Cloudflare R2 (`R2_*`) before the photo-evidence work.
-3. **Backend B2b — accept-timer** (deferred; 30-sec unclaimed-job re-broadcast; reuse `shared/queue/`
-   from B6c) — pick up when the app work needs it, else after the core customer flow.
+1. **PR the Slice-5 branch** → `main` (founder pushes/merges `feature/customer-app-slice5-payment`). Then run a
+   clean `flutter build ios` on the Mac to wire `razorpay_flutter`'s pod (the pbxproj/Podfile.lock were left
+   uncommitted — pod resolution was incomplete in this env).
+2. **Razorpay TEST keys** — add `RAZORPAY_KEY_ID/KEY_SECRET/WEBHOOK_SECRET` (test-mode, pre-KYC from the
+   dashboard) to `apps/backend/.env` so `/pay` returns a non-null `keyId` and UPI checkout runs end-to-end in the
+   app. Cash is fully testable today without them. Apply for **Razorpay KYC + Route** now if not in flight.
+3. **Customer app next slice** — candidates: full technician app (unblocks the other side of the arrival/
+   completion/cash handshakes), or the parked Slice-4 background-poll follow-up. Provision Cloudflare R2 (`R2_*`)
+   before the photo-evidence work. Backend B2b accept-timer still deferred (30-sec unclaimed-job re-broadcast).
 
 ## Deferred follow-ups (carry forward)
+- **Slice 5 payment follow-up (non-blocking — final review MERGE-READY, Golden Rules held):** (a) **iOS pod
+  integration** — run a clean `flutter build ios` on the Mac to pull `razorpay_flutter`'s pod into Podfile.lock +
+  pbxproj (the incomplete first-time-CocoaPods scaffolding in the working tree was intentionally NOT committed);
+  (b) **Razorpay TEST keys** in backend `.env` so UPI checkout runs (keyId is null without them → app shows the
+  cash-only fallback); (c) missing widget tests for `CheckoutFailed`/`CheckoutDismissed` outcomes, the
+  checkout-`open` arg pass-through, and the FAILED-retry prefix (all correct by inspection; the pure outcome
+  mappers ARE unit-tested); (d) real-backend smoke proof of `/pay` + `/pay-cash` once keys + a drivable
+  technician `confirm-cash` actor exist. **Cash confirm needs the technician app** (or curl) — the customer app
+  builds only its half.
 - **Slice 4 tracking follow-up (one ticket, non-blocking — final review MERGE-READY):** (a) **background-poll
   pause** — the design said the 5s poll "pauses when backgrounded"; the controller only refetches on resume, so
   the timer keeps firing while backgrounded (single timer, cleanly disposed — battery/spec-conformance nit, not

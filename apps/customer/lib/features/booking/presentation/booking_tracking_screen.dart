@@ -11,6 +11,8 @@ import '../data/booking_repository.dart';
 import 'booking_address_label.dart';
 import 'booking_tracking_controller.dart';
 import 'booking_wizard_screen.dart' show formatScheduledSlot;
+import 'pay_view.dart';
+import 'razorpay_checkout.dart';
 import 'tracking_phase.dart';
 
 /// The live booking tracking screen (`/booking/:id`). Watches the polling
@@ -128,7 +130,7 @@ class _Tracking extends ConsumerWidget {
         const SizedBox(height: 10),
         _PhaseBadge(phase: phaseFor(booking)),
         const SizedBox(height: 20),
-        _Timeline(phase: phaseFor(booking)),
+        _Timeline(phase: phaseFor(booking), paid: payViewFor(booking) == PayView.paid),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(16),
@@ -186,7 +188,7 @@ class _GateCard extends StatelessWidget {
       case TrackingGate.completion:
         return _CompletionCard(bookingId: booking.id, onSnack: onSnack);
       case TrackingGate.none:
-        return _PhaseSummary(booking: booking);
+        return _PhaseSummary(booking: booking, onRefetch: onRefetch, onSnack: onSnack);
     }
   }
 }
@@ -482,24 +484,22 @@ class _CompletionCardState extends ConsumerState<_CompletionCard> {
 // ── Non-gate summaries (payment / dispute / terminal) ───────────────────────
 
 class _PhaseSummary extends StatelessWidget {
-  const _PhaseSummary({required this.booking});
+  const _PhaseSummary({required this.booking, required this.onRefetch, required this.onSnack});
   final BookingDto booking;
+  final Future<void> Function() onRefetch;
+  final void Function(String message) onSnack;
 
   @override
   Widget build(BuildContext context) {
+    // Payment drives the pay card for any payable/paid booking — this also
+    // covers a DECLINED_BY_CUSTOMER booking that still owes the visit fee (or
+    // has already paid it). `none` falls through to the terminal/dispute copy.
+    if (payViewFor(booking) != PayView.none) {
+      return _PayCard(booking: booking, onRefetch: onRefetch, onSnack: onSnack);
+    }
+
     final phase = phaseFor(booking);
     final dispute = booking.dispute;
-    if (phase == TrackingPhase.payment) {
-      return _CardShell(
-        title: 'Payment coming soon',
-        children: [
-          Text(
-            'Amount payable: ${rupees(booking.estimate.totalPayablePaise)}',
-            style: const TextStyle(fontSize: 14, color: FixCareColors.textSecondary),
-          ),
-        ],
-      );
-    }
     if (phase == TrackingPhase.disputed && dispute != null) {
       return _CardShell(
         title: 'Dispute open',
@@ -524,14 +524,230 @@ class _PhaseSummary extends StatelessWidget {
             switch (phase) {
               TrackingPhase.completed => 'This booking is complete. Thank you.',
               TrackingPhase.cancelled => 'This booking was cancelled.',
-              _ => 'You declined this repair. The visit fee still applies.',
+              _ => 'This repair was declined.',
             },
             style: const TextStyle(fontSize: 13.5, color: FixCareColors.textMuted, height: 1.4),
           ),
         ],
       );
     }
+    // Payment phase with no pay-view (e.g. PAYMENT_RECEIVED whose summary lags —
+    // payment null or a non-captured attempt): render a neutral, DTO-derived
+    // status card, never a blank box. Do NOT claim "paid" — only a CAPTURED
+    // payment reads as paid (the `payViewFor == paid` branch above).
+    if (phase == TrackingPhase.payment) {
+      return const _CardShell(
+        title: 'Payment received',
+        children: [
+          Text(
+            'We have your payment and are finishing up. This can take a moment.',
+            style: TextStyle(fontSize: 13.5, color: FixCareColors.textMuted, height: 1.4),
+          ),
+        ],
+      );
+    }
     return const SizedBox.shrink();
+  }
+}
+
+// ── Payment card (Slice 5) ──────────────────────────────────────────────────
+
+/// Drives the customer's payment: pick UPI (Razorpay, keyId-gated) or cash
+/// (OTP handed to the technician). A successful checkout is NOT "paid" — the
+/// poll confirms via webhook (Golden Rules 1-3). The customer only reads the
+/// cash OTP aloud; there is no OTP submit here.
+class _PayCard extends ConsumerStatefulWidget {
+  const _PayCard({required this.booking, required this.onRefetch, required this.onSnack});
+  final BookingDto booking;
+  final Future<void> Function() onRefetch;
+  final void Function(String message) onSnack;
+
+  @override
+  ConsumerState<_PayCard> createState() => _PayCardState();
+}
+
+class _PayCardState extends ConsumerState<_PayCard> {
+  bool _busy = false;
+  String? _cashDevOtp;
+
+  Future<void> _payUpi() async {
+    setState(() => _busy = true);
+    final r = await ref.read(bookingRepositoryProvider).initiatePayment(widget.booking.id);
+    if (!mounted) return;
+    switch (r) {
+      case Failure(message: final m):
+        setState(() => _busy = false);
+        widget.onSnack(m);
+      case Ok(value: final init):
+        if (init.keyId == null) {
+          // UPI unavailable server-side — never open the plugin; steer to cash.
+          setState(() => _busy = false);
+          widget.onSnack("UPI isn't available right now — please pay by cash.");
+          return;
+        }
+        final outcome = await ref.read(razorpayCheckoutProvider).open(
+              keyId: init.keyId!,
+              orderId: init.orderId,
+              amountPaise: init.amountPaise,
+              name: 'FixCare',
+              description: widget.booking.service.name,
+            );
+        if (!mounted) return;
+        switch (outcome) {
+          case CheckoutSuccess():
+            // Success ≠ paid. Keep the buttons disabled ACROSS the refetch so a
+            // second tap can't start a second order for an already-paid booking
+            // (the refetch may keep-last-good, or the backend may not yet show
+            // payment=CREATED). Only clear _busy once the refetch resolves.
+            await widget.onRefetch();
+            if (mounted) setState(() => _busy = false);
+          case CheckoutFailed(message: final m):
+            // Real failure — re-enable so the customer can retry.
+            setState(() => _busy = false);
+            widget.onSnack(m);
+          case CheckoutDismissed():
+            // Benign cancel — re-enable, stay quiet (no snack).
+            setState(() => _busy = false);
+        }
+    }
+  }
+
+  Future<void> _payCash() async {
+    setState(() => _busy = true);
+    final r = await ref.read(bookingRepositoryProvider).initiateCashPayment(widget.booking.id);
+    if (!mounted) return;
+    switch (r) {
+      case Failure(message: final m):
+        setState(() => _busy = false);
+        widget.onSnack(m);
+      case Ok(value: final init):
+        setState(() {
+          _busy = false;
+          _cashDevOtp = init.devOtp;
+        });
+        // Refetch so the DTO's payment becomes CREATED/CASH → cashPending.
+        await widget.onRefetch();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.booking;
+    switch (payViewFor(b)) {
+      case PayView.choose:
+        final failed = b.payment?.status == 'FAILED';
+        return _CardShell(
+          title: 'Payment',
+          children: [
+            if (failed) ...[
+              const Text(
+                "Last payment didn't go through — try again.",
+                style: TextStyle(fontSize: 13.5, color: FixCareColors.errorText, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Amount payable',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600, color: FixCareColors.textPrimary)),
+                ),
+                Text(
+                  rupees(payableAmountPaise(b)),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700, color: FixCareColors.primary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              key: const Key('payUpiBtn'),
+              onPressed: _busy ? null : _payUpi,
+              child: _busy
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Pay by UPI'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const Key('payCashBtn'),
+              onPressed: _busy ? null : _payCash,
+              child: const Text('Pay cash'),
+            ),
+          ],
+        );
+      case PayView.upiPending:
+        return _CardShell(
+          title: 'Payment',
+          children: [
+            Row(
+              children: [
+                const SizedBox(
+                    width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Confirming your payment…',
+                    style: const TextStyle(
+                        fontSize: 13.5, color: FixCareColors.textSecondary, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      case PayView.cashPending:
+        return _CardShell(
+          title: 'Pay cash',
+          children: [
+            const Text(
+              'Read this 6-digit code to your technician.',
+              style: TextStyle(fontSize: 13.5, color: FixCareColors.textSecondary, height: 1.4),
+            ),
+            if (!kReleaseMode && _cashDevOtp != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                key: const Key('devCashOtp'),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: FixCareColors.devHintFill,
+                  borderRadius: BorderRadius.circular(FixCareRadii.field),
+                  border: Border.all(color: FixCareColors.devHintBorder),
+                ),
+                child: Text(
+                  _cashDevOtp!,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 18,
+                    letterSpacing: 4,
+                    fontWeight: FontWeight.w700,
+                    color: FixCareColors.devHintText,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            const Text(
+              'Waiting for your technician to confirm…',
+              style: TextStyle(fontSize: 13, color: FixCareColors.textMuted, height: 1.4),
+            ),
+          ],
+        );
+      case PayView.paid:
+        final p = b.payment;
+        return _CardShell(
+          title: 'Paid',
+          children: [
+            Text(
+              p == null ? '✓ Paid' : '✓ ${p.method} · ${rupees(p.amountPaise)}',
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: FixCareColors.success),
+            ),
+          ],
+        );
+      case PayView.none:
+        return const SizedBox.shrink();
+    }
   }
 }
 
@@ -603,10 +819,19 @@ class _PhaseBadge extends StatelessWidget {
 /// A compact milestone timeline. The current phase maps to one of the ordered
 /// milestones; everything up to and including it reads as "done/active".
 class _Timeline extends StatelessWidget {
-  const _Timeline({required this.phase});
+  const _Timeline({required this.phase, this.paid = false});
   final TrackingPhase phase;
 
+  /// Whether payment is actually captured (`payViewFor == paid`). The payment
+  /// phase alone does NOT mean paid — an unpaid payable booking sits in the
+  /// payment phase while the pay card still asks the customer to pay, so "Paid"
+  /// must stay un-highlighted until capture.
+  final bool paid;
+
   static const _milestones = ['Booked', 'Assigned', 'Arrived', 'Diagnosis', 'Repair', 'Done', 'Paid'];
+
+  static const _paidIndex = 6; // 'Paid'
+  static const _doneIndex = 5; // 'Done' — the step before 'Paid'
 
   /// The index of the currently-active milestone for a phase.
   int get _activeIndex => switch (phase) {
@@ -616,7 +841,10 @@ class _Timeline extends StatelessWidget {
         TrackingPhase.diagnosis => 3,
         TrackingPhase.repairing => 4,
         TrackingPhase.confirmCompletion => 5,
-        TrackingPhase.payment || TrackingPhase.completed => 6,
+        // Payment due but not yet captured stops at 'Done'; only a CAPTURED
+        // payment lights 'Paid'. A CLOSED booking is fully paid.
+        TrackingPhase.payment => paid ? _paidIndex : _doneIndex,
+        TrackingPhase.completed => _paidIndex,
         // Off-path terminal/dispute states: don't highlight a milestone.
         TrackingPhase.disputed || TrackingPhase.cancelled || TrackingPhase.declined => -1,
       };

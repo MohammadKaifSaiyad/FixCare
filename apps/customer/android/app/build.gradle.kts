@@ -43,6 +43,9 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Minify stays OFF for now; wire the ProGuard rules so Razorpay keep-rules
+            // (ADR-0006) are in place if/when shrinking is enabled.
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

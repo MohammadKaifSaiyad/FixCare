@@ -82,6 +82,16 @@ class BookingRepository {
     final res = await _dio.post('/me/bookings/$id/request-completion-otp');
     return _ok<CompletionOtpDto>(res, (data) => CompletionOtpDto.fromJson((data as Map).cast<String, dynamic>()));
   });
+
+  Future<Result<PaymentInitDto>> initiatePayment(String id) => _guard(() async {
+    final res = await _dio.post('/me/bookings/$id/pay');
+    return _ok<PaymentInitDto>(res, (data) => PaymentInitDto.fromJson((data as Map).cast<String, dynamic>()));
+  });
+
+  Future<Result<CashInitDto>> initiateCashPayment(String id) => _guard(() async {
+    final res = await _dio.post('/me/bookings/$id/pay-cash');
+    return _ok<CashInitDto>(res, (data) => CashInitDto.fromJson((data as Map).cast<String, dynamic>()));
+  });
 }
 
 final bookingRepositoryProvider = Provider<BookingRepository>((ref) => BookingRepository(ref.read(dioProvider)));
