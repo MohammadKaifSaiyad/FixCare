@@ -87,7 +87,13 @@ export class RazorpayGateway implements PaymentGateway {
  *  keys are configured (test-mode OR live keys — Razorpay's key prefix decides which; the
  *  same api.razorpay.com is called either way). Falls back to the offline DevPaymentGateway
  *  only when unconfigured, so a keyless boot, CI, and the (key-free) test suite stay offline.
- *  Partial keys → stub (fail safe: never a half-configured real gateway). */
+ *  Partial keys → stub (fail safe: never a half-configured real gateway).
+ *
+ *  DELIBERATELY diverges from makeOtpSender/makePhotoStorage (which stay 'real only in
+ *  production'): UPI checkout CANNOT be exercised offline — it needs a real gateway order +
+ *  the payment.captured webhook — so a developer with test keys must be able to hit real
+ *  Razorpay in dev. OTP echo and dev photo storage, by contrast, are fully usable stubbed,
+ *  so there's no reason to flip those on keys. See .env.example for the local-UPI runbook. */
 export function makePaymentGateway(): PaymentGateway {
   const configured = !!(config.RAZORPAY_KEY_ID && config.RAZORPAY_KEY_SECRET && config.RAZORPAY_WEBHOOK_SECRET);
   return config.NODE_ENV === 'production' || configured ? new RazorpayGateway() : new DevPaymentGateway();
