@@ -143,6 +143,46 @@ void main() {
     expect(await store.readRefresh(), isNull);
   });
 
+  test('retried request 401s again → tokens cleared and onAuthLost called', () async {
+    final store = TokenStore();
+    await store.save(access: 'old', refresh: 'r1');
+
+    // The stub never accepts any token, so even the post-refresh retry with
+    // the new access token still 401s (simulating a token that's already
+    // revoked / a clock-skew / server-side-logout race).
+    final stub = _StubAdapter('server-side-invalidated');
+    final dio = Dio(BaseOptions(baseUrl: 'http://test', validateStatus: (_) => true));
+    dio.httpClientAdapter = stub;
+
+    // Mirrors production wiring (dio_client.dart): retry goes through a
+    // separate, interceptor-free Dio so a retried-401 can't recurse back
+    // into this same AuthInterceptor.
+    final retryDio = Dio(BaseOptions(baseUrl: 'http://test', validateStatus: (_) => true));
+    retryDio.httpClientAdapter = stub;
+
+    bool onAuthLostCalled = false;
+    Future<Result<RefreshResponse>> refresh(String r) async {
+      // Refresh itself succeeds and stores a new token, but the server
+      // still rejects it on the retried request (stub never matches).
+      await store.save(access: 'new', refresh: 'r2');
+      return const Ok(RefreshResponse(accessToken: 'new', refreshToken: 'r2'));
+    }
+
+    dio.interceptors.add(AuthInterceptor(
+      store,
+      refresh,
+      () => onAuthLostCalled = true,
+      retryDio,
+    ));
+
+    final response = await dio.get<Map<String, dynamic>>('/me/a');
+
+    expect(response.statusCode, 401);
+    expect(onAuthLostCalled, isTrue, reason: 'a retried-401 must eject the user just like an unrefreshable 401');
+    expect(await store.readAccess(), isNull);
+    expect(await store.readRefresh(), isNull);
+  });
+
   test('requests to /auth/* are not given a Bearer header and do not trigger refresh on 401', () async {
     final store = TokenStore();
     await store.save(access: 'old', refresh: 'r1');

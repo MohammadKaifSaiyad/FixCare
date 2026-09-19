@@ -52,6 +52,16 @@ class AuthInterceptor extends Interceptor {
 
     try {
       final retried = await _retry(response.requestOptions);
+      if (retried.statusCode == 401) {
+        // Refresh succeeded but the retried request 401s again (new token
+        // already revoked / clock skew / server-side logout race). Without
+        // this, the caller sees a 401 but the session is never torn down —
+        // the user is stuck on an authenticated route with a dead token,
+        // looping 401s with no recovery. Treat this exactly like an
+        // unrefreshable 401: clear tokens and eject.
+        await _store.clear();
+        _onAuthLost();
+      }
       handler.resolve(retried);
     } catch (_) {
       handler.next(response);
