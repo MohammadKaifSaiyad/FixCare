@@ -7,6 +7,7 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/otp_entry_screen.dart';
 import '../../features/auth/presentation/phone_entry_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/jobs/presentation/jobs_home_screen.dart';
 import '../../features/jobs/presentation/verification_pending_screen.dart';
 
 /// Bridges the Riverpod auth state to a [Listenable] so GoRouter re-runs its
@@ -80,9 +81,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/home',
         builder: (context, state) {
           final s = ref.read(authControllerProvider).value;
-          // TODO(Task 6): verified → JobsHomeScreen
           return (s is SessionAuthenticated && s.isVerified)
-              ? const VerificationPendingScreen()
+              ? const JobsHomeScreen()
               : const VerificationPendingScreen();
         },
       ),
