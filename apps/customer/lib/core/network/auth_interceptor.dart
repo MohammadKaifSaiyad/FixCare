@@ -12,6 +12,12 @@ import '../storage/token_store.dart';
 /// [onResponse] starts [_doRefresh]; every other concurrent 401 awaits the
 /// SAME in-flight future rather than calling refresh again. This is the
 /// load-bearing invariant — see test/auth/auth_interceptor_test.dart.
+///
+/// Session teardown: the session is torn down (tokens cleared + [_onAuthLost])
+/// on BOTH an unrefreshable 401 AND a retried-401 — i.e. when refresh succeeds
+/// but the retried request is STILL rejected (new token already revoked / clock
+/// skew / server-side logout race). In either case the user is ejected rather
+/// than left looping 401s with a dead token.
 class AuthInterceptor extends Interceptor {
   AuthInterceptor(this._store, this._refresh, this._onAuthLost, this._retryDio);
 
@@ -52,8 +58,27 @@ class AuthInterceptor extends Interceptor {
 
     try {
       final retried = await _retry(response.requestOptions);
+      if (retried.statusCode == 401) {
+        // Refresh succeeded but the retried request 401s again (new token
+        // already revoked / clock skew / server-side logout race). Without
+        // this, the caller sees a 401 but the session is never torn down —
+        // the user is stuck on an authenticated route with a dead token,
+        // looping 401s with no recovery. Treat this exactly like an
+        // unrefreshable 401: clear tokens and eject.
+        await _store.clear();
+        _onAuthLost();
+      }
       handler.resolve(retried);
-    } catch (_) {
+    } catch (e) {
+      // Defense in depth: the retried-401 eject above assumes _retryDio returns
+      // the 401 as a Response (validateStatus:(_)=>true, as dio_client wires it).
+      // If a retry Dio were ever configured to THROW on 4xx instead, a retried
+      // 401 would land here — still tear the session down so the guarantee holds
+      // regardless of the retry Dio's validateStatus.
+      if (e is DioException && e.response?.statusCode == 401) {
+        await _store.clear();
+        _onAuthLost();
+      }
       handler.next(response);
     }
   }
