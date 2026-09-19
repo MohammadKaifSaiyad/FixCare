@@ -8,6 +8,32 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-19 — Technician app Slice 1: scaffold + auth + jobs (on branch)
+
+- **New app `apps/technician`** (Flutter, Android+iOS) — the next app in the build order (ADR-0004), unblocking the
+  technician side of every keystone handshake. On `feature/technician-app-slice1-scaffold-auth` (`dcb765f..9fda61f`),
+  ready for PR. Built via SDD (6 tasks, each spec+quality reviewed; final whole-branch review MERGE-READY;
+  `/code-review` + fix wave). 31 tests, `flutter analyze` clean.
+- **Backbone copied+adapted from the customer app** — Result/FailureKind, TokenStore, dio + single-flight
+  AuthInterceptor (carries the no-global-content-type DELETE-bug fix), theme, go_router token-gate. Each app stays
+  self-contained (no shared Flutter package yet).
+- **Phone-OTP auth, `role:TECHNICIAN`** — same `/auth/otp/send|verify|refresh`; `GET /me/profile` →
+  `TechnicianProfileDto{id,role,name,skills,status}`.
+- **Verification gate** — `Session.isVerified == status=='VERIFIED'`, keyed on the profile's **TechnicianStatus**
+  (not the verify response's user.status) and **failing closed** (an unhydrated session falls back to PENDING, never
+  reads VERIFIED). VERIFIED → jobs home; else a status screen with distinct pending vs suspended copy + logout.
+- **Jobs feature** — `TechnicianJobDto` reflecting the backend's **directional PII masking** (full address to reach
+  the site; customer phone masked; **no customer name**) + repository (available/mine/accept, surfacing 403
+  'Verified technician required' / 409 'This job is no longer available' / 422 cash-debt) + a jobs home (available
+  list + accept with per-card busy guard + pull-to-refresh; read-only my-jobs).
+- **`/code-review` caught 2 release-config regressions** the logic-focused reviews missed (copy-paste drift from the
+  customer app): the **INTERNET permission was missing from the release Android manifest** (release couldn't
+  network) and the **Outfit font was referenced but neither declared nor shipped** (whole-app typography fell back).
+  Both fixed, plus a retried-401 → onAuthLost correctness edge (which revealed the **same latent bug in the merged
+  customer app** — flagged for a back-port PR).
+- Design `docs/designs/2026-09-19-technician-app-slice1-scaffold-auth-design.md`, plan
+  `docs/plans/2026-09-19-technician-app-slice1-scaffold-auth.md`.
+
 ## 2026-09-13 — Customer app Slice 5: payment (on branch)
 
 - **Real pay card** replaces the Slice-4 "payment coming soon" placeholder, at the two payable states

@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-09-13_
+_Last updated: 2026-09-19_
 
 ---
 
@@ -13,10 +13,28 @@ _Last updated: 2026-09-13_
 (ADR-0004) advanced to the **customer app** (`apps/customer`, Android + iOS per ADR-0005; Riverpod codegen +
 go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/web-drop (#23), design-fidelity
 (#24), Slice 2 (#25/#26), **Slice 3 discovery+booking (#27)**, **founder bug-fixes (#28)**, **contract-smoke
-test (#29)**, **Slice 4 booking tracking (#30)**. **Slice 5 (payment) complete on branch, ready for PR.** Money
-still on Razorpay test keys until KYC.
+test (#29)**, **Slice 4 booking tracking (#30)**, **Slice 5 payment (#31)**, **dev harness (#32)**, **real-Razorpay-
+gateway (#33)**. **Customer app Slices 1-5 all merged.** Build order (ADR-0004) advanced to the **technician app**
+(`apps/technician`) — Slice 1 complete on branch, ready for PR. Money still on Razorpay test keys until KYC (UPI
+method blocked on Razorpay account activation — see Blocked on).
 
 ## Active task
+**Technician app Slice 1 — scaffold + phone-OTP auth + jobs** COMPLETE on `feature/technician-app-slice1-scaffold-auth`
+(commits `dcb765f..9fda61f`), **ready for PR → `main`**. New Flutter app `apps/technician` (Android+iOS), backbone
+copied+adapted from the customer app (Result/TokenStore/dio+single-flight interceptor/theme/token-gate — carries the
+no-global-content-type fix). Phone-OTP auth with `role:TECHNICIAN`; `GET /me/profile` → `TechnicianProfileDto`; a
+**verification gate** — VERIFIED → jobs home, else a status screen (pending vs suspended copy), keyed on the profile's
+TechnicianStatus and **failing closed** (unhydrated → PENDING, never VERIFIED). Jobs feature: `TechnicianJobDto`
+(directional PII — full address, masked phone, no name) + repo (available/mine/accept, 403/409/422 surfaced) + jobs
+home (list + accept with per-card busy). Built via SDD (6 tasks, each spec+quality reviewed; final whole-branch review
+MERGE-READY; `/code-review` caught + fixed 2 release-config regressions — missing INTERNET perm in the release
+manifest, undeclared Outfit font — plus a retried-401 onAuthLost edge). 31 tests; `flutter analyze` clean. Unblocks
+the OTHER side of every keystone handshake (accept→…→confirm-cash), so end-to-end testing no longer needs the
+dev-drive-booking harness. Design/plan: `docs/designs/2026-09-19-…`, `docs/plans/2026-09-19-…`.
+**Next: PR → `main`. Then iOS pod-less build check; then technician Slice 2 (drive a job: en-route→arrive→diagnose→
+photos→complete→confirm-cash) — the real end-to-end.**
+
+## PRIOR active task (customer app Slice 5 — payment, MERGED #31; kept below for history)
 **Customer app Slice 5 — payment** COMPLETE on `feature/customer-app-slice5-payment` (commits `5c337a3..ebe211b`),
 **ready for PR → `main`**. Replaces the Slice-4 "payment coming soon" placeholder with a real pay card at the two
 payable states (`CUSTOMER_CONFIRMED` = approved total; `DECLINED_BY_CUSTOMER` = visit fee). Two paths: **UPI** via
@@ -215,6 +233,11 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
    before the photo-evidence work. Backend B2b accept-timer still deferred (30-sec unclaimed-job re-broadcast).
 
 ## Deferred follow-ups (carry forward)
+- **Customer app auth-interceptor retried-401 back-port** (found during technician Slice 1 `/code-review`):
+  `apps/customer/lib/core/network/auth_interceptor.dart` has a latent bug — when a token refresh succeeds but the
+  retried request itself 401s (new token already revoked / clock skew), it neither clears tokens nor calls
+  `onAuthLost`, leaving the customer session-stuck. The technician app fixed it (files were byte-identical);
+  **back-port the fix to the customer app in its own small PR + a covering test.** Non-blocking, low frequency.
 - **Slice 5 payment follow-up (non-blocking — final review MERGE-READY, Golden Rules held):** (a) **iOS pod
   integration** — run a clean `flutter build ios` on the Mac to pull `razorpay_flutter`'s pod into Podfile.lock +
   pbxproj (the incomplete first-time-CocoaPods scaffolding in the working tree was intentionally NOT committed);
