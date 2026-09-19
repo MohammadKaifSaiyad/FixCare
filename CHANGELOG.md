@@ -8,6 +8,17 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-19 — Customer auth-interceptor retried-401 fix (on branch)
+
+- **Fixes a latent session-stuck bug** in `apps/customer/lib/core/network/auth_interceptor.dart` (found during
+  the technician Slice 1 `/code-review`; the two apps' interceptors were byte-identical). When a token refresh
+  SUCCEEDS but the retried request itself returns 401 (new access token already revoked / clock skew /
+  server-side logout race), the interceptor now clears tokens + calls `onAuthLost` (ejects to login), exactly
+  like an unrefreshable 401 — instead of surfacing the 401 while leaving the user stuck on an authenticated route
+  looping 401s with a dead token. Also hardens the `catch` path so the eject holds even if a retry Dio ever throws
+  on 4xx rather than returning the 401. +1 covering test; customer suite `+176 ~5`, analyze clean, `/code-review` run.
+  On `fix/customer-interceptor-retried-401`, ready for PR.
+
 ## 2026-09-19 — Technician app Slice 1: scaffold + auth + jobs (on branch)
 
 - **New app `apps/technician`** (Flutter, Android+iOS) — the next app in the build order (ADR-0004), unblocking the
