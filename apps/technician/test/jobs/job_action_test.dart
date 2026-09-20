@@ -41,4 +41,21 @@ void main() {
   test('unknown state -> terminal (never throws / never a wrong action)', () {
     expect(jobActionFor(_j('SOME_FUTURE_STATE')), JobAction.terminal);
   });
+
+  test('isTerminalJob: DECLINED_BY_CUSTOMER is non-terminal (poll continues for cash)', () {
+    expect(isTerminalJob(_j('DECLINED_BY_CUSTOMER')), false);
+  });
+
+  test('isTerminalJob: genuinely terminal states return true', () {
+    expect(isTerminalJob(_j('PAYMENT_RECEIVED')), true);
+    expect(isTerminalJob(_j('CLOSED')), true);
+    expect(isTerminalJob(_j('CANCELLED_BY_CUSTOMER')), true);
+    expect(isTerminalJob(_j('CANCELLED_BY_TECHNICIAN')), true);
+  });
+
+  test('isTerminalJob: mid-flow states return false', () {
+    expect(isTerminalJob(_j('ACCEPTED')), false);
+    expect(isTerminalJob(_j('REPAIR_IN_PROGRESS')), false);
+    expect(isTerminalJob(_j('CUSTOMER_CONFIRMED')), false);
+  });
 }

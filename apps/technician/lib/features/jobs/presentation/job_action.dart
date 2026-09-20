@@ -69,6 +69,5 @@ bool isTerminalJob(TechnicianJobDto b) {
     'CLOSED',
     'CANCELLED_BY_CUSTOMER',
     'CANCELLED_BY_TECHNICIAN',
-    'DECLINED_BY_CUSTOMER',
   }.contains(b.state);
 }
