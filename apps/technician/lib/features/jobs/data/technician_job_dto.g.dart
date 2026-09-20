@@ -94,3 +94,57 @@ Map<String, dynamic> _$TechnicianJobDtoToJson(_TechnicianJobDto instance) =>
       'customer': instance.customer,
       'photos': instance.photos,
     };
+
+_ArriveResultDto _$ArriveResultDtoFromJson(Map<String, dynamic> json) =>
+    _ArriveResultDto(
+      arrivalCode: json['arrivalCode'] as String,
+      withinGeofence: json['withinGeofence'] as bool?,
+    );
+
+Map<String, dynamic> _$ArriveResultDtoToJson(_ArriveResultDto instance) =>
+    <String, dynamic>{
+      'arrivalCode': instance.arrivalCode,
+      'withinGeofence': instance.withinGeofence,
+    };
+
+_CashResultDto _$CashResultDtoFromJson(Map<String, dynamic> json) =>
+    _CashResultDto(
+      id: json['id'] as String,
+      state: json['state'] as String,
+      cashDebtPaise: (json['cashDebtPaise'] as num).toInt(),
+    );
+
+Map<String, dynamic> _$CashResultDtoToJson(_CashResultDto instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'state': instance.state,
+      'cashDebtPaise': instance.cashDebtPaise,
+    };
+
+_PhotoSignDto _$PhotoSignDtoFromJson(Map<String, dynamic> json) =>
+    _PhotoSignDto(
+      url: json['url'] as String,
+      key: json['key'] as String,
+      expiresAt: json['expiresAt'] as String,
+    );
+
+Map<String, dynamic> _$PhotoSignDtoToJson(_PhotoSignDto instance) =>
+    <String, dynamic>{
+      'url': instance.url,
+      'key': instance.key,
+      'expiresAt': instance.expiresAt,
+    };
+
+_PhotoConfirmDto _$PhotoConfirmDtoFromJson(Map<String, dynamic> json) =>
+    _PhotoConfirmDto(
+      id: json['id'] as String,
+      kind: json['kind'] as String,
+      capturedAt: json['capturedAt'] as String,
+    );
+
+Map<String, dynamic> _$PhotoConfirmDtoToJson(_PhotoConfirmDto instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'kind': instance.kind,
+      'capturedAt': instance.capturedAt,
+    };

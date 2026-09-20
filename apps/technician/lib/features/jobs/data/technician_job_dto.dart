@@ -57,3 +57,30 @@ abstract class TechnicianJobDto with _$TechnicianJobDto {
   }) = _TechnicianJobDto;
   factory TechnicianJobDto.fromJson(Map<String, dynamic> j) => _$TechnicianJobDtoFromJson(j);
 }
+
+@freezed
+abstract class ArriveResultDto with _$ArriveResultDto {
+  const factory ArriveResultDto({required String arrivalCode, bool? withinGeofence}) = _ArriveResultDto;
+  factory ArriveResultDto.fromJson(Map<String, dynamic> j) => _$ArriveResultDtoFromJson(j);
+}
+
+@freezed
+abstract class CashResultDto with _$CashResultDto {
+  const factory CashResultDto({required String id, required String state, required int cashDebtPaise}) =
+      _CashResultDto;
+  factory CashResultDto.fromJson(Map<String, dynamic> j) => _$CashResultDtoFromJson(j);
+}
+
+@freezed
+abstract class PhotoSignDto with _$PhotoSignDto {
+  const factory PhotoSignDto({required String url, required String key, required String expiresAt}) =
+      _PhotoSignDto;
+  factory PhotoSignDto.fromJson(Map<String, dynamic> j) => _$PhotoSignDtoFromJson(j);
+}
+
+@freezed
+abstract class PhotoConfirmDto with _$PhotoConfirmDto {
+  const factory PhotoConfirmDto({required String id, required String kind, required String capturedAt}) =
+      _PhotoConfirmDto;
+  factory PhotoConfirmDto.fromJson(Map<String, dynamic> j) => _$PhotoConfirmDtoFromJson(j);
+}
