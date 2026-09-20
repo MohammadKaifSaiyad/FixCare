@@ -25,6 +25,13 @@
 			</dict>
 		</dict>
 	</dict>
+	<!-- Camera-evidence pipeline (ADR-0007) — kept in sync with Runner/Info.plist
+	     (the non-ATS keys must match; see the file header note). Camera-only live
+	     capture + one-shot capture-time geotag; both need a purpose string. -->
+	<key>NSCameraUsageDescription</key>
+	<string>FixCare needs the camera to take the on-site repair photos that verify your work.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>FixCare tags your repair photos with location to confirm they were taken at the job.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

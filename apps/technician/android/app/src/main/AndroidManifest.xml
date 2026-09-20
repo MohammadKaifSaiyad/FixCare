@@ -5,6 +5,15 @@
          debug/profile manifests. Release traffic is HTTPS-only; cleartext for
          the local dev API is enabled debug-only (see src/debug). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Camera-evidence pipeline (ADR-0007). The technician captures the
+         mandatory evidence photos live (camera-only; no gallery — a fraud
+         vector) and each capture reads a one-shot geotag. Both are dangerous
+         permissions, requested at runtime by image_picker / geolocator when the
+         technician first taps a capture slot — declared here, granted then.
+         Location is fine (ACCESS_FINE) but capture-time only — the app declares
+         no background-location permission. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="fixcare_technician"
         android:name="${applicationName}"
