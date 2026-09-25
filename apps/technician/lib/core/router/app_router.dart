@@ -7,6 +7,7 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/otp_entry_screen.dart';
 import '../../features/auth/presentation/phone_entry_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/jobs/presentation/job_detail_screen.dart';
 import '../../features/jobs/presentation/jobs_home_screen.dart';
 import '../../features/jobs/presentation/verification_pending_screen.dart';
 
@@ -85,6 +86,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ? const JobsHomeScreen()
               : const VerificationPendingScreen();
         },
+      ),
+      GoRoute(
+        path: '/job/:id',
+        builder: (_, state) => JobDetailScreen(bookingId: state.pathParameters['id']!),
       ),
     ],
   );
