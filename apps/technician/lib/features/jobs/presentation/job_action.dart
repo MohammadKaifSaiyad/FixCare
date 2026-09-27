@@ -3,11 +3,9 @@ import '../data/technician_job_dto.dart';
 enum JobAction {
   enRoute,
   arrive,
-  waitingConfirm,
   diagnose,
   waitingApproval,
   startRepair,
-  partsNeeded,
   partsAcquired,
   completeRepair,
   confirmCompletion,

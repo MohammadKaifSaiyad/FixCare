@@ -100,14 +100,18 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
     setState(() => _busyPartIds.add(part.id));
     try {
       final qty = _qtyFor(part.id);
-      final result =
-          await ref.read(technicianJobRepositoryProvider).addPart(widget.job.id, partsCatalogId: part.id, qty: qty);
-      if (!mounted) return;
+      // Read BEFORE the await: if the card unmounts mid-request (the
+      // technician leaves the job), `ref` is gone, but the backend has still
+      // added the line — the keepAlive cart must record it, or a re-add would
+      // duplicate it on the customer's estimate.
+      final repo = ref.read(technicianJobRepositoryProvider);
+      final cart = ref.read(jobCartProvider(widget.job.id).notifier);
+      final result = await repo.addPart(widget.job.id, partsCatalogId: part.id, qty: qty);
       switch (result) {
         case Ok(value: final lineId):
-          ref.read(jobCartProvider(widget.job.id).notifier).add(CartLine(lineId: lineId, part: part, qty: qty));
+          cart.add(CartLine(lineId: lineId, part: part, qty: qty));
         case Failure(message: final m):
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
       }
     } catch (_) {
       if (mounted) {
@@ -122,13 +126,16 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
     if (_busyLineIds.contains(line.lineId)) return;
     setState(() => _busyLineIds.add(line.lineId));
     try {
-      final result = await ref.read(technicianJobRepositoryProvider).removePart(widget.job.id, line.lineId);
-      if (!mounted) return;
+      // Read BEFORE the await (see _addPart): a removal the backend applied
+      // must leave the keepAlive cart even if the card unmounted meanwhile.
+      final repo = ref.read(technicianJobRepositoryProvider);
+      final cart = ref.read(jobCartProvider(widget.job.id).notifier);
+      final result = await repo.removePart(widget.job.id, line.lineId);
       switch (result) {
         case Ok():
-          ref.read(jobCartProvider(widget.job.id).notifier).remove(line.lineId);
+          cart.remove(line.lineId);
         case Failure(message: final m):
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
       }
     } catch (_) {
       if (mounted) {

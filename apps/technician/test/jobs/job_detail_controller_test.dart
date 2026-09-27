@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +26,20 @@ class _ScriptedRepo extends TechnicianJobRepository {
     final r = results[calls < results.length ? calls : results.length - 1];
     calls++;
     return r;
+  }
+}
+
+/// A repo whose every mine() call stays in flight until the test completes it
+/// (pending[i] is the i-th call) — for overlap / ordering tests.
+class _GatedRepo extends TechnicianJobRepository {
+  _GatedRepo() : super(Dio());
+  final List<Completer<Result<List<TechnicianJobDto>>>> pending = [];
+  int get calls => pending.length;
+  @override
+  Future<Result<List<TechnicianJobDto>>> mine() {
+    final c = Completer<Result<List<TechnicianJobDto>>>();
+    pending.add(c);
+    return c.future;
   }
 }
 
@@ -149,6 +165,132 @@ void main() {
       // polling continues after refetch's re-arm
       async.elapse(const Duration(seconds: 5));
       expect(c.read(jobDetailProvider('b1')).value?.state, 'CUSTOMER_APPROVED');
+    });
+  });
+
+  test('no second fetch starts while a poll is in flight; the next tick is armed only after it completes', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      expect(repo.calls, 1);
+      repo.pending[0].complete(Ok([_j('EN_ROUTE')]));
+      async.flushMicrotasks();
+
+      async.elapse(const Duration(seconds: 5)); // tick -> poll #2 starts, stays in flight
+      expect(repo.calls, 2);
+      async.elapse(const Duration(seconds: 30)); // slow network: no overlapping ticks
+      expect(repo.calls, 2);
+
+      repo.pending[1].complete(Ok([_j('ARRIVED')]));
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+      expect(repo.calls, 2, reason: 're-armed, not fired immediately');
+      async.elapse(const Duration(seconds: 5));
+      expect(repo.calls, 3);
+      repo.pending[2].complete(Ok([_j('ARRIVED')]));
+      async.flushMicrotasks();
+    });
+  });
+
+  test('a stale response landing after a newer one is dropped (poll vs refetch)', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      repo.pending[0].complete(Ok([_j('ARRIVED')]));
+      async.flushMicrotasks();
+
+      async.elapse(const Duration(seconds: 5)); // poll #2 in flight (will carry the OLD state)
+      expect(repo.calls, 2);
+      c.read(jobDetailProvider('b1').notifier).refetch(); // #3, issued after the action
+      async.flushMicrotasks();
+      expect(repo.calls, 3);
+
+      repo.pending[2].complete(Ok([_j('DIAGNOSED')])); // newer lands first
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED');
+
+      repo.pending[1].complete(Ok([_j('ARRIVED')])); // older lands late
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED', reason: 'the stale poll must not regress the card');
+
+      // Exactly one timer chain survives.
+      async.elapse(const Duration(seconds: 5));
+      expect(repo.calls, 4);
+      repo.pending[3].complete(Ok([_j('DIAGNOSED')]));
+      async.flushMicrotasks();
+    });
+  });
+
+  test('pause() stops polling; resume() fetches once immediately and re-arms', () {
+    fakeAsync((async) {
+      final repo = _ScriptedRepo([
+        Ok([_j('EN_ROUTE')]),
+        Ok([_j('ARRIVED')]),
+        Ok([_j('DIAGNOSED')]),
+      ]);
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      expect(repo.calls, 1);
+
+      c.read(jobDetailProvider('b1').notifier).pause();
+      async.elapse(const Duration(minutes: 2));
+      expect(repo.calls, 1, reason: 'no polling while backgrounded');
+
+      c.read(jobDetailProvider('b1').notifier).resume();
+      async.flushMicrotasks();
+      expect(repo.calls, 2);
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+
+      async.elapse(const Duration(seconds: 5));
+      expect(repo.calls, 3, reason: 'polling re-armed after resume');
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED');
+    });
+  });
+
+  test('pause() while a poll is in flight: the completing poll does not re-arm', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      repo.pending[0].complete(Ok([_j('EN_ROUTE')]));
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 5));
+      expect(repo.calls, 2);
+
+      c.read(jobDetailProvider('b1').notifier).pause();
+      repo.pending[1].complete(Ok([_j('EN_ROUTE')]));
+      async.flushMicrotasks();
+      async.elapse(const Duration(minutes: 1));
+
+      expect(repo.calls, 2);
+    });
+  });
+
+  test('resume() on a terminal job fetches once and does not re-arm', () {
+    fakeAsync((async) {
+      final repo = _ScriptedRepo([
+        Ok([_j('PAYMENT_RECEIVED')]),
+      ]);
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      c.read(jobDetailProvider('b1').notifier).pause();
+      c.read(jobDetailProvider('b1').notifier).resume();
+      async.flushMicrotasks();
+      expect(repo.calls, 2);
+      async.elapse(const Duration(minutes: 1));
+      expect(repo.calls, 2);
     });
   });
 }

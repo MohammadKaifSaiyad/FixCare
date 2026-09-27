@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:fixcare_technician/core/format.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/jobs_home_screen.dart';
@@ -85,6 +86,15 @@ void main() {
     expect(find.textContaining('₹200'), findsOneWidget);
     expect(find.text('••••••8384'), findsOneWidget);
     expect(find.textContaining('A/27 Umiya Nagar'), findsOneWidget);
+  });
+
+  testWidgets('available + my-job cards show the slot in local time (formatScheduledSlot), never raw ISO',
+      (tester) async {
+    await _pump(tester, _FakeJobRepo(mine: [_dto(id: 'm1')]));
+
+    final expected = 'Scheduled: ${formatScheduledSlot('2026-09-20T09:00:00.000Z')}';
+    expect(find.text(expected), findsNWidgets(2));
+    expect(find.textContaining('2026-09-20T'), findsNothing);
   });
 
   testWidgets('empty available list shows noJobsEmpty', (tester) async {

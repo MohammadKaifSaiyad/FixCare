@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,15 +50,21 @@ class _FakeJobRepo extends TechnicianJobRepository {
   int addPartCalls = 0;
   ({String id, String partsCatalogId, int qty})? lastAddPart;
   Result<String> addPartResult = const Ok('line-1');
+  /// When set, addPart stays in flight until the test completes it.
+  Completer<Result<String>>? addPartGate;
 
   int removePartCalls = 0;
   ({String id, String partId})? lastRemovePart;
   Result<void> removePartResult = const Ok(null);
+  /// When set, removePart stays in flight until the test completes it.
+  Completer<Result<void>>? removePartGate;
 
   @override
   Future<Result<String>> addPart(String id, {required String partsCatalogId, required int qty}) async {
     addPartCalls++;
     lastAddPart = (id: id, partsCatalogId: partsCatalogId, qty: qty);
+    final gate = addPartGate;
+    if (gate != null) return gate.future;
     return addPartResult;
   }
 
@@ -64,6 +72,8 @@ class _FakeJobRepo extends TechnicianJobRepository {
   Future<Result<void>> removePart(String id, String partId) async {
     removePartCalls++;
     lastRemovePart = (id: id, partId: partId);
+    final gate = removePartGate;
+    if (gate != null) return gate.future;
     return removePartResult;
   }
 }
@@ -276,5 +286,60 @@ void main() {
 
     expect(find.text('Something went wrong.'), findsOneWidget);
     expect(find.byKey(const Key('partsRetry')), findsOneWidget);
+  });
+
+  testWidgets('a part added while the card unmounts still lands in the cart (backend already has it)',
+      (tester) async {
+    final gate = Completer<Result<String>>();
+    final jobRepo = _FakeJobRepo()..addPartGate = gate;
+    final container = ProviderContainer(overrides: [
+      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
+      catalogRepositoryProvider.overrideWithValue(_FakeCatalogRepo()),
+    ]);
+    addTearDown(container.dispose);
+
+    await _pump(tester, container, _dto());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+    await tester.pump();
+    expect(jobRepo.addPartCalls, 1);
+
+    // The technician leaves the job (card unmounts) while addPart is in flight.
+    await tester.pumpWidget(const SizedBox());
+    gate.complete(const Ok('line-9'));
+    await tester.pump();
+
+    expect(container.read(jobCartProvider('b1')).map((l) => l.lineId), ['line-9']);
+
+    // Coming back to the job shows the line.
+    await _pump(tester, container, _dto());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cartLine_line-9')), findsOneWidget);
+  });
+
+  testWidgets('a line removed while the card unmounts is still removed from the cart', (tester) async {
+    final jobRepo = _FakeJobRepo()..addPartResult = const Ok('line-1');
+    final container = ProviderContainer(overrides: [
+      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
+      catalogRepositoryProvider.overrideWithValue(_FakeCatalogRepo()),
+    ]);
+    addTearDown(container.dispose);
+
+    await _pump(tester, container, _dto());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
+
+    final gate = Completer<Result<void>>();
+    jobRepo.removePartGate = gate;
+    await tester.tap(find.byKey(const Key('removePartBtn_line-1')));
+    await tester.pump();
+
+    await tester.pumpWidget(const SizedBox());
+    gate.complete(const Ok(null));
+    await tester.pump();
+
+    expect(container.read(jobCartProvider('b1')), isEmpty);
   });
 }

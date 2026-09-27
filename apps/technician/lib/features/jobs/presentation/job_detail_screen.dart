@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format.dart';
 import '../../../core/result.dart';
+import '../../../core/theme.dart';
 import '../data/technician_job_repository.dart';
 import 'diagnosis_form.dart';
 import 'job_action.dart';
@@ -18,6 +19,9 @@ import 'settings_opener.dart';
 /// The job-detail screen: renders the job and a state-driven phase-action
 /// card (via [jobActionFor]) for every phase, including the two photo-gated
 /// ones ([DiagnosisForm] at ARRIVED, [RepairPhotosCard] at REPAIR_IN_PROGRESS).
+///
+/// The controller owns the poll; this screen holds an [AppLifecycleListener]
+/// that pauses it while the app is backgrounded and refetches on resume.
 class JobDetailScreen extends ConsumerStatefulWidget {
   const JobDetailScreen({super.key, required this.bookingId});
 
@@ -28,6 +32,8 @@ class JobDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
+  late final AppLifecycleListener _lifecycle;
+
   // Shared busy flag: only one action card is ever visible at a time (the
   // phase-action card chosen by jobActionFor), so a single screen-level flag
   // is enough to disable its button(s) and block a double-tap.
@@ -40,6 +46,28 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   String? _arriveError;
   // Which OS settings page (if any) fixes the current arrive error.
   _SettingsLink _arriveSettingsLink = _SettingsLink.none;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onHide: _onBackground, onPause: _onBackground, onResume: _onResume);
+  }
+
+  void _onBackground() {
+    if (!mounted) return;
+    ref.read(jobDetailProvider(widget.bookingId).notifier).pause();
+  }
+
+  void _onResume() {
+    if (!mounted) return;
+    unawaited(ref.read(jobDetailProvider(widget.bookingId).notifier).resume());
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
 
   Future<void> _refetch() => ref.read(jobDetailProvider(widget.bookingId).notifier).refetch();
 
@@ -136,7 +164,14 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   Future<Result<CashResultDto>> _submitCash(String code) async {
     final result = await ref.read(technicianJobRepositoryProvider).confirmCash(widget.bookingId, code);
     if (!mounted) return result;
-    if (result case Ok()) await _refetch();
+    if (result case Ok(value: final cash)) {
+      // Golden Rule 3 transparency: the technician now holds platform cash —
+      // show what they owe FixCare right after recording it.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Cash recorded. Your cash balance due to FixCare: ${rupees(cash.cashDebtPaise)}'),
+      ));
+      await _refetch();
+    }
     return result;
   }
 
@@ -203,8 +238,6 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           onOpenSettings: _openSettings,
           onPressed: _onArrive,
         );
-      case JobAction.waitingConfirm:
-        return const _ReadOnlyCard(text: 'Waiting for the customer.');
       case JobAction.diagnose:
         return DiagnosisForm(job: job);
       case JobAction.waitingApproval:
@@ -218,8 +251,6 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           onPartsNeeded: () =>
               _runOneTap(() => ref.read(technicianJobRepositoryProvider).partsNeeded(widget.bookingId)),
         );
-      case JobAction.partsNeeded:
-        return const _ReadOnlyCard(text: 'Parts requested — waiting for pickup.');
       case JobAction.partsAcquired:
         return _OneTapCard(
           buttonKey: const Key('partsAcquiredBtn'),
@@ -235,6 +266,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           key: const ValueKey('completionCodeCard'),
           fieldKey: const Key('completionCodeField'),
           buttonKey: const Key('confirmCompletionBtn'),
+          instruction: 'Ask the customer for the 6-digit code in their app after they confirm the work is done.',
           buttonLabel: 'Confirm completion',
           onSubmit: _submitCompletion,
         );
@@ -243,6 +275,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           key: const ValueKey('cashCodeCard'),
           fieldKey: const Key('cashCodeField'),
           buttonKey: const Key('confirmCashBtn'),
+          instruction: 'Collect the cash, then ask the customer for the 6-digit receipt code in their app.',
           buttonLabel: 'Confirm cash received',
           onSubmit: _submitCash,
         );
@@ -270,7 +303,7 @@ class _JobInfoCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(_addressLine(job.address)),
             const SizedBox(height: 4),
-            Text('Scheduled: ${job.scheduledSlot}'),
+            Text('Scheduled: ${formatScheduledSlot(job.scheduledSlot)}'),
             const SizedBox(height: 4),
             Text(job.customer.maskedPhone),
             const SizedBox(height: 8),
@@ -290,18 +323,6 @@ String _addressLine(JobAddressDto a) {
     a.pincode,
   ];
   return parts.join(', ');
-}
-
-class _ReadOnlyCard extends StatelessWidget {
-  const _ReadOnlyCard({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(padding: const EdgeInsets.all(16), child: Text(text)),
-    );
-  }
 }
 
 class _OneTapCard extends StatelessWidget {
@@ -399,7 +420,7 @@ class _ArriveCard extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             if (err != null) ...[
-              Text(err, style: const TextStyle(color: Colors.red)),
+              Text(err, style: const TextStyle(color: FixCareColors.errorText)),
               if (settingsLink == _SettingsLink.location)
                 TextButton(
                   key: const Key('openLocationSettings'),
@@ -474,21 +495,25 @@ class _StartRepairCard extends StatelessWidget {
   }
 }
 
-/// A 6-char code entry card, reused for both the completion and cash
-/// confirmations. `T` is the repository call's success payload type (void for
-/// completion, [CashResultDto] for cash) — only whether the Result is Ok or
-/// Failure matters here, so it's generic rather than duplicated.
+/// A 6-digit code entry card, reused for both the completion and cash
+/// confirmations, with an [instruction] line telling the technician where the
+/// code comes from (the customer's app — the technician never mints it).
+/// `T` is the repository call's success payload type (void for completion,
+/// [CashResultDto] for cash) — only whether the Result is Ok or Failure
+/// matters here, so it's generic rather than duplicated.
 class _CodeEntryCard<T> extends StatefulWidget {
   const _CodeEntryCard({
     super.key,
     required this.fieldKey,
     required this.buttonKey,
+    required this.instruction,
     required this.buttonLabel,
     required this.onSubmit,
   });
 
   final Key fieldKey;
   final Key buttonKey;
+  final String instruction;
   final String buttonLabel;
   final Future<Result<T>> Function(String code) onSubmit;
 
@@ -546,6 +571,8 @@ class _CodeEntryCardState<T> extends State<_CodeEntryCard<T>> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(widget.instruction),
+            const SizedBox(height: 8),
             TextField(
               key: widget.fieldKey,
               controller: _controller,

@@ -15,6 +15,14 @@ part of 'job_detail_controller.dart';
 /// poll tick and finds the job by id within it, so it can observe
 /// customer-side state transitions (e.g. arrival confirmation, completion
 /// confirmation, cash decline) without the technician taking any action.
+///
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
+/// the current poll completes, so a slow network never stacks overlapping
+/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
+/// response is applied only if it is newer than the last one applied — an
+/// older response landing late (e.g. a poll issued before an action, arriving
+/// after the action's refetch) is dropped instead of regressing the card.
+/// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
 @ProviderFor(JobDetail)
 final jobDetailProvider = JobDetailFamily._();
@@ -26,6 +34,14 @@ final jobDetailProvider = JobDetailFamily._();
 /// poll tick and finds the job by id within it, so it can observe
 /// customer-side state transitions (e.g. arrival confirmation, completion
 /// confirmation, cash decline) without the technician taking any action.
+///
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
+/// the current poll completes, so a slow network never stacks overlapping
+/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
+/// response is applied only if it is newer than the last one applied — an
+/// older response landing late (e.g. a poll issued before an action, arriving
+/// after the action's refetch) is dropped instead of regressing the card.
+/// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 final class JobDetailProvider
     extends $AsyncNotifierProvider<JobDetail, TechnicianJobDto> {
   /// Loads and adaptively polls a single job for the job-detail screen.
@@ -35,6 +51,14 @@ final class JobDetailProvider
   /// poll tick and finds the job by id within it, so it can observe
   /// customer-side state transitions (e.g. arrival confirmation, completion
   /// confirmation, cash decline) without the technician taking any action.
+  ///
+  /// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
+  /// the current poll completes, so a slow network never stacks overlapping
+  /// requests. Every fetch (poll or [refetch]) takes a sequence number and its
+  /// response is applied only if it is newer than the last one applied — an
+  /// older response landing late (e.g. a poll issued before an action, arriving
+  /// after the action's refetch) is dropped instead of regressing the card.
+  /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
   JobDetailProvider._({
     required JobDetailFamily super.from,
     required String super.argument,
@@ -71,7 +95,7 @@ final class JobDetailProvider
   }
 }
 
-String _$jobDetailHash() => r'87565b9ab1bd6e6dced8982e16ccdcc42abee20f';
+String _$jobDetailHash() => r'58a87a7648fb2297602d7316f64720c953e2c133';
 
 /// Loads and adaptively polls a single job for the job-detail screen.
 ///
@@ -80,6 +104,14 @@ String _$jobDetailHash() => r'87565b9ab1bd6e6dced8982e16ccdcc42abee20f';
 /// poll tick and finds the job by id within it, so it can observe
 /// customer-side state transitions (e.g. arrival confirmation, completion
 /// confirmation, cash decline) without the technician taking any action.
+///
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
+/// the current poll completes, so a slow network never stacks overlapping
+/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
+/// response is applied only if it is newer than the last one applied — an
+/// older response landing late (e.g. a poll issued before an action, arriving
+/// after the action's refetch) is dropped instead of regressing the card.
+/// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
 final class JobDetailFamily extends $Family
     with
@@ -106,6 +138,14 @@ final class JobDetailFamily extends $Family
   /// poll tick and finds the job by id within it, so it can observe
   /// customer-side state transitions (e.g. arrival confirmation, completion
   /// confirmation, cash decline) without the technician taking any action.
+  ///
+  /// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
+  /// the current poll completes, so a slow network never stacks overlapping
+  /// requests. Every fetch (poll or [refetch]) takes a sequence number and its
+  /// response is applied only if it is newer than the last one applied — an
+  /// older response landing late (e.g. a poll issued before an action, arriving
+  /// after the action's refetch) is dropped instead of regressing the card.
+  /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
   JobDetailProvider call(String bookingId) =>
       JobDetailProvider._(argument: bookingId, from: this);
@@ -121,6 +161,14 @@ final class JobDetailFamily extends $Family
 /// poll tick and finds the job by id within it, so it can observe
 /// customer-side state transitions (e.g. arrival confirmation, completion
 /// confirmation, cash decline) without the technician taking any action.
+///
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
+/// the current poll completes, so a slow network never stacks overlapping
+/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
+/// response is applied only if it is newer than the last one applied — an
+/// older response landing late (e.g. a poll issued before an action, arriving
+/// after the action's refetch) is dropped instead of regressing the card.
+/// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
 abstract class _$JobDetail extends $AsyncNotifier<TechnicianJobDto> {
   late final _$args = ref.$arg as String;

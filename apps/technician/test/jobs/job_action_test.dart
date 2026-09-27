@@ -58,4 +58,8 @@ void main() {
     expect(isTerminalJob(_j('REPAIR_IN_PROGRESS')), false);
     expect(isTerminalJob(_j('CUSTOMER_CONFIRMED')), false);
   });
+
+  test('every JobAction value is reachable from some state (no dead UI branches)', () {
+    expect(cases.values.toSet(), JobAction.values.toSet());
+  });
 }

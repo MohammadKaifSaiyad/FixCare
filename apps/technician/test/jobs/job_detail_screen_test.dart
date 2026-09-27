@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fixcare_technician/core/format.dart';
 import 'package:fixcare_technician/core/result.dart';
+import 'package:fixcare_technician/core/theme.dart';
 import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/diagnosis_form.dart';
@@ -68,6 +70,7 @@ class _FakeRepo extends TechnicianJobRepository {
   final String id;
   String _state;
 
+  int mineCalls = 0;
   int enRouteCalls = 0;
   int startRepairCalls = 0;
   int partsNeededCalls = 0;
@@ -90,7 +93,10 @@ class _FakeRepo extends TechnicianJobRepository {
   bool enRouteThrows = false;
 
   @override
-  Future<Result<List<TechnicianJobDto>>> mine() async => Ok([_dto(id: id, state: _state)]);
+  Future<Result<List<TechnicianJobDto>>> mine() async {
+    mineCalls++;
+    return Ok([_dto(id: id, state: _state)]);
+  }
 
   @override
   Future<Result<void>> enRoute(String bookingId) async {
@@ -142,7 +148,9 @@ class _FakeRepo extends TechnicianJobRepository {
   @override
   Future<Result<CashResultDto>> confirmCash(String bookingId, String code) async {
     lastCashCode = code;
-    return confirmCashResult ?? Ok(CashResultDto(id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise: 0));
+    final r = confirmCashResult ?? Ok(CashResultDto(id: bookingId, state: 'PAYMENT_RECEIVED', cashDebtPaise: 0));
+    if (r is Ok<CashResultDto>) _state = 'PAYMENT_RECEIVED';
+    return r;
   }
 }
 
@@ -538,6 +546,110 @@ void main() {
     await _pump(tester, repo);
 
     expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('arrive Failure text uses FixCareColors.errorText (not Colors.red)', (tester) async {
+    final repo = _FakeRepo(initialState: 'EN_ROUTE')
+      ..arriveResult = const Failure(FailureKind.unknown, 'You are too far from the customer location');
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const Key('arriveBtn')));
+    await tester.pumpAndSettle();
+
+    final text = tester.widget<Text>(find.text('You are too far from the customer location'));
+    expect(text.style?.color, FixCareColors.errorText);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('job-info card shows the scheduled slot in local time, not the raw ISO string', (tester) async {
+    final repo = _FakeRepo(initialState: 'ACCEPTED');
+    await _pump(tester, repo);
+
+    expect(find.text('Scheduled: ${formatScheduledSlot('2026-09-20T09:00:00.000Z')}'), findsOneWidget);
+    expect(find.textContaining('2026-09-20T'), findsNothing);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('completion code card tells the technician where the code comes from', (tester) async {
+    final repo = _FakeRepo(initialState: 'REPAIR_COMPLETE');
+    await _pump(tester, repo);
+
+    expect(
+      find.text('Ask the customer for the 6-digit code in their app after they confirm the work is done.'),
+      findsOneWidget,
+    );
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('cash code card tells the technician to collect first, then ask for the receipt code', (tester) async {
+    final repo = _FakeRepo(initialState: 'CUSTOMER_CONFIRMED');
+    await _pump(tester, repo);
+
+    expect(
+      find.text('Collect the cash, then ask the customer for the 6-digit receipt code in their app.'),
+      findsOneWidget,
+    );
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('confirmCash Ok shows the updated cash balance due to FixCare (Golden Rule 3)', (tester) async {
+    final repo = _FakeRepo(initialState: 'CUSTOMER_CONFIRMED')
+      ..confirmCashResult = Ok(CashResultDto(id: 'b1', state: 'PAYMENT_RECEIVED', cashDebtPaise: 45050));
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('cashCodeField')), '654321');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('confirmCashBtn')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cash recorded. Your cash balance due to FixCare: ₹450.50'), findsOneWidget);
+    expect(find.byKey(const Key('terminalSummary')), findsOneWidget);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('confirmCash Failure shows no cash-recorded notice', (tester) async {
+    final repo = _FakeRepo(initialState: 'CUSTOMER_CONFIRMED')
+      ..confirmCashResult = const Failure(FailureKind.unauthorized, 'Invalid code');
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('cashCodeField')), '654321');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('confirmCashBtn')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Cash recorded'), findsNothing);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('app backgrounded pauses the poll; foregrounded refetches once and re-arms', (tester) async {
+    final binding = tester.binding;
+    addTearDown(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+    final repo = _FakeRepo(initialState: 'EN_ROUTE');
+    await _pump(tester, repo);
+    final base = repo.mineCalls;
+
+    for (final s in const [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+      binding.handleAppLifecycleStateChanged(s);
+    }
+    await tester.pump(const Duration(seconds: 30));
+    expect(repo.mineCalls, base, reason: 'no polling while backgrounded');
+
+    for (final s in const [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      binding.handleAppLifecycleStateChanged(s);
+    }
+    await tester.pump();
+    expect(repo.mineCalls, base + 1, reason: 'an immediate refetch on resume');
+
+    await tester.pump(const Duration(seconds: 5));
+    expect(repo.mineCalls, base + 2, reason: 'polling re-armed');
 
     await _disposeTree(tester);
   });
