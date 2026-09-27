@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +13,7 @@ import 'job_detail_controller.dart';
 import 'location_service.dart';
 import 'parts_cart.dart';
 import 'repair_photos_card.dart';
+import 'settings_opener.dart';
 
 /// The job-detail screen: renders the job and a state-driven phase-action
 /// card (via [jobActionFor]) for every phase, including the two photo-gated
@@ -35,6 +38,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   // flips it to ARRIVED once the customer confirms).
   String? _arrivalCode;
   String? _arriveError;
+  // Which OS settings page (if any) fixes the current arrive error.
+  _SettingsLink _arriveSettingsLink = _SettingsLink.none;
 
   Future<void> _refetch() => ref.read(jobDetailProvider(widget.bookingId).notifier).refetch();
 
@@ -72,18 +77,26 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     setState(() {
       _busy = true;
       _arriveError = null;
+      _arriveSettingsLink = _SettingsLink.none;
     });
     try {
       final loc = await ref.read(locationServiceProvider).current();
       if (!mounted) return;
-      if (loc == null) {
-        setState(() {
-          _arriveError = "Couldn't get your location. Make sure location is on and try again.";
-        });
-        return;
+      final LocationFix fix;
+      switch (loc) {
+        case LocationProblem(kind: final kind):
+          // No precise fix -> never call arrive; say exactly what to fix.
+          final (message, link) = _locationProblemCopy(kind);
+          setState(() {
+            _arriveError = message;
+            _arriveSettingsLink = link;
+          });
+          return;
+        case LocationFix():
+          fix = loc;
       }
       final result =
-          await ref.read(technicianJobRepositoryProvider).arrive(widget.bookingId, lat: loc.lat, lng: loc.lng);
+          await ref.read(technicianJobRepositoryProvider).arrive(widget.bookingId, lat: fix.lat, lng: fix.lng);
       if (!mounted) return;
       switch (result) {
         case Ok(value: final v):
@@ -98,6 +111,18 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       if (mounted) setState(() => _arriveError = 'Something went wrong.');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openSettings(_SettingsLink link) {
+    final opener = ref.read(settingsOpenerProvider);
+    switch (link) {
+      case _SettingsLink.location:
+        unawaited(opener.openLocationSettings());
+      case _SettingsLink.app:
+        unawaited(opener.openAppSettings());
+      case _SettingsLink.none:
+        break;
     }
   }
 
@@ -174,6 +199,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           busy: _busy,
           arrivalCode: _arrivalCode,
           error: _arriveError,
+          settingsLink: _arriveSettingsLink,
+          onOpenSettings: _openSettings,
           onPressed: _onArrive,
         );
       case JobAction.waitingConfirm:
@@ -310,17 +337,49 @@ class _OneTapCard extends StatelessWidget {
   }
 }
 
+/// Which OS settings page fixes an arrive-card location problem.
+enum _SettingsLink { none, location, app }
+
+/// Arrive-card copy per location problem (inline, verbatim) + the settings
+/// page that fixes it, if one does.
+(String, _SettingsLink) _locationProblemCopy(LocationProblemKind kind) => switch (kind) {
+      LocationProblemKind.servicesOff => (
+          'Location is turned off. Turn it on and try again.',
+          _SettingsLink.location,
+        ),
+      LocationProblemKind.denied => (
+          "FixCare needs your location to confirm you've arrived. Allow it and try again.",
+          _SettingsLink.none,
+        ),
+      LocationProblemKind.deniedForever => (
+          'Location permission is blocked. Allow it in Settings to confirm arrival.',
+          _SettingsLink.app,
+        ),
+      LocationProblemKind.reducedAccuracy => (
+          'Turn on Precise location for FixCare. The arrival check needs your exact position.',
+          _SettingsLink.app,
+        ),
+      LocationProblemKind.unavailable => (
+          "Couldn't get your location. Move near a window or step outside, then try again.",
+          _SettingsLink.none,
+        ),
+    };
+
 class _ArriveCard extends StatelessWidget {
   const _ArriveCard({
     required this.busy,
     required this.arrivalCode,
     required this.error,
+    required this.settingsLink,
+    required this.onOpenSettings,
     required this.onPressed,
   });
 
   final bool busy;
   final String? arrivalCode;
   final String? error;
+  final _SettingsLink settingsLink;
+  final void Function(_SettingsLink link) onOpenSettings;
   final VoidCallback onPressed;
 
   @override
@@ -341,6 +400,18 @@ class _ArriveCard extends StatelessWidget {
             ],
             if (err != null) ...[
               Text(err, style: const TextStyle(color: Colors.red)),
+              if (settingsLink == _SettingsLink.location)
+                TextButton(
+                  key: const Key('openLocationSettings'),
+                  onPressed: () => onOpenSettings(_SettingsLink.location),
+                  child: const Text('Open location settings'),
+                ),
+              if (settingsLink == _SettingsLink.app)
+                TextButton(
+                  key: const Key('openAppSettings'),
+                  onPressed: () => onOpenSettings(_SettingsLink.app),
+                  child: const Text('Open settings'),
+                ),
               const SizedBox(height: 12),
             ],
             Align(

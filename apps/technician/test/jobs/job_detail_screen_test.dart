@@ -11,6 +11,7 @@ import 'package:fixcare_technician/features/jobs/presentation/job_detail_screen.
 import 'package:fixcare_technician/features/jobs/presentation/location_service.dart';
 import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
 import 'package:fixcare_technician/features/jobs/presentation/repair_photos_card.dart';
+import 'package:fixcare_technician/features/jobs/presentation/settings_opener.dart';
 
 Map<String, dynamic> _job({String id = 'b1', String state = 'ACCEPTED'}) => {
   'id': id, 'bookingNumber': 'FC-1', 'state': state, 'scheduledSlot': '2026-09-20T09:00:00.000Z',
@@ -24,11 +25,36 @@ TechnicianJobDto _dto({String id = 'b1', String state = 'ACCEPTED'}) =>
     TechnicianJobDto.fromJson(_job(id: id, state: state));
 
 class _FakeLocationService implements LocationService {
-  _FakeLocationService({this.result});
-  final ({double lat, double lng})? result;
+  _FakeLocationService({this.result = const LocationFix(22.3, 73.2)});
+  final LocationResult result;
 
   @override
-  Future<({double lat, double lng})?> current() async => result;
+  Future<LocationResult> current() async => result;
+}
+
+class _FakeSettingsOpener implements SettingsOpener {
+  int appSettingsCalls = 0;
+  int locationSettingsCalls = 0;
+
+  @override
+  Future<bool> openAppSettings() async {
+    appSettingsCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> openLocationSettings() async {
+    locationSettingsCalls++;
+    return true;
+  }
+}
+
+class _SwitchableLocationService implements LocationService {
+  _SwitchableLocationService(this.result);
+  LocationResult result;
+
+  @override
+  Future<LocationResult> current() async => result;
 }
 
 /// Fake repo whose `mine()` reflects a mutable internal state, so that
@@ -141,14 +167,15 @@ Future<void> _pump(
   TechnicianJobRepository repo, {
   LocationService? location,
   CatalogRepository? catalog,
+  SettingsOpener? opener,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         technicianJobRepositoryProvider.overrideWithValue(repo),
-        locationServiceProvider
-            .overrideWithValue(location ?? _FakeLocationService(result: (lat: 22.3, lng: 73.2))),
+        locationServiceProvider.overrideWithValue(location ?? _FakeLocationService()),
         catalogRepositoryProvider.overrideWithValue(catalog ?? _FakeCatalogRepo()),
+        settingsOpenerProvider.overrideWithValue(opener ?? _FakeSettingsOpener()),
       ],
       child: const MaterialApp(home: JobDetailScreen(bookingId: 'b1')),
     ),
@@ -178,7 +205,7 @@ void main() {
 
   testWidgets('EN_ROUTE -> tap arriveBtn calls arrive with the location and shows arrivalCode', (tester) async {
     final repo = _FakeRepo(initialState: 'EN_ROUTE');
-    await _pump(tester, repo, location: _FakeLocationService(result: (lat: 22.3, lng: 73.2)));
+    await _pump(tester, repo, location: _FakeLocationService(result: const LocationFix(22.3, 73.2)));
 
     await tester.tap(find.byKey(const Key('arriveBtn')));
     await tester.pumpAndSettle();
@@ -204,18 +231,95 @@ void main() {
     await _disposeTree(tester);
   });
 
-  testWidgets('location null shows an inline message and does not call arrive', (tester) async {
+  const problemCopy = {
+    LocationProblemKind.servicesOff: 'Location is turned off. Turn it on and try again.',
+    LocationProblemKind.denied:
+        "FixCare needs your location to confirm you've arrived. Allow it and try again.",
+    LocationProblemKind.deniedForever: 'Location permission is blocked. Allow it in Settings to confirm arrival.',
+    LocationProblemKind.reducedAccuracy:
+        'Turn on Precise location for FixCare. The arrival check needs your exact position.',
+    LocationProblemKind.unavailable:
+        "Couldn't get your location. Move near a window or step outside, then try again.",
+  };
+  const problemButton = {
+    LocationProblemKind.servicesOff: 'openLocationSettings',
+    LocationProblemKind.deniedForever: 'openAppSettings',
+    LocationProblemKind.reducedAccuracy: 'openAppSettings',
+  };
+
+  for (final kind in LocationProblemKind.values) {
+    testWidgets('location problem $kind -> its inline message, the right settings link, arrive NOT called',
+        (tester) async {
+      final repo = _FakeRepo(initialState: 'EN_ROUTE');
+      await _pump(tester, repo, location: _FakeLocationService(result: LocationProblem(kind)));
+
+      await tester.tap(find.byKey(const Key('arriveBtn')));
+      await tester.pumpAndSettle();
+
+      expect(repo.lastArrive, isNull);
+      expect(find.text(problemCopy[kind]!), findsOneWidget);
+      final expectedButton = problemButton[kind];
+      for (final key in const ['openLocationSettings', 'openAppSettings']) {
+        expect(find.byKey(Key(key)), key == expectedButton ? findsOneWidget : findsNothing, reason: '$kind/$key');
+      }
+
+      await _disposeTree(tester);
+    });
+  }
+
+  testWidgets('servicesOff: openLocationSettings opens the device location settings', (tester) async {
+    final opener = _FakeSettingsOpener();
     final repo = _FakeRepo(initialState: 'EN_ROUTE');
-    await _pump(tester, repo, location: _FakeLocationService(result: null));
+    await _pump(tester, repo,
+        location: _FakeLocationService(result: const LocationProblem(LocationProblemKind.servicesOff)),
+        opener: opener);
 
     await tester.tap(find.byKey(const Key('arriveBtn')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openLocationSettings')));
+    await tester.pump();
 
-    expect(repo.lastArrive, isNull);
-    expect(
-      find.text("Couldn't get your location. Make sure location is on and try again."),
-      findsOneWidget,
-    );
+    expect(opener.locationSettingsCalls, 1);
+    expect(opener.appSettingsCalls, 0);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('deniedForever: openAppSettings opens the app settings page', (tester) async {
+    final opener = _FakeSettingsOpener();
+    final repo = _FakeRepo(initialState: 'EN_ROUTE');
+    await _pump(tester, repo,
+        location: _FakeLocationService(result: const LocationProblem(LocationProblemKind.deniedForever)),
+        opener: opener);
+
+    await tester.tap(find.byKey(const Key('arriveBtn')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openAppSettings')));
+    await tester.pump();
+
+    expect(opener.appSettingsCalls, 1);
+    expect(opener.locationSettingsCalls, 0);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('a retry after a location problem clears the message and arrives', (tester) async {
+    final location = _SwitchableLocationService(const LocationProblem(LocationProblemKind.servicesOff));
+    final repo = _FakeRepo(initialState: 'EN_ROUTE');
+    await _pump(tester, repo, location: location);
+
+    await tester.tap(find.byKey(const Key('arriveBtn')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('openLocationSettings')), findsOneWidget);
+
+    location.result = const LocationFix(22.3, 73.2);
+    await tester.tap(find.byKey(const Key('arriveBtn')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastArrive, (lat: 22.3, lng: 73.2));
+    expect(find.text(problemCopy[LocationProblemKind.servicesOff]!), findsNothing);
+    expect(find.byKey(const Key('openLocationSettings')), findsNothing);
+    expect(find.byKey(const Key('arrivalCode')), findsOneWidget);
 
     await _disposeTree(tester);
   });

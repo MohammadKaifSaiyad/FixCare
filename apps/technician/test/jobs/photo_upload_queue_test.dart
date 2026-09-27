@@ -10,6 +10,7 @@ import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/core/theme.dart';
 import 'package:fixcare_technician/features/jobs/data/photo_upload_client.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
+import 'package:fixcare_technician/features/jobs/presentation/location_service.dart';
 import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
 import 'package:fixcare_technician/features/jobs/presentation/settings_opener.dart';
 
@@ -261,7 +262,7 @@ void main() {
         return null; // user cancelled — we only care about the source it asked for
       },
       // location + compress are never reached when pick returns null.
-      readLocation: () async => null,
+      location: _NoFixLocation(),
       compress: (bytes) async => bytes,
     );
 
@@ -891,6 +892,11 @@ void main() {
       expect(find.text('Uploaded'), findsOneWidget);
     });
   });
+}
+
+class _NoFixLocation implements LocationService {
+  @override
+  Future<LocationResult> current() async => const LocationProblem(LocationProblemKind.unavailable);
 }
 
 /// A fake camera: returns [photo] (null = user cancelled), throws [error], or —

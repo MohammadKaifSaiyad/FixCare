@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/network/dio_client.dart';
@@ -13,6 +12,7 @@ import '../../../core/result.dart';
 import '../../../core/theme.dart';
 import '../data/photo_upload_client.dart';
 import '../data/technician_job_repository.dart';
+import 'location_service.dart';
 import 'settings_opener.dart';
 
 // Re-export so callers (and the camera-only guard test) reference ImageSource
@@ -57,9 +57,6 @@ abstract class CameraService {
 
 /// Picks a single image. In production this is `ImagePicker().pickImage`.
 typedef PickImageFn = Future<XFile?> Function({required ImageSource source});
-
-/// Reads a one-shot geotag at capture time; null if unavailable/denied.
-typedef ReadLocationFn = Future<Position?> Function();
 
 /// Compresses raw image bytes to <500KB (production: [compressToBudget]).
 typedef CompressFn = Future<List<int>> Function(List<int> bytes);
@@ -116,17 +113,22 @@ Future<List<int>> compressToBudget(
 /// is no branch, flag, or overload that could pass `ImageSource.gallery`. The
 /// picker/location/compress calls are injected so this logic is unit-testable
 /// without a real camera (the camera-only guard test drives exactly this path).
+///
+/// The geotag comes from the SAME [LocationService] the arrival handshake uses
+/// (one permission flow). Best-effort: only a precise [LocationFix] geotags the
+/// photo; any [LocationProblem] means no geotag (lat/lng both null) — capture
+/// never blocks on location.
 class ImagePickerCameraService implements CameraService {
   ImagePickerCameraService({
     PickImageFn? pickImage,
-    ReadLocationFn? readLocation,
+    LocationService? location,
     CompressFn? compress,
   })  : _pickImage = pickImage ?? _defaultPickImage,
-        _readLocation = readLocation ?? _defaultReadLocation,
+        _location = location ?? GeolocatorLocationService(),
         _compress = compress ?? _defaultCompress;
 
   final PickImageFn _pickImage;
-  final ReadLocationFn _readLocation;
+  final LocationService _location;
   final CompressFn _compress;
 
   @override
@@ -143,14 +145,27 @@ class ImagePickerCameraService implements CameraService {
     final compressed = await _compress(raw);
 
     // One-shot geotag at capture time (both-or-neither).
-    final pos = await _readLocation();
+    final (double? lat, double? lng) = switch (await _readLocation()) {
+      LocationFix(:final lat, :final lng) => (lat, lng),
+      LocationProblem() => (null, null),
+    };
 
     return CapturedPhoto(
       bytes: compressed,
       capturedAt: capturedAt.toIso8601String(),
-      lat: pos?.latitude,
-      lng: pos?.longitude,
+      lat: lat,
+      lng: lng,
     );
+  }
+
+  /// [LocationService.current] never throws by contract; this still guards a
+  /// misbehaving implementation so a location failure can't lose the photo.
+  Future<LocationResult> _readLocation() async {
+    try {
+      return await _location.current();
+    } catch (_) {
+      return const LocationProblem(LocationProblemKind.unavailable);
+    }
   }
 
   // Native-side downsizing first (maxWidth + imageQuality): a low-end device
@@ -180,35 +195,11 @@ class ImagePickerCameraService implements CameraService {
       format: CompressFormat.jpeg,
     );
   }
-
-  static Future<Position?> _defaultReadLocation() async {
-    try {
-      if (!await Geolocator.isLocationServiceEnabled()) return null;
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        return null;
-      }
-      // Time-boxed: on weak/no GPS fix, getCurrentPosition would otherwise
-      // hang indefinitely. A TimeoutException is caught below same as any
-      // other location failure -> null (an un-geotagged photo; the backend
-      // allows a both-or-neither-null geotag).
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
-    } catch (_) {
-      // Location is best-effort — never block capture on a location failure.
-      return null;
-    }
-  }
 }
 
-final cameraServiceProvider = Provider<CameraService>((ref) => ImagePickerCameraService());
+final cameraServiceProvider = Provider<CameraService>(
+  (ref) => ImagePickerCameraService(location: ref.read(locationServiceProvider)),
+);
 
 /// Per-slot upload state the UI observes.
 /// - `none`: nothing captured for the slot this session.

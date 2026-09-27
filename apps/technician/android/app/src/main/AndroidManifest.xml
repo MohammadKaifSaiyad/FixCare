@@ -10,10 +10,15 @@
          vector) and each capture reads a one-shot geotag. Both are dangerous
          permissions, requested at runtime by image_picker / geolocator when the
          technician first taps a capture slot — declared here, granted then.
-         Location is fine (ACCESS_FINE) but capture-time only — the app declares
-         no background-location permission. -->
+         Location is fine (ACCESS_FINE) but capture-time / arrival-time only —
+         the app declares no background-location permission. COARSE is
+         declared alongside FINE because apps targeting Android 12+ must
+         request both in one runtime request (otherwise some releases ignore
+         the request and the technician can never confirm arrival); if the
+         user grants only "Approximate", the app asks for Precise itself. -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="fixcare_technician"
         android:name="${applicationName}"

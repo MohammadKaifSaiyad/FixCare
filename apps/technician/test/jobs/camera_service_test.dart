@@ -2,10 +2,27 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:fixcare_technician/features/jobs/presentation/location_service.dart';
 import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
+
+/// A location seam that answers [result] after [delay].
+class _FakeLocation implements LocationService {
+  _FakeLocation(this.result, {this.delay = Duration.zero});
+  final LocationResult result;
+  final Duration delay;
+  DateTime? doneAt;
+  int calls = 0;
+
+  @override
+  Future<LocationResult> current() async {
+    calls++;
+    await Future<void>.delayed(delay);
+    doneAt = DateTime.now().toUtc();
+    return result;
+  }
+}
 
 /// Records every ladder step and returns a scripted output size per call.
 class _FakeCompressStep {
@@ -20,6 +37,11 @@ class _FakeCompressStep {
     calls.add((inputLength: bytes.length, quality: quality, minWidth: minWidth, minHeight: minHeight));
     return List<int>.filled(size, 1);
   }
+}
+
+class _ThrowingLocation implements LocationService {
+  @override
+  Future<LocationResult> current() async => throw StateError('boom');
 }
 
 const _kb = 1024;
@@ -88,7 +110,7 @@ void main() {
         () async {
       final raw = Uint8List.fromList(List<int>.filled(4096, 5));
       final before = DateTime.now().toUtc();
-      DateTime? locationDoneAt;
+      final location = _FakeLocation(const LocationFix(22.3, 73.2), delay: const Duration(milliseconds: 200));
 
       final svc = ImagePickerCameraService(
         pickImage: ({required ImageSource source}) async => XFile.fromData(raw),
@@ -96,25 +118,11 @@ void main() {
           await Future<void>.delayed(const Duration(milliseconds: 50));
           return bytes.sublist(0, 100);
         },
-        readLocation: () async {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
-          locationDoneAt = DateTime.now().toUtc();
-          return Position(
-            latitude: 22.3,
-            longitude: 73.2,
-            timestamp: DateTime.now(),
-            accuracy: 5,
-            altitude: 0,
-            altitudeAccuracy: 0,
-            heading: 0,
-            headingAccuracy: 0,
-            speed: 0,
-            speedAccuracy: 0,
-          );
-        },
+        location: location,
       );
 
       final photo = await svc.capture();
+      final locationDoneAt = location.doneAt;
 
       expect(photo, isNotNull);
       expect(photo!.bytes, hasLength(100), reason: 'the compressed bytes are what gets uploaded');
@@ -125,6 +133,48 @@ void main() {
       expect(locationDoneAt!.difference(capturedAt), greaterThanOrEqualTo(const Duration(milliseconds: 200)));
       expect(photo.lat, 22.3);
       expect(photo.lng, 73.2);
+    });
+
+    for (final kind in LocationProblemKind.values) {
+      test('a LocationProblem($kind) -> the photo is still captured, with NO geotag (both null)', () async {
+        final svc = ImagePickerCameraService(
+          pickImage: ({required ImageSource source}) async => XFile.fromData(Uint8List.fromList([1, 2, 3])),
+          compress: (bytes) async => bytes,
+          location: _FakeLocation(LocationProblem(kind)),
+        );
+
+        final photo = await svc.capture();
+
+        expect(photo, isNotNull);
+        expect(photo!.bytes, [1, 2, 3]);
+        expect(photo.lat, isNull);
+        expect(photo.lng, isNull);
+      });
+    }
+
+    test('a location seam that throws never blocks capture -> no geotag', () async {
+      final svc = ImagePickerCameraService(
+        pickImage: ({required ImageSource source}) async => XFile.fromData(Uint8List.fromList([1])),
+        compress: (bytes) async => bytes,
+        location: _ThrowingLocation(),
+      );
+
+      final photo = await svc.capture();
+
+      expect(photo, isNotNull);
+      expect((photo!.lat, photo.lng), (null, null));
+    });
+
+    test('a cancelled shot reads no location at all', () async {
+      final location = _FakeLocation(const LocationFix(1, 2));
+      final svc = ImagePickerCameraService(
+        pickImage: ({required ImageSource source}) async => null,
+        compress: (bytes) async => bytes,
+        location: location,
+      );
+
+      expect(await svc.capture(), isNull);
+      expect(location.calls, 0);
     });
   });
 

@@ -31,7 +31,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>FixCare needs the camera to take the on-site repair photos that verify your work.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>FixCare tags your repair photos with location to confirm they were taken at the job.</string>
+	<string>FixCare uses your location to confirm you've arrived at the job and to tag the repair photos you take there.</string>
+	<!-- Required by App Store policy for image_picker even for camera-only use.
+	     The app never opens the photo library (camera-only evidence). -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FixCare takes repair photos with the camera only and never imports photos from your library.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
