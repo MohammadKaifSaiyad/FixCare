@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fixcare_technician/core/result.dart';
+import 'package:fixcare_technician/core/theme.dart';
+import 'package:fixcare_technician/features/jobs/data/photo_upload_client.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
+import 'package:fixcare_technician/features/jobs/presentation/settings_opener.dart';
 
 /// Records a single PUT/dev-hook invocation the queue made.
 class _PutCall {
@@ -32,10 +36,15 @@ class _FakeRepo extends TechnicianJobRepository {
 
   int _signSeq = 0;
 
+  /// When set, every sign call returns this Failure instead of a signed url.
+  Failure<PhotoSignDto>? signFailure;
+
   @override
   Future<Result<PhotoSignDto>> signPhoto(String id,
       {required String kind, required int contentLengthBytes}) async {
     signCalls.add((id: id, kind: kind, contentLengthBytes: contentLengthBytes));
+    final failure = signFailure;
+    if (failure != null) return failure;
     final key = 'key-$kind-${_signSeq++}';
     return Ok(PhotoSignDto(url: signUrl, key: key, expiresAt: '2026-09-20T10:00:00.000Z'));
   }
@@ -69,15 +78,17 @@ class _FakeRepo extends TechnicianJobRepository {
 /// A fake PUT seam. Records each call and dispenses success/throw per invocation.
 class _FakePut {
   final List<_PutCall> calls = [];
-  // true = succeed, false = throw (simulate a network/PUT failure); clamps at last.
+  // true = succeed, false = throw [error] (simulate a PUT failure); clamps at last.
   List<bool> outcomes = [true];
+  // What a failing PUT throws. Default: an unexpected (unclassified) error.
+  Object error = Exception('PUT failed');
   int _seq = 0;
 
   Future<void> call({required String url, required String key, required List<int> bytes}) async {
     calls.add(_PutCall(url, key, bytes.length));
     final ok = outcomes[_seq < outcomes.length ? _seq : outcomes.length - 1];
     _seq++;
-    if (!ok) throw Exception('PUT failed');
+    if (!ok) throw error;
   }
 }
 
@@ -377,6 +388,216 @@ void main() {
     });
   });
 
+  group('failure classification (terminal vs transient)', () {
+    const windowMsg = 'Photos can only be confirmed during their capture window — the booking has moved on';
+
+    test('confirm 409 -> failed with the backend message verbatim; no further sign calls', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo()..confirmOutcomes = [const Failure(FailureKind.unknown, windowMsg)];
+        final put = _FakePut();
+        final q = _queue(repo, put);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+        async.flushMicrotasks();
+
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failed);
+        expect(q.failureOf('b1', 'REPAIR_OLD_PART'), windowMsg);
+
+        async.elapse(const Duration(minutes: 5));
+        expect(repo.signCalls, hasLength(1), reason: 'a terminal failure is never retried');
+        expect(async.pendingTimers, isEmpty);
+      });
+    });
+
+    for (final kind in const [FailureKind.unauthorized, FailureKind.validation, FailureKind.unknown]) {
+      test('sign Failure($kind) -> failed with the message, PUT never attempted', () {
+        fakeAsync((async) {
+          final repo = _FakeRepo()..signFailure = Failure(kind, 'sign said no ($kind)');
+          final put = _FakePut();
+          final q = _queue(repo, put);
+
+          q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+          async.flushMicrotasks();
+          async.elapse(const Duration(minutes: 5));
+
+          expect(q.stateOf('b1', 'DIAGNOSIS_OVERVIEW'), PhotoSlotState.failed);
+          expect(q.failureOf('b1', 'DIAGNOSIS_OVERVIEW'), 'sign said no ($kind)');
+          expect(repo.signCalls, hasLength(1));
+          expect(put.calls, isEmpty);
+        });
+      });
+    }
+
+    for (final kind in const [FailureKind.network, FailureKind.server, FailureKind.rateLimited]) {
+      test('confirm Failure($kind) -> failedRetry (no message), then the retry succeeds -> done', () {
+        fakeAsync((async) {
+          final repo = _FakeRepo()
+            ..confirmOutcomes = [
+              Failure(kind, 'transient'),
+              const Ok(PhotoConfirmDto(id: 'p1', kind: 'x', capturedAt: 'x')),
+            ];
+          final q = _queue(repo, _FakePut());
+
+          q.enqueue(bookingId: 'b1', kind: 'REPAIR_INSTALLED', photo: _photo());
+          async.flushMicrotasks();
+          expect(q.stateOf('b1', 'REPAIR_INSTALLED'), PhotoSlotState.failedRetry);
+          expect(q.failureOf('b1', 'REPAIR_INSTALLED'), isNull);
+
+          async.elapse(const Duration(seconds: 2));
+          expect(repo.signCalls, hasLength(2));
+          expect(q.stateOf('b1', 'REPAIR_INSTALLED'), PhotoSlotState.done);
+        });
+      });
+    }
+
+    test('6 consecutive transient failures -> failed with the connection message; retries stop', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final put = _FakePut()
+          ..outcomes = [false]
+          ..error = const PhotoUploadException(); // transport failure, every time
+        final q = _queue(repo, put);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+        async.flushMicrotasks();
+        async.elapse(const Duration(minutes: 10));
+
+        expect(put.calls, hasLength(6));
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failed);
+        expect(q.failureOf('b1', 'REPAIR_OLD_PART'), 'Upload keeps failing. Check your connection, then retake.');
+        expect(async.pendingTimers, isEmpty);
+      });
+    });
+
+    for (final status in const [400, 403, 404, 413]) {
+      test('PUT $status -> failed with the generic retake message (no url/key/status)', () {
+        fakeAsync((async) {
+          final repo = _FakeRepo();
+          final put = _FakePut()
+            ..outcomes = [false]
+            ..error = PhotoUploadException(status);
+          final q = _queue(repo, put);
+
+          q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+          async.flushMicrotasks();
+          async.elapse(const Duration(minutes: 5));
+
+          expect(put.calls, hasLength(1));
+          expect(repo.confirmCalls, isEmpty);
+          expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failed);
+          expect(q.failureOf('b1', 'REPAIR_OLD_PART'), "Couldn't upload the photo. Retake to try again.");
+        });
+      });
+    }
+
+    for (final status in const [null, 500, 503, 408, 429]) {
+      test('PUT ${status ?? 'transport error'} -> failedRetry, then retried', () {
+        fakeAsync((async) {
+          final repo = _FakeRepo();
+          final put = _FakePut()
+            ..outcomes = [false, true]
+            ..error = PhotoUploadException(status);
+          final q = _queue(repo, put);
+
+          q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+          async.flushMicrotasks();
+          expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failedRetry);
+
+          async.elapse(const Duration(seconds: 2));
+          expect(put.calls, hasLength(2));
+          expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.done);
+        });
+      });
+    }
+
+    test('retake from failed restarts the slot (and clears the message)', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo()
+          ..confirmOutcomes = [
+            const Failure(FailureKind.unknown, windowMsg),
+            const Ok(PhotoConfirmDto(id: 'p1', kind: 'x', capturedAt: 'x')),
+          ];
+        final q = _queue(repo, _FakePut());
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failed);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo(size: 50));
+        async.flushMicrotasks();
+
+        expect(repo.signCalls, hasLength(2));
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.done);
+        expect(q.failureOf('b1', 'REPAIR_OLD_PART'), isNull);
+      });
+    });
+
+    test('a retake cancels the pending retry timer of the old capture', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final put = _FakePut()..outcomes = [false, true];
+        final q = _queue(repo, put);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo(size: 10));
+        async.flushMicrotasks();
+        expect(async.pendingTimers, hasLength(1));
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo(size: 20));
+        async.flushMicrotasks();
+
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.done);
+        expect(async.pendingTimers, isEmpty);
+      });
+    });
+
+    test('dispose() cancels a pending retry: no further calls, no notify', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final put = _FakePut()..outcomes = [false, true];
+        final q = _queue(repo, put);
+        var notifications = 0;
+        q.addListener(() => notifications++);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failedRetry);
+        final notifiedBefore = notifications;
+
+        q.dispose();
+        expect(async.pendingTimers, isEmpty);
+        async.elapse(const Duration(minutes: 5));
+
+        expect(put.calls, hasLength(1));
+        expect(repo.signCalls, hasLength(1));
+        expect(notifications, notifiedBefore);
+      });
+    });
+
+    test('dispose() mid-flight: the in-flight attempt stops without notifying', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final gate = Completer<void>();
+        final q = PhotoUploadQueue(
+          repo: repo,
+          put: ({required url, required key, required bytes}) => gate.future,
+        );
+        var notifications = 0;
+        q.addListener(() => notifications++);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+        async.flushMicrotasks();
+        final notifiedBefore = notifications;
+
+        q.dispose();
+        gate.complete();
+        async.flushMicrotasks();
+
+        expect(repo.confirmCalls, isEmpty);
+        expect(notifications, notifiedBefore);
+      });
+    });
+  });
+
   group('photosReady', () {
     test('all requested kinds done in the queue -> true', () {
       fakeAsync((async) {
@@ -435,6 +656,64 @@ void main() {
       final job = _jobDto();
       expect(photosReady(q, job, const []), isTrue);
     });
+
+    final serverOverview = [
+      {'kind': 'DIAGNOSIS_OVERVIEW', 'capturedAt': '2026-09-20T10:00:00.000Z', 'url': 'https://x'},
+    ];
+
+    test('server photo + a retake still UPLOADING -> false (the old photo does not count)', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final gate = Completer<void>();
+        final q = PhotoUploadQueue(repo: repo, put: ({required url, required key, required bytes}) => gate.future);
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'DIAGNOSIS_OVERVIEW'), PhotoSlotState.uploading);
+
+        expect(photosReady(q, _jobDto(photos: serverOverview), const ['DIAGNOSIS_OVERVIEW']), isFalse);
+        gate.complete();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('server photo + a retake in FAILED_RETRY -> false', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut()..outcomes = [false]);
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'DIAGNOSIS_OVERVIEW'), PhotoSlotState.failedRetry);
+
+        expect(photosReady(q, _jobDto(photos: serverOverview), const ['DIAGNOSIS_OVERVIEW']), isFalse);
+        q.dispose();
+      });
+    });
+
+    test('server photo + a retake that FAILED -> false', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo()..confirmOutcomes = [const Failure(FailureKind.unknown, 'no')];
+        final q = _queue(repo, _FakePut());
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'DIAGNOSIS_OVERVIEW'), PhotoSlotState.failed);
+
+        expect(photosReady(q, _jobDto(photos: serverOverview), const ['DIAGNOSIS_OVERVIEW']), isFalse);
+      });
+    });
+
+    test('server photo + queue none -> true; server photo + queue done -> true', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut());
+        final job = _jobDto(photos: serverOverview);
+        expect(photosReady(q, job, const ['DIAGNOSIS_OVERVIEW']), isTrue);
+
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'DIAGNOSIS_OVERVIEW'), PhotoSlotState.done);
+        expect(photosReady(q, job, const ['DIAGNOSIS_OVERVIEW']), isTrue);
+      });
+    });
   });
 
   group('PhotoSlot widget', () {
@@ -484,5 +763,191 @@ void main() {
       expect(find.text('Not captured'), findsOneWidget);
       expect(find.text('Capture'), findsOneWidget);
     });
+
+    testWidgets('a FAILED slot shows the stored message in errorText + Retake', (tester) async {
+      const msg = 'Photos can only be confirmed during their capture window — the booking has moved on';
+      final repo = _FakeRepo()..confirmOutcomes = [const Failure(FailureKind.unknown, msg)];
+      final q = _queue(repo, _FakePut());
+      await q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+      expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failed);
+
+      await _pumpSlot(tester, queue: q, camera: _FakeCamera());
+
+      expect(find.text(msg), findsOneWidget);
+      expect(tester.widget<Text>(find.text(msg)).style?.color, FixCareColors.errorText);
+      expect(find.text('Retake'), findsOneWidget);
+    });
+  });
+
+  group('PhotoSlot capture', () {
+    testWidgets('Capture enqueues the photo for the right (bookingId, kind) and ends Uploaded', (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+      final camera = _FakeCamera(photo: _photo(size: 77));
+
+      await _pumpSlot(tester, queue: q, camera: camera);
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+
+      expect(camera.calls, 1);
+      expect(repo.signCalls, hasLength(1));
+      expect(repo.signCalls.single.id, 'b1');
+      expect(repo.signCalls.single.kind, 'REPAIR_OLD_PART');
+      expect(repo.signCalls.single.contentLengthBytes, 77);
+      expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.done);
+      expect(find.text('Uploaded'), findsOneWidget);
+    });
+
+    testWidgets('a cancelled capture enqueues nothing', (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+
+      await _pumpSlot(tester, queue: q, camera: _FakeCamera());
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+
+      expect(repo.signCalls, isEmpty);
+      expect(find.text('Not captured'), findsOneWidget);
+    });
+
+    testWidgets('camera_access_denied -> inline message + open-settings button that opens app settings',
+        (tester) async {
+      final opener = _FakeSettingsOpener();
+      final camera = _FakeCamera(error: PlatformException(code: 'camera_access_denied'));
+
+      await _pumpSlot(tester, queue: _queue(_FakeRepo(), _FakePut()), camera: camera, opener: opener);
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Camera access is off. Allow it in Settings to take repair photos.'), findsOneWidget);
+      final openSettings = find.byKey(const Key('openSettings_REPAIR_OLD_PART'));
+      expect(openSettings, findsOneWidget);
+
+      await tester.tap(openSettings);
+      await tester.pump();
+      expect(opener.appSettingsCalls, 1);
+      expect(opener.locationSettingsCalls, 0);
+    });
+
+    testWidgets('any other capture error -> "Couldn\'t take the photo. Try again." (no settings button)',
+        (tester) async {
+      final camera = _FakeCamera(error: PlatformException(code: 'no_available_camera'));
+
+      await _pumpSlot(tester, queue: _queue(_FakeRepo(), _FakePut()), camera: camera);
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't take the photo. Try again."), findsOneWidget);
+      expect(find.byKey(const Key('openSettings_REPAIR_OLD_PART')), findsNothing);
+      // The button is usable again after the failure.
+      expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Capture')).onPressed, isNotNull);
+    });
+
+    testWidgets('a non-platform throw (e.g. compression) also shows the retry message', (tester) async {
+      final camera = _FakeCamera(error: StateError('compress blew up'));
+
+      await _pumpSlot(tester, queue: _queue(_FakeRepo(), _FakePut()), camera: camera);
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't take the photo. Try again."), findsOneWidget);
+    });
+
+    testWidgets('the button is disabled while the camera is open (no double launch)', (tester) async {
+      final gate = Completer<CapturedPhoto?>();
+      final camera = _FakeCamera(gate: gate);
+
+      await _pumpSlot(tester, queue: _queue(_FakeRepo(), _FakePut()), camera: camera);
+      await tester.tap(find.text('Capture'));
+      await tester.pump();
+
+      final button = find.widgetWithText(TextButton, 'Capture');
+      expect(tester.widget<TextButton>(button).onPressed, isNull);
+      await tester.tap(button);
+      await tester.pump();
+      expect(camera.calls, 1);
+
+      gate.complete(null); // user cancelled
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextButton>(button).onPressed, isNotNull);
+    });
+
+    testWidgets('a successful capture after an error clears the error line', (tester) async {
+      final camera = _FakeCamera(error: PlatformException(code: 'no_available_camera'));
+      final q = _queue(_FakeRepo(), _FakePut());
+
+      await _pumpSlot(tester, queue: q, camera: camera);
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't take the photo. Try again."), findsOneWidget);
+
+      camera
+        ..error = null
+        ..photo = _photo();
+      await tester.tap(find.text('Capture'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't take the photo. Try again."), findsNothing);
+      expect(find.text('Uploaded'), findsOneWidget);
+    });
   });
 }
+
+/// A fake camera: returns [photo] (null = user cancelled), throws [error], or —
+/// with [gate] — stays "open" until the test completes it.
+class _FakeCamera implements CameraService {
+  _FakeCamera({this.photo, this.error, this.gate});
+
+  CapturedPhoto? photo;
+  Object? error;
+  final Completer<CapturedPhoto?>? gate;
+  int calls = 0;
+
+  @override
+  Future<CapturedPhoto?> capture() async {
+    calls++;
+    final g = gate;
+    if (g != null) return g.future;
+    final e = error;
+    if (e != null) throw e;
+    return photo;
+  }
+}
+
+class _FakeSettingsOpener implements SettingsOpener {
+  int appSettingsCalls = 0;
+  int locationSettingsCalls = 0;
+
+  @override
+  Future<bool> openAppSettings() async {
+    appSettingsCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> openLocationSettings() async {
+    locationSettingsCalls++;
+    return true;
+  }
+}
+
+Future<void> _pumpSlot(
+  WidgetTester tester, {
+  required PhotoUploadQueue queue,
+  required CameraService camera,
+  SettingsOpener? opener,
+}) =>
+    tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          photoUploadQueueProvider.overrideWithValue(queue),
+          cameraServiceProvider.overrideWithValue(camera),
+          settingsOpenerProvider.overrideWithValue(opener ?? _FakeSettingsOpener()),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: PhotoSlot(bookingId: 'b1', kind: 'REPAIR_OLD_PART', label: 'Old part removed'),
+          ),
+        ),
+      ),
+    );

@@ -8,6 +8,7 @@ import 'package:fixcare_technician/core/network/auth_interceptor.dart';
 import 'package:fixcare_technician/core/network/dio_client.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/core/storage/token_store.dart';
+import 'package:fixcare_technician/features/jobs/data/photo_upload_client.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
 
