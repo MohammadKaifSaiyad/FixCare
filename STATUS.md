@@ -27,7 +27,7 @@ upload queue (per job+kind state, retake generation guard, terminal vs transient
 **bare Dio** (fixed a JWT-to-R2 leak that would also have failed every prod upload). Dev-only backend route
 `POST /dev/photos/mark-uploaded` (not registered in prod, DevPhotoStorage-only, authed) makes photos testable
 locally. Built via SDD (8 tasks + 7a split, each reviewed; final review = whole-branch + flutter-widget-reviewer +
-fraud-vector-checker + golden-rules-auditor → one fix wave). **234 app tests, analyze clean; backend 371/371, tsc
+fraud-vector-checker + golden-rules-auditor → one fix wave). **249 app tests, analyze clean; backend 375/375, tsc
 clean.** Design/plan: `docs/designs/2026-09-20-…`, `docs/plans/2026-09-20-…`.
 **Next: PR → `main`; on-device smoke (camera needs a physical phone); then the pilot-blocker follow-ups below.**
 

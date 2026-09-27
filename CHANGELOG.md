@@ -14,7 +14,7 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   en-route → arrive (mints the arrival code; the customer's confirmation moves the job) → diagnose (2 evidence
   photos + issue) → parts cart at DIAGNOSED (catalog prices, indicative estimate) → start repair / parts-needed /
   parts-acquired → complete repair (3 evidence photos) → confirm completion / cash by entering the customer's codes.
-  On `feature/technician-app-slice2-job-flow`, ready for PR. Built via SDD; 234 app tests, analyze clean.
+  On `feature/technician-app-slice2-job-flow`, ready for PR. Built via SDD + `/code-review`; 249 app tests, analyze clean.
 - **Camera-evidence pipeline (ADR-0007: image_picker 1.2.3, flutter_image_compress 2.5.1, geolocator 14.0.3)** —
   camera-only, capture-time timestamp + geotag, <500KB, in-app retrying upload queue with per-(job, kind) state, a
   retake generation guard, and terminal-vs-transient failure handling (permanent 4xx stop and show the backend's
@@ -24,9 +24,13 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   + non-2xx throws + real-transport tests (stub socket, real interceptor).
 - **Android location**: FINE + COARSE declared; approximate-only / permanently-denied / services-off each get a
   specific message and a Settings link. Camera-access denial is surfaced with a Settings link (previously silent).
-- **Job poll** is one-shot and sequenced (late responses dropped) and pauses in the background.
+- **Job poll** is one-shot and sequenced (late responses dropped), pauses in the background, skips rebuilds when
+  only signed photo URLs changed, and shows "no longer assigned" after 3 consecutive misses.
+- **Payment card is UPI-first** (Golden Rule 3): at CUSTOMER_CONFIRMED / DECLINED_BY_CUSTOMER the technician sees
+  "waiting for the customer to pay in the app"; cash code entry is framed as the exception ("Customer paying cash
+  instead?"). Found by `/code-review` — the first version told technicians to collect cash on every job.
 - **Backend: dev-only `POST /dev/photos/mark-uploaded`** — not registered in production, 404 unless storage is
-  `DevPhotoStorage`, `requireAuth` + strict Zod; lets local photo confirm pass. Backend 371/371.
+  `DevPhotoStorage`, `requireAuth` + strict Zod; lets local photo confirm pass; only the assigned technician may mark a key. Backend 375/375.
 - **Plan deviation:** the parts cart moved from the diagnosis form to DIAGNOSED (the backend only accepts parts
   there). **Pilot blockers logged in STATUS**: no `parts[]` on the technician DTO (cart lost on restart →
   duplicate lines), no estimate version on approve, instant labor-only approval.
