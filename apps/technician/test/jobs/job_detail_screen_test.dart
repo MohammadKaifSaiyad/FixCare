@@ -69,6 +69,11 @@ class _FakeRepo extends TechnicianJobRepository {
 
   final String id;
   String _state;
+  bool _vanished = false;
+
+  /// From now on, `mine()` returns a list without this job — simulates the
+  /// booking being reassigned/cancelled out from under the technician.
+  void vanish() => _vanished = true;
 
   int mineCalls = 0;
   int enRouteCalls = 0;
@@ -95,6 +100,7 @@ class _FakeRepo extends TechnicianJobRepository {
   @override
   Future<Result<List<TechnicianJobDto>>> mine() async {
     mineCalls++;
+    if (_vanished) return const Ok([]);
     return Ok([_dto(id: id, state: _state)]);
   }
 
@@ -546,6 +552,26 @@ void main() {
     await _pump(tester, repo);
 
     expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
+    expect(find.text("Couldn't load this job."), findsOneWidget);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('a job that vanishes after 3 consecutive misses shows its own message, not the generic one',
+      (tester) async {
+    final repo = _FakeRepo(initialState: 'EN_ROUTE');
+    await _pump(tester, repo);
+    expect(find.byKey(const Key('jobDetailScreen')), findsOneWidget);
+
+    repo.vanish();
+    await tester.pump(const Duration(seconds: 5)); // miss 1 — still shows the job
+    expect(find.byKey(const Key('jobDetailScreen')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // miss 2
+    await tester.pump(const Duration(seconds: 5)); // miss 3 -> vanished
+
+    expect(find.text('This job is no longer assigned to you.'), findsOneWidget);
+    expect(find.text("Couldn't load this job."), findsNothing);
+    expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
 
     await _disposeTree(tester);
   });
@@ -586,14 +612,55 @@ void main() {
     await _disposeTree(tester);
   });
 
-  testWidgets('cash code card tells the technician to collect first, then ask for the receipt code', (tester) async {
+  testWidgets('CUSTOMER_CONFIRMED shows the UPI-first awaiting-payment text', (tester) async {
     final repo = _FakeRepo(initialState: 'CUSTOMER_CONFIRMED');
     await _pump(tester, repo);
 
+    expect(find.byKey(const Key('awaitingPaymentText')), findsOneWidget);
     expect(
-      find.text('Collect the cash, then ask the customer for the 6-digit receipt code in their app.'),
+      find.text(
+        'Waiting for the customer to pay in the FixCare app. Most customers pay by UPI — this updates on its own when they do.',
+      ),
       findsOneWidget,
     );
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('DECLINED_BY_CUSTOMER shows the declined + awaiting-payment text', (tester) async {
+    final repo = _FakeRepo(initialState: 'DECLINED_BY_CUSTOMER');
+    await _pump(tester, repo);
+
+    expect(find.byKey(const Key('awaitingPaymentText')), findsOneWidget);
+    expect(
+      find.text(
+        'The customer declined the repair. Waiting for them to pay the visit fee in the FixCare app. This updates on its own when they do.',
+      ),
+      findsOneWidget,
+    );
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('the cash section is a secondary, opt-in path and still records cash with the 6-digit code',
+      (tester) async {
+    final repo = _FakeRepo(initialState: 'CUSTOMER_CONFIRMED');
+    await _pump(tester, repo);
+
+    expect(find.text('Customer paying cash instead?'), findsOneWidget);
+    expect(
+      find.text(
+        'Only if the customer chose cash in their app: collect it, then enter the 6-digit receipt code shown in their app.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(find.byKey(const Key('cashCodeField')), '654321');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('confirmCashBtn')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastCashCode, '654321');
 
     await _disposeTree(tester);
   });

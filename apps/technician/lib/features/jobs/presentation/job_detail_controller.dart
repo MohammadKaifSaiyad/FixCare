@@ -8,6 +8,23 @@ part 'job_detail_controller.g.dart';
 
 const jobPollInterval = Duration(seconds: 5);
 
+/// Consecutive successful `mine()` calls the job may be absent from before the
+/// controller gives up and reports it gone (finding 6) — one blip is normal
+/// (a state transition mid-flight can momentarily reorder the list on some
+/// backends), three in a row means it is genuinely no longer this
+/// technician's job (reassigned/cancelled).
+const int kMaxConsecutiveMisses = 3;
+
+/// Thrown into [JobDetail.state] once the job has been absent from
+/// [kMaxConsecutiveMisses] consecutive successful `mine()` calls. Distinct
+/// from a generic fetch failure so the job-detail screen can show this exact
+/// copy instead of its generic error text.
+class JobVanishedException implements Exception {
+  const JobVanishedException();
+  @override
+  String toString() => 'This job is no longer assigned to you.';
+}
+
 /// Loads and adaptively polls a single job for the job-detail screen.
 ///
 /// There is no single-job GET on the technician API — jobs are only ever
@@ -33,6 +50,12 @@ class JobDetail extends _$JobDetail {
   int _appliedSeq = 0;
   bool _pollInFlight = false;
   bool _paused = false;
+
+  // Consecutive successful mine() calls the job has been absent from; reset
+  // to 0 on any successful find. Once it hits kMaxConsecutiveMisses the
+  // controller reports the job gone and stops polling for good (finding 6).
+  int _missCount = 0;
+  bool _vanished = false;
 
   @override
   Future<TechnicianJobDto> build(String bookingId) async {
@@ -83,12 +106,18 @@ class JobDetail extends _$JobDetail {
     } finally {
       _pollInFlight = false;
     }
-    if (!ref.mounted) return;
+    if (!ref.mounted || _vanished) return;
     _rearm(state.value);
   }
 
   /// One sequenced fetch. keep-last-good: a Failure or a momentarily-absent
-  /// job leaves the state as-is (never flashes AsyncLoading/AsyncError).
+  /// job leaves the state as-is (never flashes AsyncLoading/AsyncError) —
+  /// UNLESS the job has now been absent [kMaxConsecutiveMisses] times in a
+  /// row, in which case it is reported gone (finding 6) and polling stops for
+  /// good. A poll that differs from the current data only in each photo's
+  /// `url` (the app never displays it) is applied silently: the seq is marked
+  /// applied but `state` is left alone, so listeners aren't notified for a
+  /// no-op refresh (finding 5).
   Future<void> _fetchAndApply() async {
     final seq = ++_requestSeq;
     final r = await ref.read(technicianJobRepositoryProvider).mine();
@@ -97,8 +126,19 @@ class JobDetail extends _$JobDetail {
     switch (r) {
       case Ok(value: final jobs):
         final dto = _findJob(jobs, _bookingId);
-        if (dto == null) return;
+        if (dto == null) {
+          _missCount++;
+          if (_missCount >= kMaxConsecutiveMisses) {
+            _vanished = true;
+            _cancelTimer();
+            state = AsyncError(const JobVanishedException(), StackTrace.current);
+          }
+          return;
+        }
+        _missCount = 0;
         _appliedSeq = seq;
+        final current = state.value;
+        if (current != null && _sameIgnoringPhotoUrls(current, dto)) return;
         state = AsyncData(dto);
       case Failure():
         return;
@@ -109,7 +149,7 @@ class JobDetail extends _$JobDetail {
   /// Keeps last-good on failure/not-found; never flashes AsyncLoading.
   Future<void> refetch() async {
     await _fetchAndApply();
-    if (!ref.mounted) return;
+    if (!ref.mounted || _vanished) return;
     _rearm(state.value);
   }
 
@@ -124,4 +164,30 @@ class JobDetail extends _$JobDetail {
     _paused = false;
     return refetch();
   }
+}
+
+/// Structural equality for [JobDetail._fetchAndApply]'s "unchanged" check:
+/// identical except each photo's `url` — the app only ever reads a photo's
+/// `kind`, never displays its (possibly freshly re-signed) URL, so a diff
+/// confined to that field is not a change worth rebuilding the screen for.
+bool _sameIgnoringPhotoUrls(TechnicianJobDto a, TechnicianJobDto b) {
+  if (a.id != b.id ||
+      a.bookingNumber != b.bookingNumber ||
+      a.state != b.state ||
+      a.scheduledSlot != b.scheduledSlot ||
+      a.service != b.service ||
+      a.zone != b.zone ||
+      a.visitFeePaise != b.visitFeePaise ||
+      a.laborPaise != b.laborPaise ||
+      a.address != b.address ||
+      a.customer != b.customer) {
+    return false;
+  }
+  if (a.photos.length != b.photos.length) return false;
+  for (var i = 0; i < a.photos.length; i++) {
+    if (a.photos[i].kind != b.photos[i].kind || a.photos[i].capturedAt != b.photos[i].capturedAt) {
+      return false;
+    }
+  }
+  return true;
 }

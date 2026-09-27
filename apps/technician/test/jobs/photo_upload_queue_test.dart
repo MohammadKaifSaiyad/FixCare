@@ -251,6 +251,40 @@ void main() {
     expect(q.stateOf('b1', 'never_touched'), PhotoSlotState.none);
   });
 
+  group('hasGeotagOf', () {
+    test('true after a geotagged capture; false after a non-geotagged one', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut());
+
+        q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(lat: 22.3, lng: 73.2));
+        async.flushMicrotasks();
+        expect(q.hasGeotagOf('b1', 'diagnosis_before'), isTrue);
+
+        q.enqueue(bookingId: 'b1', kind: 'diagnosis_after', photo: _photo()); // no lat/lng
+        async.flushMicrotasks();
+        expect(q.hasGeotagOf('b1', 'diagnosis_after'), isFalse);
+      });
+    });
+
+    test('null for a slot nothing has been enqueued for this session', () {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+      expect(q.hasGeotagOf('b1', 'never_touched'), isNull);
+    });
+
+    test('recorded even when the upload later fails (geotag is read at enqueue time)', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo()..confirmOutcomes = [const Failure(FailureKind.unknown, 'no')];
+        final q = _queue(repo, _FakePut());
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo()); // no lat/lng
+        async.flushMicrotasks();
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failed);
+        expect(q.hasGeotagOf('b1', 'REPAIR_OLD_PART'), isFalse);
+      });
+    });
+  });
+
   test('the concrete ImagePickerCameraService is camera-only (never gallery)', () async {
     // Guard the fraud-critical invariant: the real service must only ever ask the
     // picker for ImageSource.camera. We inject a fake picker seam and assert the
@@ -407,6 +441,23 @@ void main() {
         async.elapse(const Duration(minutes: 5));
         expect(repo.signCalls, hasLength(1), reason: 'a terminal failure is never retried');
         expect(async.pendingTimers, isEmpty);
+      });
+    });
+
+    test('sign Failure(network) [as mapped from a 408] -> failedRetry, not failed', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo()..signFailure = const Failure(FailureKind.network, 'Request timed out');
+        final put = _FakePut();
+        final q = _queue(repo, put);
+
+        q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo());
+        async.flushMicrotasks();
+
+        expect(q.stateOf('b1', 'REPAIR_OLD_PART'), PhotoSlotState.failedRetry);
+        expect(q.failureOf('b1', 'REPAIR_OLD_PART'), isNull, reason: 'transient failures carry no message');
+        expect(put.calls, isEmpty, reason: 'sign failed before any PUT attempt');
+
+        q.dispose();
       });
     });
 
@@ -765,6 +816,54 @@ void main() {
       expect(find.text('Capture'), findsOneWidget);
     });
 
+    testWidgets('a done slot with no geotag shows "Uploaded · no location" + the precise-location hint',
+        (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+      await q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo()); // no lat/lng
+
+      await _pumpSlot(tester, queue: q, camera: _FakeCamera());
+
+      expect(find.text('Uploaded · no location'), findsOneWidget);
+      expect(find.text('Turn on precise location so future photos are location-tagged.'), findsOneWidget);
+    });
+
+    testWidgets('a done slot WITH a geotag shows plain "Uploaded", no hint', (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+      await q.enqueue(bookingId: 'b1', kind: 'REPAIR_OLD_PART', photo: _photo(lat: 1, lng: 2));
+
+      await _pumpSlot(tester, queue: q, camera: _FakeCamera());
+
+      expect(find.text('Uploaded'), findsOneWidget);
+      expect(find.text('Uploaded · no location'), findsNothing);
+      expect(find.text('Turn on precise location so future photos are location-tagged.'), findsNothing);
+    });
+
+    testWidgets('a server-only photo (no queue entry) shows plain "Uploaded", no hint', (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [photoUploadQueueProvider.overrideWithValue(q)],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: PhotoSlot(
+                bookingId: 'b1',
+                kind: 'diagnosis_before',
+                label: 'Overview',
+                serverHasPhoto: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Uploaded'), findsOneWidget);
+      expect(find.text('Turn on precise location so future photos are location-tagged.'), findsNothing);
+    });
+
     testWidgets('a FAILED slot shows the stored message in errorText + Retake', (tester) async {
       const msg = 'Photos can only be confirmed during their capture window — the booking has moved on';
       final repo = _FakeRepo()..confirmOutcomes = [const Failure(FailureKind.unknown, msg)];
@@ -784,7 +883,7 @@ void main() {
     testWidgets('Capture enqueues the photo for the right (bookingId, kind) and ends Uploaded', (tester) async {
       final repo = _FakeRepo();
       final q = _queue(repo, _FakePut());
-      final camera = _FakeCamera(photo: _photo(size: 77));
+      final camera = _FakeCamera(photo: _photo(lat: 1, lng: 2, size: 77));
 
       await _pumpSlot(tester, queue: q, camera: camera);
       await tester.tap(find.text('Capture'));
@@ -884,7 +983,7 @@ void main() {
 
       camera
         ..error = null
-        ..photo = _photo();
+        ..photo = _photo(lat: 1, lng: 2);
       await tester.tap(find.text('Capture'));
       await tester.pumpAndSettle();
 

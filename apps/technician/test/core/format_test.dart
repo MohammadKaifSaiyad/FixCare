@@ -25,6 +25,12 @@ void main() {
       expect(formatScheduledSlot(iso(10, 5)), 'Thu, 10 Sep · 10:05 am');
     });
 
+    test('a window hour with a non-zero minute -> the actual time, not the window label', () {
+      expect(formatScheduledSlot(iso(9, 30)), 'Thu, 10 Sep · 9:30 am');
+      expect(formatScheduledSlot(iso(12, 15)), 'Thu, 10 Sep · 12:15 pm');
+      expect(formatScheduledSlot(iso(15, 1)), 'Thu, 10 Sep · 3:01 pm');
+    });
+
     test('a UTC instant is shown in local time, not as the raw ISO string', () {
       final raw = iso(9);
       expect(raw.endsWith('Z'), isTrue);

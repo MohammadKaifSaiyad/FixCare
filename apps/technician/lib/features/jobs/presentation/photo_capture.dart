@@ -259,6 +259,12 @@ class PhotoUploadQueue extends ChangeNotifier {
   final Map<String, int> _attempts = {};
   // Terminal failure message per slot (only meaningful while `failed`).
   final Map<String, String> _failures = {};
+  // Whether the photo enqueued for this slot THIS SESSION had a geotag (both
+  // lat/lng present — capture is both-or-neither). Recorded at enqueue time
+  // (not at confirm) so it reflects what was captured even if the upload
+  // later fails; read by [PhotoSlot] to show a "no location" hint on a `done`
+  // slot rather than silently accepting an un-geotagged photo.
+  final Map<String, bool> _hasGeotag = {};
   // The pending backoff retry per slot — cancellable (a retake or dispose()
   // cancels it), unlike a Future.delayed.
   final Map<String, Timer> _retryTimers = {};
@@ -282,6 +288,11 @@ class PhotoUploadQueue extends ChangeNotifier {
     final key = _slotKey(bookingId, kind);
     return _states[key] == PhotoSlotState.failed ? _failures[key] : null;
   }
+
+  /// Whether the slot's most recent enqueue (this session) had a geotag; null
+  /// if nothing has been enqueued for this slot this session (a server-only
+  /// photo from a prior session carries no queue geotag info).
+  bool? hasGeotagOf(String bookingId, String kind) => _hasGeotag[_slotKey(bookingId, kind)];
 
   /// A superseded (retaken) or disposed attempt must stop: no state write, no
   /// further network call.
@@ -312,6 +323,7 @@ class PhotoUploadQueue extends ChangeNotifier {
     _generations[key] = generation;
     _attempts[key] = 0;
     _failures.remove(key);
+    _hasGeotag[key] = photo.lat != null && photo.lng != null;
     _retryTimers.remove(key)?.cancel();
     await _attempt(bookingId: bookingId, kind: kind, photo: photo, generation: generation);
   }
@@ -577,16 +589,24 @@ class _PhotoSlotState extends ConsumerState<PhotoSlot> {
         final displayed = queued != PhotoSlotState.none
             ? queued
             : (widget.serverHasPhoto ? PhotoSlotState.done : PhotoSlotState.none);
-        return _buildRow(displayed, queue.failureOf(widget.bookingId, widget.kind));
+        // Only meaningful for a THIS-SESSION capture — a server-only photo
+        // (queued == none) carries no geotag info, so it never shows the hint.
+        final hasGeotag =
+            queued != PhotoSlotState.none ? queue.hasGeotagOf(widget.bookingId, widget.kind) : null;
+        return _buildRow(displayed, queue.failureOf(widget.bookingId, widget.kind), hasGeotag);
       },
     );
   }
 
-  Widget _buildRow(PhotoSlotState state, String? failure) {
+  Widget _buildRow(PhotoSlotState state, String? failure, bool? hasGeotag) {
+    // Capture stays non-blocking on a missing geotag (indoor GPS often fails,
+    // and arrival already proved presence via the customer's code) — but a
+    // silently un-geotagged photo isn't shown as a plain success either.
+    final noLocation = state == PhotoSlotState.done && hasGeotag == false;
     final (String status, Color color) = switch (state) {
       PhotoSlotState.none => ('Not captured', FixCareColors.textMuted),
       PhotoSlotState.uploading => ('Uploading…', FixCareColors.primary),
-      PhotoSlotState.done => ('Uploaded', FixCareColors.success),
+      PhotoSlotState.done => (noLocation ? 'Uploaded · no location' : 'Uploaded', FixCareColors.success),
       PhotoSlotState.failedRetry => ('Upload failed — retrying', FixCareColors.errorText),
       PhotoSlotState.failed => (failure ?? kPhotoPutRejectedMessage, FixCareColors.errorText),
     };
@@ -627,6 +647,13 @@ class _PhotoSlotState extends ConsumerState<PhotoSlot> {
               ),
             ],
           ),
+          if (noLocation) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Turn on precise location so future photos are location-tagged.',
+              style: TextStyle(fontSize: 11, color: FixCareColors.textMuted),
+            ),
+          ],
           if (captureError != null) ...[
             const SizedBox(height: 8),
             Text(captureError, style: const TextStyle(color: FixCareColors.errorText, fontSize: 12)),

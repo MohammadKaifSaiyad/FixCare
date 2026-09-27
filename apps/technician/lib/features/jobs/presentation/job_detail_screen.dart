@@ -185,19 +185,22 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       body: SafeArea(
         child: switch (async) {
           AsyncData(value: final job) => _buildBody(job),
-          AsyncError() => _buildError(),
+          AsyncError(:final error) => _buildError(error is JobVanishedException ? error.toString() : null),
           _ => const Center(child: CircularProgressIndicator()),
         },
       ),
     );
   }
 
-  Widget _buildError() {
+  /// [specificMessage] is shown verbatim when the error is one the screen
+  /// knows how to explain (e.g. the vanished-job case); otherwise the generic
+  /// copy is kept so an ordinary fetch failure isn't over-explained.
+  Widget _buildError(String? specificMessage) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text("Couldn't load this job."),
+          Text(specificMessage ?? "Couldn't load this job."),
           const SizedBox(height: 12),
           FilledButton(
             key: const Key('jobDetailRetry'),
@@ -271,11 +274,17 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           onSubmit: _submitCompletion,
         );
       case JobAction.confirmCash:
+        // UPI-first (Golden Rule 3): the platform holds cash, not the
+        // technician, so the default expectation shown is the customer
+        // paying in-app — cash collection is a secondary, opt-in path below.
         return _CodeEntryCard<CashResultDto>(
           key: const ValueKey('cashCodeCard'),
+          header: Text(_awaitingPaymentText(job.state), key: const Key('awaitingPaymentText')),
+          sectionHeading: 'Customer paying cash instead?',
           fieldKey: const Key('cashCodeField'),
           buttonKey: const Key('confirmCashBtn'),
-          instruction: 'Collect the cash, then ask the customer for the 6-digit receipt code in their app.',
+          instruction:
+              'Only if the customer chose cash in their app: collect it, then enter the 6-digit receipt code shown in their app.',
           buttonLabel: 'Confirm cash received',
           onSubmit: _submitCash,
         );
@@ -314,6 +323,16 @@ class _JobInfoCard extends StatelessWidget {
     );
   }
 }
+
+/// UPI-first copy for the confirmCash card (finding 2, Golden Rule 3): the
+/// platform holds cash, so the default framing is "the customer is paying in
+/// the app", never an instruction to go collect cash.
+String _awaitingPaymentText(String state) => switch (state) {
+      'DECLINED_BY_CUSTOMER' =>
+        'The customer declined the repair. Waiting for them to pay the visit fee in the FixCare app. This updates on its own when they do.',
+      _ =>
+        'Waiting for the customer to pay in the FixCare app. Most customers pay by UPI — this updates on its own when they do.',
+    };
 
 String _addressLine(JobAddressDto a) {
   final parts = [
@@ -504,12 +523,24 @@ class _StartRepairCard extends StatelessWidget {
 class _CodeEntryCard<T> extends StatefulWidget {
   const _CodeEntryCard({
     super.key,
+    this.header,
+    this.sectionHeading,
     required this.fieldKey,
     required this.buttonKey,
     required this.instruction,
     required this.buttonLabel,
     required this.onSubmit,
   });
+
+  /// Optional content shown above the code-entry section (e.g. the UPI-first
+  /// awaiting-payment text on the confirmCash card). Null for a card that is
+  /// nothing but the code entry (e.g. confirmCompletion).
+  final Widget? header;
+
+  /// Optional bold heading introducing the code-entry section when it follows
+  /// a [header] — e.g. "Customer paying cash instead?" — framing it as the
+  /// secondary, opt-in path rather than the primary instruction.
+  final String? sectionHeading;
 
   final Key fieldKey;
   final Key buttonKey;
@@ -571,6 +602,14 @@ class _CodeEntryCardState<T> extends State<_CodeEntryCard<T>> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.header case final header?) ...[
+              header,
+              const SizedBox(height: 16),
+            ],
+            if (widget.sectionHeading case final heading?) ...[
+              Text(heading, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+            ],
             Text(widget.instruction),
             const SizedBox(height: 8),
             TextField(

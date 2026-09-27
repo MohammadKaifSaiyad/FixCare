@@ -276,6 +276,100 @@ void main() {
     });
   });
 
+  test('a poll differing only in photo urls does not notify listeners (state is not reassigned)', () {
+    fakeAsync((async) {
+      TechnicianJobDto withPhotoUrl(String url) => TechnicianJobDto.fromJson({
+            'id': 'b1', 'bookingNumber': 'FC-1', 'state': 'REPAIR_IN_PROGRESS',
+            'scheduledSlot': '2026-09-20T09:00:00.000Z',
+            'service': {'name': 'Svc', 'requiredSkill': 'FAN'}, 'zone': {'name': 'Padra'},
+            'visitFeePaise': 9900, 'laborPaise': 20000,
+            'address': {'line1': 'x', 'line2': null, 'landmark': null, 'pincode': '391440'},
+            'customer': {'maskedPhone': '••••••8384'},
+            'photos': [
+              {'kind': 'REPAIR_OLD_PART', 'capturedAt': '2026-09-20T09:00:00.000Z', 'url': url},
+            ],
+          });
+      final repo = _ScriptedRepo([
+        Ok([withPhotoUrl('https://r2.example.com/a?sig=1')]),
+        Ok([withPhotoUrl('https://r2.example.com/a?sig=2')]), // a fresh signed url, nothing else changed
+      ]);
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      var notifications = 0;
+      c.listen(jobDetailProvider('b1'), (_, next) => notifications++, fireImmediately: true);
+      async.flushMicrotasks();
+      final afterFirstLoad = notifications;
+
+      async.elapse(const Duration(seconds: 5)); // poll #2: only the photo url differs
+      expect(repo.calls, 2, reason: 'the poll still happens');
+      expect(notifications, afterFirstLoad, reason: 'a photo-url-only diff must not notify listeners');
+    });
+  });
+
+  test('vanished job: 3 consecutive misses set the not-assigned error and stop polling', () {
+    fakeAsync((async) {
+      final repo = _ScriptedRepo([
+        Ok([_j('EN_ROUTE')]),
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 1
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 2
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 3 -> vanished
+        Ok([_j('ACCEPTED', id: 'other')]), // would be miss 4 if polling didn't stop
+      ]);
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      expect(repo.calls, 1);
+
+      async.elapse(const Duration(seconds: 5)); // miss 1: keep-last-good, no error
+      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'EN_ROUTE');
+
+      async.elapse(const Duration(seconds: 5)); // miss 2: still keep-last-good
+      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
+
+      async.elapse(const Duration(seconds: 5)); // miss 3: vanished
+      final errored = c.read(jobDetailProvider('b1'));
+      expect(errored.hasError, isTrue);
+      expect(errored.error, isA<JobVanishedException>());
+      expect(errored.error.toString(), 'This job is no longer assigned to you.');
+      expect(repo.calls, 4);
+
+      async.elapse(const Duration(minutes: 5)); // no more polling once vanished
+      expect(repo.calls, 4);
+    });
+  });
+
+  test('vanished job: 2 misses then a find resets the counter (stays on last-good, keeps polling)', () {
+    fakeAsync((async) {
+      final repo = _ScriptedRepo([
+        Ok([_j('EN_ROUTE')]),
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 1
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 2
+        Ok([_j('ARRIVED')]), // found -> counter resets
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 1 again (NOT the 3rd overall)
+        Ok([_j('ACCEPTED', id: 'other')]), // miss 2 again
+      ]);
+      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      async.flushMicrotasks();
+
+      async.elapse(const Duration(seconds: 5)); // miss 1
+      async.elapse(const Duration(seconds: 5)); // miss 2
+      async.elapse(const Duration(seconds: 5)); // found -> ARRIVED, counter reset
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
+
+      async.elapse(const Duration(seconds: 5)); // miss 1 again (post-reset)
+      async.elapse(const Duration(seconds: 5)); // miss 2 again (post-reset)
+      expect(c.read(jobDetailProvider('b1')).hasError, isFalse,
+          reason: 'the earlier find reset the counter; this is not yet 3 in a row');
+      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED', reason: 'keep-last-good on a miss');
+      expect(repo.calls, 6);
+    });
+  });
+
   test('resume() on a terminal job fetches once and does not re-arm', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([

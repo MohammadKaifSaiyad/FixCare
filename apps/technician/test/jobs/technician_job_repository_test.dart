@@ -142,6 +142,13 @@ void main() {
     expect(conf.id, 'ph1');
   });
 
+  test('mine() 408 -> Failure(network), not unknown (transient: a slow gateway timeout, not a rejection)', () async {
+    adapter.onGet('/technician/jobs/mine', (s) => s.reply(408, {'code': 'REQUEST_TIMEOUT', 'message': 'Request timed out'}));
+    final f = await repo.mine() as Failure;
+    expect(f.kind, FailureKind.network);
+    expect(f.message, 'Request timed out');
+  });
+
   test('confirmPhoto omits geotag keys entirely when not provided', () async {
     adapter.onPost('/technician/jobs/b1/photos',
         (s) => s.reply(201, {'id': 'ph2', 'kind': 'REPAIR_OLD_PART', 'capturedAt': '2026-09-20T10:00:00.000Z'}),

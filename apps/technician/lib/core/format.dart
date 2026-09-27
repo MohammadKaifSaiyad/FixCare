@@ -32,6 +32,9 @@ String _timeLabel(DateTime d) {
 /// booking_wizard_screen.dart so both apps show the same slot the same way.
 String formatScheduledSlot(String iso) {
   final dt = DateTime.parse(iso).toLocal();
-  final suffix = _slotWindowLabels[dt.hour] ?? _timeLabel(dt);
+  // Only exactly-on-the-hour bookings land on a fixed window; anything else
+  // (e.g. a 9:30 slot) shows its actual time rather than a misleading window
+  // label (finding 9).
+  final suffix = dt.minute == 0 ? (_slotWindowLabels[dt.hour] ?? _timeLabel(dt)) : _timeLabel(dt);
   return '${_fullDateLabel(dt)} · $suffix';
 }

@@ -14,8 +14,10 @@
          the app declares no background-location permission. COARSE is
          declared alongside FINE because apps targeting Android 12+ must
          request both in one runtime request (otherwise some releases ignore
-         the request and the technician can never confirm arrival); if the
-         user grants only "Approximate", the app asks for Precise itself. -->
+         the request and the technician can never confirm arrival). The app
+         does NOT re-prompt for Precise itself: an approximate-only grant is
+         refused for arrival (inline message + a Settings link); photos
+         simply go un-geotagged in that case. -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
