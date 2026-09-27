@@ -184,40 +184,60 @@ class PhotoUploadQueue extends ChangeNotifier {
   final PutFn _put;
   final List<Duration> _backoff;
 
+  // Every internal map is keyed by a composite slot key ("$bookingId|$kind"),
+  // never by kind alone — kind-only keys leak state across jobs (job A's
+  // DIAGNOSIS_OVERVIEW would read as done on job B's slot of the same kind).
   final Map<String, PhotoSlotState> _states = {};
   // Live attempt count per slot, so a retry uses the next backoff step.
   final Map<String, int> _attempts = {};
+  // Bumped on every enqueue. A scheduled/in-flight attempt carries the
+  // generation it was started with and aborts (no state write, no further
+  // network call) as soon as it no longer matches — this is what makes a
+  // retake (which bumps the generation) win over a stale retry or a stale
+  // attempt that is already mid-flight when the retake happens.
+  final Map<String, int> _generations = {};
+
+  static String _slotKey(String bookingId, String kind) => '$bookingId|$kind';
 
   /// State of a slot; [PhotoSlotState.none] if nothing has been captured for it.
-  PhotoSlotState stateOf(String kind) => _states[kind] ?? PhotoSlotState.none;
+  PhotoSlotState stateOf(String bookingId, String kind) =>
+      _states[_slotKey(bookingId, kind)] ?? PhotoSlotState.none;
 
-  /// Immutable snapshot for widgets that want the whole map.
-  Map<String, PhotoSlotState> get states => Map.unmodifiable(_states);
-
-  void _set(String kind, PhotoSlotState s) {
-    _states[kind] = s;
+  void _set(String key, PhotoSlotState s) {
+    _states[key] = s;
     notifyListeners();
   }
 
   /// Capture a slot and start uploading. Returns as soon as the first attempt is
-  /// underway (or scheduled) — never blocks the caller on the network. A repeat
-  /// enqueue for a slot already `done` is ignored; otherwise it (re)starts.
+  /// underway (or scheduled) — never blocks the caller on the network.
+  ///
+  /// ALWAYS (re)starts the slot, even if it is already `done` — a retake is a
+  /// re-capture that the backend soft-deletes + replaces; dropping it here
+  /// would silently discard the new photo while the slot still reads
+  /// "Uploaded". [PhotoSlot] already disables its button while `uploading`, so
+  /// there is no double-enqueue risk from the UI.
   Future<void> enqueue({
     required String bookingId,
     required String kind,
     required CapturedPhoto photo,
   }) async {
-    if (_states[kind] == PhotoSlotState.done) return;
-    _attempts[kind] = 0;
-    await _attempt(bookingId: bookingId, kind: kind, photo: photo);
+    final key = _slotKey(bookingId, kind);
+    final generation = (_generations[key] ?? 0) + 1;
+    _generations[key] = generation;
+    _attempts[key] = 0;
+    await _attempt(bookingId: bookingId, kind: kind, photo: photo, generation: generation);
   }
 
   Future<void> _attempt({
     required String bookingId,
     required String kind,
     required CapturedPhoto photo,
+    required int generation,
   }) async {
-    _set(kind, PhotoSlotState.uploading);
+    final key = _slotKey(bookingId, kind);
+    if (_generations[key] != generation) return; // superseded before starting
+
+    _set(key, PhotoSlotState.uploading);
     try {
       // 1. sign — content length is the COMPRESSED byte count.
       final signRes = await _repo.signPhoto(
@@ -225,6 +245,7 @@ class PhotoUploadQueue extends ChangeNotifier {
         kind: kind,
         contentLengthBytes: photo.bytes.length,
       );
+      if (_generations[key] != generation) return; // superseded during sign
       final sign = switch (signRes) {
         Ok(value: final v) => v,
         Failure(message: final m) => throw _UploadStepError(m),
@@ -232,6 +253,7 @@ class PhotoUploadQueue extends ChangeNotifier {
 
       // 2. PUT the bytes to the signed url (dev-hook branch handled in the seam).
       await _put(url: sign.url, key: sign.key, bytes: photo.bytes);
+      if (_generations[key] != generation) return; // superseded during PUT
 
       // 3. confirm — geotag flows through both-or-neither (repo enforces it too).
       final confirmRes = await _repo.confirmPhoto(
@@ -242,18 +264,20 @@ class PhotoUploadQueue extends ChangeNotifier {
         geotagLat: photo.lat,
         geotagLng: photo.lng,
       );
+      if (_generations[key] != generation) return; // superseded during confirm
       switch (confirmRes) {
         case Ok():
-          _set(kind, PhotoSlotState.done);
+          _set(key, PhotoSlotState.done);
         case Failure(message: final m):
           throw _UploadStepError(m);
       }
     } catch (_) {
+      if (_generations[key] != generation) return; // superseded on the failure path too
       // Any step failed: mark for retry and schedule the next attempt with
       // backoff. Deliberately swallow the error detail here (no PII/leak); the
       // slot state is the surfaced signal.
-      _set(kind, PhotoSlotState.failedRetry);
-      _scheduleRetry(bookingId: bookingId, kind: kind, photo: photo);
+      _set(key, PhotoSlotState.failedRetry);
+      _scheduleRetry(bookingId: bookingId, kind: kind, photo: photo, generation: generation);
     }
   }
 
@@ -261,25 +285,21 @@ class PhotoUploadQueue extends ChangeNotifier {
     required String bookingId,
     required String kind,
     required CapturedPhoto photo,
+    required int generation,
   }) {
-    final n = _attempts[kind] ?? 0;
-    _attempts[kind] = n + 1;
+    final key = _slotKey(bookingId, kind);
+    final n = _attempts[key] ?? 0;
+    _attempts[key] = n + 1;
     final delay = _backoff[n < _backoff.length ? n : _backoff.length - 1];
     Future<void>.delayed(delay, () {
-      // Don't retry a slot the user has since re-captured to done, or if this
-      // slot is no longer in the failed state (e.g. a fresh enqueue took over).
-      if (_states[kind] != PhotoSlotState.failedRetry) return;
-      _attempt(bookingId: bookingId, kind: kind, photo: photo);
+      // Don't retry a slot a retake has since superseded (stale generation),
+      // or if this slot is no longer in the failed state (e.g. a fresh
+      // enqueue already took over via a different code path).
+      if (_generations[key] != generation) return;
+      if (_states[key] != PhotoSlotState.failedRetry) return;
+      _attempt(bookingId: bookingId, kind: kind, photo: photo, generation: generation);
     });
   }
-
-  /// Manual retry hook for the UI's retry button.
-  Future<void> retry({
-    required String bookingId,
-    required String kind,
-    required CapturedPhoto photo,
-  }) =>
-      _attempt(bookingId: bookingId, kind: kind, photo: photo);
 }
 
 /// Internal marker for a failed sign/confirm step so it joins the same
@@ -329,6 +349,20 @@ final photoUploadQueueProvider = Provider<PhotoUploadQueue>((ref) {
   return queue;
 });
 
+/// True iff every kind in [kinds] already has evidence — either uploaded this
+/// session (`queue.stateOf(job.id, kind) == done`) or already on the server
+/// (`job.photos` — e.g. after an app restart or re-entering the job). Empty
+/// [kinds] is vacuously true. Used by the diagnosis form (Task 7b) and the
+/// repair-photos gate (Task 8) to decide whether a step can proceed.
+bool photosReady(PhotoUploadQueue queue, TechnicianJobDto job, List<String> kinds) {
+  for (final kind in kinds) {
+    final queuedDone = queue.stateOf(job.id, kind) == PhotoSlotState.done;
+    final onServer = job.photos.any((p) => p.kind == kind);
+    if (!queuedDone && !onServer) return false;
+  }
+  return true;
+}
+
 /// A single evidence-photo slot: label + current state + a capture/retake
 /// button. On tap it captures (camera-only) then enqueues the upload. It never
 /// blocks — the queue drives the state the widget re-reads.
@@ -338,11 +372,17 @@ class PhotoSlot extends ConsumerWidget {
     required this.bookingId,
     required this.kind,
     required this.label,
+    this.serverHasPhoto = false,
   });
 
   final String bookingId;
   final String kind;
   final String label;
+
+  /// True if the server already has an active photo for this slot (e.g. on
+  /// app restart or re-entering the job) — shown as `done` unless the queue
+  /// has a more current (live-captured) state for the same slot.
+  final bool serverHasPhoto;
 
   Future<void> _onTap(WidgetRef ref) async {
     final photo = await ref.read(cameraServiceProvider).capture();
@@ -358,7 +398,14 @@ class PhotoSlot extends ConsumerWidget {
     // The queue is a ChangeNotifier; rebuild this slot whenever it notifies.
     return ListenableBuilder(
       listenable: queue,
-      builder: (context, _) => _buildRow(context, ref, queue.stateOf(kind)),
+      builder: (context, _) {
+        final queued = queue.stateOf(bookingId, kind);
+        // The live queue state always wins; it only falls back to the
+        // server-confirmed state when nothing has happened in this session.
+        final displayed =
+            queued != PhotoSlotState.none ? queued : (serverHasPhoto ? PhotoSlotState.done : PhotoSlotState.none);
+        return _buildRow(context, ref, displayed);
+      },
     );
   }
 

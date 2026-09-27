@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
@@ -91,6 +95,23 @@ PhotoUploadQueue _queue(_FakeRepo repo, _FakePut put) => PhotoUploadQueue(
       backoff: const [Duration(seconds: 2), Duration(seconds: 4)],
     );
 
+Map<String, dynamic> _jobJson({String id = 'b1', List<Map<String, dynamic>> photos = const []}) => {
+      'id': id,
+      'bookingNumber': 'FC-1',
+      'state': 'DISPATCHED',
+      'scheduledSlot': '2026-09-20T09:00:00.000Z',
+      'service': {'name': 'Ceiling fan repair', 'requiredSkill': 'FAN'},
+      'zone': {'name': 'Padra'},
+      'visitFeePaise': 9900,
+      'laborPaise': 20000,
+      'address': {'line1': 'A/27 Umiya Nagar', 'line2': 'Padra', 'landmark': 'HP Gas', 'pincode': '391440'},
+      'customer': {'maskedPhone': '••••••8384'},
+      'photos': photos,
+    };
+
+TechnicianJobDto _jobDto({String id = 'b1', List<Map<String, dynamic>> photos = const []}) =>
+    TechnicianJobDto.fromJson(_jobJson(id: id, photos: photos));
+
 void main() {
   test('enqueue: sign(bytes,kind) -> PUT -> confirm; slot uploading -> done', () {
     fakeAsync((async) {
@@ -99,7 +120,7 @@ void main() {
       final q = _queue(repo, put);
 
       final states = <PhotoSlotState>[];
-      q.addListener(() => states.add(q.stateOf('diagnosis_before')));
+      q.addListener(() => states.add(q.stateOf('b1', 'diagnosis_before')));
 
       q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(lat: 22.3, lng: 73.2, size: 100));
       async.flushMicrotasks();
@@ -125,7 +146,7 @@ void main() {
       expect(body['geotagLng'], 73.2);
 
       // Slot ended done, and passed through uploading first.
-      expect(q.stateOf('diagnosis_before'), PhotoSlotState.done);
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
       expect(states, contains(PhotoSlotState.uploading));
       expect(states.last, PhotoSlotState.done);
     });
@@ -143,7 +164,7 @@ void main() {
       // First attempt failed -> failedRetry, no confirm yet.
       expect(put.calls, hasLength(1));
       expect(repo.confirmCalls, isEmpty);
-      expect(q.stateOf('repair_old_removed'), PhotoSlotState.failedRetry);
+      expect(q.stateOf('b1', 'repair_old_removed'), PhotoSlotState.failedRetry);
 
       // Backoff elapses -> retry.
       async.elapse(const Duration(seconds: 2));
@@ -151,7 +172,7 @@ void main() {
 
       expect(put.calls, hasLength(2));
       expect(repo.confirmCalls, hasLength(1));
-      expect(q.stateOf('repair_old_removed'), PhotoSlotState.done);
+      expect(q.stateOf('b1', 'repair_old_removed'), PhotoSlotState.done);
     });
   });
 
@@ -167,12 +188,12 @@ void main() {
 
       q.enqueue(bookingId: 'b1', kind: 'repair_new_installed', photo: _photo(lat: 1, lng: 2));
       async.flushMicrotasks();
-      expect(q.stateOf('repair_new_installed'), PhotoSlotState.failedRetry);
+      expect(q.stateOf('b1', 'repair_new_installed'), PhotoSlotState.failedRetry);
 
       async.elapse(const Duration(seconds: 2));
       async.flushMicrotasks();
       expect(repo.confirmCalls, hasLength(2));
-      expect(q.stateOf('repair_new_installed'), PhotoSlotState.done);
+      expect(q.stateOf('b1', 'repair_new_installed'), PhotoSlotState.done);
     });
   });
 
@@ -189,7 +210,7 @@ void main() {
       final body = repo.confirmCalls.single;
       expect(body.containsKey('geotagLat'), isFalse);
       expect(body.containsKey('geotagLng'), isFalse);
-      expect(q.stateOf('diagnosis_after'), PhotoSlotState.done);
+      expect(q.stateOf('b1', 'diagnosis_after'), PhotoSlotState.done);
     });
   });
 
@@ -208,14 +229,14 @@ void main() {
       expect(put.calls, hasLength(1));
       expect(put.calls.single.url, contains('dev-r2.local'));
       expect(repo.confirmCalls, hasLength(1));
-      expect(q.stateOf('diagnosis_before'), PhotoSlotState.done);
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
     });
   });
 
   test('unknown slot reads as PhotoSlotState.none', () {
     final repo = _FakeRepo();
     final q = _queue(repo, _FakePut());
-    expect(q.stateOf('never_touched'), PhotoSlotState.none);
+    expect(q.stateOf('b1', 'never_touched'), PhotoSlotState.none);
   });
 
   test('the concrete ImagePickerCameraService is camera-only (never gallery)', () async {
@@ -237,5 +258,231 @@ void main() {
     expect(result, isNull);
     expect(seenSource, ImageSource.camera);
     expect(seenSource, isNot(ImageSource.gallery));
+  });
+
+  test('cross-job isolation: the same kind for a different bookingId reads none', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final put = _FakePut();
+      final q = _queue(repo, put);
+
+      q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo());
+      async.flushMicrotasks();
+
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
+      expect(q.stateOf('b2', 'diagnosis_before'), PhotoSlotState.none);
+    });
+  });
+
+  test('retake after done re-enqueues: a second sign+confirm with the new photo', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final put = _FakePut();
+      final q = _queue(repo, put);
+
+      q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(size: 10));
+      async.flushMicrotasks();
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
+      expect(repo.signCalls, hasLength(1));
+      expect(repo.confirmCalls, hasLength(1));
+
+      // Retake with a different photo — must NOT be dropped even though the
+      // slot is already `done`.
+      q.enqueue(
+        bookingId: 'b1',
+        kind: 'diagnosis_before',
+        photo: CapturedPhoto(
+          bytes: List<int>.filled(20, 9),
+          capturedAt: '2026-09-20T09:45:00.000Z',
+        ),
+      );
+      async.flushMicrotasks();
+
+      expect(repo.signCalls, hasLength(2));
+      expect(repo.confirmCalls, hasLength(2));
+      expect(repo.signCalls.last.contentLengthBytes, 20);
+      expect(repo.confirmCalls.last['capturedAt'], '2026-09-20T09:45:00.000Z');
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
+    });
+  });
+
+  test('stale retry guard: a retake supersedes a still-pending backoff retry for the old capture', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      // capture #1's PUT fails, capture #2's PUT fails, capture #2's retry PUT succeeds.
+      final put = _FakePut()..outcomes = [false, false, true];
+      final q = _queue(repo, put); // backoff [2s, 4s]
+
+      // Capture #1 fails immediately -> failedRetry, retry scheduled ~2s out.
+      q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(size: 10));
+      async.flushMicrotasks();
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.failedRetry);
+      expect(put.calls, hasLength(1));
+
+      // 1s later (before capture #1's retry fires), retake with capture #2,
+      // which also fails -> its own retry scheduled ~2s out from now.
+      async.elapse(const Duration(seconds: 1));
+      q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(size: 20));
+      async.flushMicrotasks();
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.failedRetry);
+      expect(put.calls, hasLength(2));
+
+      // Advance past BOTH scheduled backoffs.
+      async.elapse(const Duration(seconds: 3));
+      async.flushMicrotasks();
+
+      // Capture #1's stale retry did nothing; only capture #2's bytes ever
+      // reappear, and its retry succeeded.
+      expect(put.calls.map((c) => c.bytes).toList(), [10, 20, 20]);
+      expect(repo.confirmCalls, hasLength(1));
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
+    });
+  });
+
+  test('mid-flight stale attempt (awaiting PUT) does not overwrite a newer retake', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final putGate1 = Completer<void>();
+      final calls = <String>[];
+      Future<void> gatedPut({required String url, required String key, required List<int> bytes}) async {
+        calls.add(key);
+        if (key == 'key-diagnosis_before-0') {
+          // Gate ONLY capture #1's PUT so it stays mid-flight.
+          await putGate1.future;
+        }
+      }
+      final q = PhotoUploadQueue(repo: repo, put: gatedPut, backoff: const [Duration(seconds: 2)]);
+
+      // Capture #1: reaches PUT and blocks there (mid-flight).
+      q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(size: 10));
+      async.flushMicrotasks();
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.uploading);
+      expect(calls, ['key-diagnosis_before-0']);
+
+      // Retake while capture #1 is still mid-flight: runs sign -> PUT (resolves
+      // immediately) -> confirm -> done.
+      q.enqueue(bookingId: 'b1', kind: 'diagnosis_before', photo: _photo(size: 20));
+      async.flushMicrotasks();
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
+      expect(repo.confirmCalls, hasLength(1));
+      expect(repo.confirmCalls.single['key'], 'key-diagnosis_before-1');
+
+      // Now let capture #1's PUT resolve. It must detect it is stale and do
+      // nothing — no confirm call, no state overwrite.
+      putGate1.complete();
+      async.flushMicrotasks();
+
+      expect(repo.confirmCalls, hasLength(1));
+      expect(q.stateOf('b1', 'diagnosis_before'), PhotoSlotState.done);
+    });
+  });
+
+  group('photosReady', () {
+    test('all requested kinds done in the queue -> true', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut());
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_CLOSEUP', photo: _photo());
+        async.flushMicrotasks();
+
+        final job = _jobDto();
+        expect(photosReady(q, job, const ['DIAGNOSIS_OVERVIEW', 'DIAGNOSIS_CLOSEUP']), isTrue);
+      });
+    });
+
+    test('one kind only on the server + the other done in queue -> true', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut());
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_CLOSEUP', photo: _photo());
+        async.flushMicrotasks();
+
+        final job = _jobDto(photos: [
+          {'kind': 'DIAGNOSIS_OVERVIEW', 'capturedAt': '2026-09-20T10:00:00.000Z', 'url': 'https://x'},
+        ]);
+        expect(photosReady(q, job, const ['DIAGNOSIS_OVERVIEW', 'DIAGNOSIS_CLOSEUP']), isTrue);
+      });
+    });
+
+    test('one kind missing everywhere -> false', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut());
+        q.enqueue(bookingId: 'b1', kind: 'DIAGNOSIS_CLOSEUP', photo: _photo());
+        async.flushMicrotasks();
+
+        final job = _jobDto();
+        expect(photosReady(q, job, const ['DIAGNOSIS_OVERVIEW', 'DIAGNOSIS_CLOSEUP']), isFalse);
+      });
+    });
+
+    test('queue done for a DIFFERENT booking id does not count -> false', () {
+      fakeAsync((async) {
+        final repo = _FakeRepo();
+        final q = _queue(repo, _FakePut());
+        q.enqueue(bookingId: 'b2', kind: 'DIAGNOSIS_OVERVIEW', photo: _photo());
+        async.flushMicrotasks();
+
+        final job = _jobDto(id: 'b1');
+        expect(photosReady(q, job, const ['DIAGNOSIS_OVERVIEW']), isFalse);
+      });
+    });
+
+    test('empty kinds list -> true', () {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+      final job = _jobDto();
+      expect(photosReady(q, job, const []), isTrue);
+    });
+  });
+
+  group('PhotoSlot widget', () {
+    testWidgets('serverHasPhoto: true with an empty queue shows Uploaded + Retake', (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [photoUploadQueueProvider.overrideWithValue(q)],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: PhotoSlot(
+                bookingId: 'b1',
+                kind: 'diagnosis_before',
+                label: 'Overview',
+                serverHasPhoto: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Uploaded'), findsOneWidget);
+      expect(find.text('Retake'), findsOneWidget);
+    });
+
+    testWidgets('serverHasPhoto: false with an empty queue shows Not captured + Capture', (tester) async {
+      final repo = _FakeRepo();
+      final q = _queue(repo, _FakePut());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [photoUploadQueueProvider.overrideWithValue(q)],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: PhotoSlot(
+                bookingId: 'b1',
+                kind: 'diagnosis_before',
+                label: 'Overview',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Not captured'), findsOneWidget);
+      expect(find.text('Capture'), findsOneWidget);
+    });
   });
 }
