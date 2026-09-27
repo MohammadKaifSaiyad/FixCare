@@ -10,10 +10,11 @@ import 'job_action.dart';
 import 'job_detail_controller.dart';
 import 'location_service.dart';
 import 'parts_cart.dart';
+import 'repair_photos_card.dart';
 
 /// The job-detail screen: renders the job and a state-driven phase-action
-/// card (via [jobActionFor]). Wires every card except the two photo phases
-/// (diagnose = Task 7 placeholder, completeRepair = Task 8 placeholder).
+/// card (via [jobActionFor]) for every phase, including the two photo-gated
+/// ones ([DiagnosisForm] at ARRIVED, [RepairPhotosCard] at REPAIR_IN_PROGRESS).
 class JobDetailScreen extends ConsumerStatefulWidget {
   const JobDetailScreen({super.key, required this.bookingId});
 
@@ -201,12 +202,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
               _runOneTap(() => ref.read(technicianJobRepositoryProvider).partsAcquired(widget.bookingId)),
         );
       case JobAction.completeRepair:
-        return const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('repair photos — task 8', key: Key('repairPlaceholder')),
-          ),
-        );
+        return RepairPhotosCard(job: job);
       case JobAction.confirmCompletion:
         return _CodeEntryCard<void>(
           key: const ValueKey('completionCodeCard'),

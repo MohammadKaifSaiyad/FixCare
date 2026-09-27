@@ -190,10 +190,31 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
   Widget _buildPartsList(AsyncValue<Result<List<PartCatalogDto>>> async) {
     return switch (async) {
       AsyncData(value: Ok(value: final parts)) => _partsColumn(parts),
-      AsyncData(value: Failure(message: final m)) => Text(m),
-      AsyncError() => const Text('Something went wrong.'),
+      AsyncData(value: Failure(message: final m)) => _partsError(m),
+      AsyncError() => _partsError('Something went wrong.'),
       _ => const Center(child: CircularProgressIndicator()),
     };
+  }
+
+  /// A load failure must be recoverable in place: the cart window is
+  /// time-critical (it locks the moment the customer decides), so a network
+  /// blip can't force the technician to leave and re-enter the job.
+  Widget _partsError(String message) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(message),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('partsRetry'),
+            onPressed: () => ref.invalidate(_partsProvider),
+            child: const Text('Retry'),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _partsColumn(List<PartCatalogDto> parts) {

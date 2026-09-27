@@ -61,6 +61,8 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
     final job = widget.job;
     final queue = ref.read(photoUploadQueueProvider);
     final issuesAsync = ref.watch(_issuesProvider);
+    // One list drives both the slots and the gate, so they cannot disagree.
+    final kinds = requiredPhotoKinds('ARRIVED');
 
     return Card(
       child: Padding(
@@ -68,19 +70,15 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            PhotoSlot(
-              bookingId: job.id,
-              kind: 'DIAGNOSIS_OVERVIEW',
-              label: 'Overview photo',
-              serverHasPhoto: job.photos.any((p) => p.kind == 'DIAGNOSIS_OVERVIEW'),
-            ),
-            const SizedBox(height: 12),
-            PhotoSlot(
-              bookingId: job.id,
-              kind: 'DIAGNOSIS_CLOSEUP',
-              label: 'Close-up of the fault',
-              serverHasPhoto: job.photos.any((p) => p.kind == 'DIAGNOSIS_CLOSEUP'),
-            ),
+            for (final (i, kind) in kinds.indexed) ...[
+              if (i > 0) const SizedBox(height: 12),
+              PhotoSlot(
+                bookingId: job.id,
+                kind: kind,
+                label: photoSlotLabels[kind] ?? 'Photo',
+                serverHasPhoto: job.photos.any((p) => p.kind == kind),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildIssuePicker(issuesAsync),
             if (_error case final err?) ...[
@@ -91,7 +89,7 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
             ListenableBuilder(
               listenable: queue,
               builder: (context, _) {
-                final ready = photosReady(queue, job, requiredPhotoKinds('ARRIVED'));
+                final ready = photosReady(queue, job, kinds);
                 final enabled = ready && _issueId != null && !_busy;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

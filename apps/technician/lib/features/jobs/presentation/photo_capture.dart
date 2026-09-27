@@ -397,6 +397,18 @@ final photoUploadQueueProvider = Provider<PhotoUploadQueue>((ref) {
   return queue;
 });
 
+/// Display label per evidence-photo kind. Photo cards build their slots by
+/// iterating `requiredPhotoKinds(state)` and looking the label up here — the
+/// SAME list their gate ([photosReady]) checks — so the slots shown and the
+/// gate can never disagree.
+const Map<String, String> photoSlotLabels = {
+  'DIAGNOSIS_OVERVIEW': 'Overview photo',
+  'DIAGNOSIS_CLOSEUP': 'Close-up of the fault',
+  'REPAIR_OLD_PART': 'Old part removed',
+  'REPAIR_NEW_PACKAGING': 'New part packaging',
+  'REPAIR_INSTALLED': 'New part installed',
+};
+
 /// True iff every kind in [kinds] already has evidence — either uploaded this
 /// session (`queue.stateOf(job.id, kind) == done`) or already on the server
 /// (`job.photos` — e.g. after an app restart or re-entering the job). Empty

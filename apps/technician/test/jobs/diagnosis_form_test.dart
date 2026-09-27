@@ -7,6 +7,7 @@ import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/diagnosis_form.dart';
+import 'package:fixcare_technician/features/jobs/presentation/job_action.dart';
 import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
 
 Map<String, dynamic> _jobJson({
@@ -281,6 +282,25 @@ void main() {
     await tester.pump();
 
     expect(_submitBtn(tester).onPressed, isNotNull);
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('slots are built from requiredPhotoKinds(ARRIVED) with their labels (slots == gate)',
+      (tester) async {
+    final job = _dto(photos: [
+      {'kind': 'DIAGNOSIS_CLOSEUP', 'capturedAt': '2026-09-20T10:00:00.000Z', 'url': 'https://x'},
+    ]);
+    final jobRepo = _FakeJobRepo(job: job);
+    final catalogRepo = _FakeCatalogRepo();
+    final queue = PhotoUploadQueue(repo: jobRepo, put: ({required url, required key, required bytes}) async {});
+    await _pump(tester, job: job, jobRepo: jobRepo, catalogRepo: catalogRepo, queue: queue);
+
+    final slots = tester.widgetList<PhotoSlot>(find.byType(PhotoSlot)).toList();
+    expect(slots.map((s) => s.kind), requiredPhotoKinds('ARRIVED'));
+    expect(slots.map((s) => s.serverHasPhoto), [false, true]);
+    expect(find.text('Overview photo'), findsOneWidget);
+    expect(find.text('Close-up of the fault'), findsOneWidget);
 
     await _disposeTree(tester);
   });

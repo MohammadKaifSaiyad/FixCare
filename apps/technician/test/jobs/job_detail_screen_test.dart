@@ -9,6 +9,8 @@ import 'package:fixcare_technician/features/jobs/data/technician_job_repository.
 import 'package:fixcare_technician/features/jobs/presentation/diagnosis_form.dart';
 import 'package:fixcare_technician/features/jobs/presentation/job_detail_screen.dart';
 import 'package:fixcare_technician/features/jobs/presentation/location_service.dart';
+import 'package:fixcare_technician/features/jobs/presentation/photo_capture.dart';
+import 'package:fixcare_technician/features/jobs/presentation/repair_photos_card.dart';
 
 Map<String, dynamic> _job({String id = 'b1', String state = 'ACCEPTED'}) => {
   'id': id, 'bookingNumber': 'FC-1', 'state': state, 'scheduledSlot': '2026-09-20T09:00:00.000Z',
@@ -398,10 +400,14 @@ void main() {
     await _disposeTree(tester);
   });
 
-  testWidgets('REPAIR_IN_PROGRESS shows repairPlaceholder', (tester) async {
+  testWidgets('REPAIR_IN_PROGRESS shows the repair-photos card (3 slots, complete disabled)', (tester) async {
     final repo = _FakeRepo(initialState: 'REPAIR_IN_PROGRESS');
     await _pump(tester, repo);
-    expect(find.byKey(const Key('repairPlaceholder')), findsOneWidget);
+    expect(find.byType(RepairPhotosCard), findsOneWidget);
+    expect(find.byType(PhotoSlot), findsNWidgets(3));
+    expect(find.byKey(const Key('repairPlaceholder')), findsNothing);
+    // No photos on the job and none captured -> the gate is closed.
+    expect(tester.widget<FilledButton>(find.byKey(const Key('completeRepairBtn'))).onPressed, isNull);
     await _disposeTree(tester);
   });
 

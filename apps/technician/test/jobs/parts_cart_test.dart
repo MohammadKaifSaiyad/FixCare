@@ -26,8 +26,17 @@ class _FakeCatalogRepo extends CatalogRepository {
     PartCatalogDto(id: 'p2', sku: 'FAN-BRG', name: 'Bearing set', categoryId: 'c1', ceilingPricePaise: 8000, status: 'ACTIVE'),
   ]);
 
+  int partsCalls = 0;
+
+  /// When true, parts() throws (a non-Dio failure -> the provider's AsyncError).
+  bool partsThrows = false;
+
   @override
-  Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) async => partsResult;
+  Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) async {
+    partsCalls++;
+    if (partsThrows) throw StateError('boom');
+    return partsResult;
+  }
 
   @override
   Future<Result<List<DiagnosedIssueDto>>> issues({String? categoryId}) async => const Ok([]);
@@ -221,5 +230,51 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
+  });
+
+  testWidgets('parts() Failure shows the message + partsRetry; retry re-fetches and the list recovers',
+      (tester) async {
+    final jobRepo = _FakeJobRepo();
+    final catalogRepo = _FakeCatalogRepo()
+      ..partsResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
+    final container = ProviderContainer(overrides: [
+      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
+      catalogRepositoryProvider.overrideWithValue(catalogRepo),
+    ]);
+    addTearDown(container.dispose);
+
+    await _pump(tester, container, _dto());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Network error. Check your connection.'), findsOneWidget);
+    expect(find.byKey(const Key('partsRetry')), findsOneWidget);
+
+    // The blip clears; retry must recover without leaving the screen.
+    catalogRepo.partsResult = const Ok([
+      PartCatalogDto(id: 'p1', sku: 'FAN-CAP', name: 'Fan capacitor 2.5 MFD', categoryId: 'c1', ceilingPricePaise: 15000, status: 'ACTIVE'),
+    ]);
+    final callsBefore = catalogRepo.partsCalls;
+    await tester.tap(find.byKey(const Key('partsRetry')));
+    await tester.pumpAndSettle();
+
+    expect(catalogRepo.partsCalls, greaterThan(callsBefore));
+    expect(find.text('Fan capacitor 2.5 MFD'), findsOneWidget);
+    expect(find.byKey(const Key('partsRetry')), findsNothing);
+  });
+
+  testWidgets('parts() throwing shows "Something went wrong." + partsRetry', (tester) async {
+    final jobRepo = _FakeJobRepo();
+    final catalogRepo = _FakeCatalogRepo()..partsThrows = true;
+    final container = ProviderContainer(overrides: [
+      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
+      catalogRepositoryProvider.overrideWithValue(catalogRepo),
+    ]);
+    addTearDown(container.dispose);
+
+    await _pump(tester, container, _dto());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Something went wrong.'), findsOneWidget);
+    expect(find.byKey(const Key('partsRetry')), findsOneWidget);
   });
 }

@@ -12,6 +12,9 @@ import { registerTechnicianJobRoutes } from './modules/technician-jobs/technicia
 import { registerWebhookRoutes } from './modules/payments/webhook.routes.js';
 import { registerSettlementRoutes } from './modules/settlements/settlements.routes.js';
 import { registerDisputeRoutes } from './modules/disputes/disputes.routes.js';
+import { registerDevRoutes } from './modules/dev/dev.routes.js';
+import { config } from './shared/config.js';
+import { photoStorage } from './shared/third-party/r2-storage.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -28,6 +31,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerWebhookRoutes(app);
   await registerSettlementRoutes(app);
   await registerDisputeRoutes(app);
+  // Dev-only photo hook: not registered in production; 404s unless storage is the Dev stub.
+  await registerDevRoutes(app, { storage: photoStorage, nodeEnv: config.NODE_ENV });
 
   app.get('/health', async () => {
     let db = 'down';
