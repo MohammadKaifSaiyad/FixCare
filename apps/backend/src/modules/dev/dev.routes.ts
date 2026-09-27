@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { NotFoundError, ValidationError } from '../../shared/errors.js';
 import { DevPhotoStorage, type PhotoStorage } from '../../shared/third-party/r2-storage.js';
+import { assertTechnicianOwnsPhotoKey } from '../technician-jobs/technician-jobs.service.js';
 
 /** Body for the dev photo hook. Strict: the key is the only accepted field. */
 export const markUploadedBody = z.object({ key: z.string().min(1).max(512) }).strict();
@@ -29,6 +30,9 @@ export async function registerDevRoutes(
     if (!(storage instanceof DevPhotoStorage)) throw new NotFoundError('Not found');
     const p = markUploadedBody.safeParse(req.body);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    // Ownership, not just auth (finding 8): only the technician this key's booking is assigned to
+    // may mark it uploaded — a service call, per the inter-module rule (never a cross-module query).
+    await assertTechnicianOwnsPhotoKey(req.user!.id, p.data.key);
     storage.markUploaded(p.data.key);
     return reply.code(204).send();
   });

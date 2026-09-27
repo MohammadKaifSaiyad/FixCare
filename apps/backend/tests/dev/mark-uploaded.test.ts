@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
@@ -61,6 +62,38 @@ describe('POST /dev/photos/mark-uploaded (dev-only photo hook)', () => {
 
     const confirm = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/photos`, headers: auth(t.token), payload: { kind: 'DIAGNOSIS_OVERVIEW', key: sign.key, capturedAt: new Date().toISOString() } });
     expect(confirm.statusCode).toBe(201);
+  });
+
+  it('ownership (finding 8): a customer token → 403 (not a technician at all)', async () => {
+    const { bookingId } = await arrivedBooking();
+    const customer = await makeCustomer();
+    const key = `jobs/${bookingId}/DIAGNOSIS_OVERVIEW-${randomUUID()}.jpg`;
+    const res = await app.inject({ method: 'POST', url: ROUTE, headers: auth(customer.token), payload: { key } });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('ownership (finding 8): a DIFFERENT technician\'s token → 403 (not assigned to them)', async () => {
+    const { bookingId } = await arrivedBooking();
+    const other = await makeTechnician(['AC']);
+    const key = `jobs/${bookingId}/DIAGNOSIS_OVERVIEW-${randomUUID()}.jpg`;
+    const res = await app.inject({ method: 'POST', url: ROUTE, headers: auth(other.token), payload: { key } });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toBe('This job is not assigned to you');
+  });
+
+  it('ownership (finding 8): a malformed key → 422', async () => {
+    const { t } = await arrivedBooking();
+    const res = await app.inject({ method: 'POST', url: ROUTE, headers: auth(t.token), payload: { key: 'not-a-photo-key.jpg' } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().message).toBe('Invalid photo key');
+  });
+
+  it('ownership (finding 8): a key for a non-existent booking → 404', async () => {
+    const { t } = await arrivedBooking();
+    const key = `jobs/${randomUUID()}/DIAGNOSIS_OVERVIEW-${randomUUID()}.jpg`;
+    const res = await app.inject({ method: 'POST', url: ROUTE, headers: auth(t.token), payload: { key } });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toBe('Job not found');
   });
 
   it('no auth → 401 (and nothing is marked)', async () => {
