@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fixcare_technician/core/result.dart';
+import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
+import 'package:fixcare_technician/features/jobs/presentation/diagnosis_form.dart';
 import 'package:fixcare_technician/features/jobs/presentation/job_detail_screen.dart';
 import 'package:fixcare_technician/features/jobs/presentation/location_service.dart';
 
@@ -116,13 +118,35 @@ class _FakeRepo extends TechnicianJobRepository {
   }
 }
 
-Future<void> _pump(WidgetTester tester, TechnicianJobRepository repo, {LocationService? location}) async {
+/// A catalog repo the diagnosis form / parts cart can load without hitting
+/// the real dioProvider — defaults to empty lists (these job_detail_screen
+/// tests only assert the right card is shown, not catalog content).
+class _FakeCatalogRepo extends CatalogRepository {
+  _FakeCatalogRepo() : super(Dio());
+
+  Result<List<DiagnosedIssueDto>> issuesResult = const Ok(<DiagnosedIssueDto>[]);
+  Result<List<PartCatalogDto>> partsResult = const Ok(<PartCatalogDto>[]);
+
+  @override
+  Future<Result<List<DiagnosedIssueDto>>> issues({String? categoryId}) async => issuesResult;
+
+  @override
+  Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) async => partsResult;
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  TechnicianJobRepository repo, {
+  LocationService? location,
+  CatalogRepository? catalog,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         technicianJobRepositoryProvider.overrideWithValue(repo),
         locationServiceProvider
             .overrideWithValue(location ?? _FakeLocationService(result: (lat: 22.3, lng: 73.2))),
+        catalogRepositoryProvider.overrideWithValue(catalog ?? _FakeCatalogRepo()),
       ],
       child: const MaterialApp(home: JobDetailScreen(bookingId: 'b1')),
     ),
@@ -366,10 +390,11 @@ void main() {
     await _disposeTree(tester);
   });
 
-  testWidgets('ARRIVED shows diagnosePlaceholder', (tester) async {
+  testWidgets('ARRIVED shows the diagnosis form', (tester) async {
     final repo = _FakeRepo(initialState: 'ARRIVED');
     await _pump(tester, repo);
-    expect(find.byKey(const Key('diagnosePlaceholder')), findsOneWidget);
+    expect(find.byType(DiagnosisForm), findsOneWidget);
+    expect(find.byKey(const Key('issuePicker')), findsOneWidget);
     await _disposeTree(tester);
   });
 

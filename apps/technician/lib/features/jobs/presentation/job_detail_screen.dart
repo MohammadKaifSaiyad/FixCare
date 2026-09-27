@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/format.dart';
 import '../../../core/result.dart';
 import '../data/technician_job_repository.dart';
+import 'diagnosis_form.dart';
 import 'job_action.dart';
 import 'job_detail_controller.dart';
 import 'location_service.dart';
+import 'parts_cart.dart';
 
 /// The job-detail screen: renders the job and a state-driven phase-action
 /// card (via [jobActionFor]). Wires every card except the two photo phases
@@ -176,17 +178,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       case JobAction.waitingConfirm:
         return const _ReadOnlyCard(text: 'Waiting for the customer.');
       case JobAction.diagnose:
-        return const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('diagnosis form — task 7', key: Key('diagnosePlaceholder')),
-          ),
-        );
+        return DiagnosisForm(job: job);
       case JobAction.waitingApproval:
-        return const _ReadOnlyCard(
-          key: Key('waitingApprovalCard'),
-          text: 'Waiting for the customer to approve the estimate.',
-        );
+        return PartsCartCard(job: job);
       case JobAction.startRepair:
         return _StartRepairCard(
           busy: _busy,
@@ -276,7 +270,7 @@ String _addressLine(JobAddressDto a) {
 }
 
 class _ReadOnlyCard extends StatelessWidget {
-  const _ReadOnlyCard({super.key, required this.text});
+  const _ReadOnlyCard({required this.text});
   final String text;
 
   @override
