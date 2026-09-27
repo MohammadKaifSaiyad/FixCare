@@ -28,7 +28,16 @@ class GeolocatorLocationService implements LocationService {
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
         return null;
       }
-      final pos = await Geolocator.getCurrentPosition();
+      // Time-boxed: indoors / no GPS fix, getCurrentPosition would otherwise
+      // hang indefinitely and strand the technician on a spinner at the
+      // customer's door. The resulting TimeoutException is caught below,
+      // same as any other location failure -> null.
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
       return (lat: pos.latitude, lng: pos.longitude);
     } catch (_) {
       return null;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format.dart';
@@ -37,49 +38,63 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   /// enRoute/startRepair/partsNeeded/partsAcquired: a Failure surfaces as a
   /// SnackBar (verbatim message) and either way we refetch — this self-heals
   /// a stale card if the backend rejected the action because state moved on.
+  /// `_busy` is always reset in `finally` — the repo's `_guard` only catches
+  /// `DioException`, so a non-Dio throw (e.g. a malformed-response TypeError)
+  /// must not strand the button disabled forever; it's surfaced as a generic
+  /// SnackBar rather than swallowed.
   Future<void> _runOneTap(Future<Result<void>> Function() action) async {
     if (_busy) return;
     setState(() => _busy = true);
-    final result = await action();
-    if (!mounted) return;
-    if (result case Failure(message: final m)) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    try {
+      final result = await action();
+      if (!mounted) return;
+      if (result case Failure(message: final m)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      }
+      await _refetch();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Something went wrong.')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    await _refetch();
-    if (!mounted) return;
-    setState(() => _busy = false);
   }
 
+  /// `_busy` is reset in `finally` for the same reason as [_runOneTap]: an
+  /// unexpected throw (from the location read or the repo call) must not
+  /// strand the technician on a permanently-disabled arrive button.
   Future<void> _onArrive() async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _arriveError = null;
     });
-    final loc = await ref.read(locationServiceProvider).current();
-    if (!mounted) return;
-    if (loc == null) {
-      setState(() {
-        _busy = false;
-        _arriveError = "Location is needed to confirm you've arrived. Turn on location and try again.";
-      });
-      return;
-    }
-    final result =
-        await ref.read(technicianJobRepositoryProvider).arrive(widget.bookingId, lat: loc.lat, lng: loc.lng);
-    if (!mounted) return;
-    switch (result) {
-      case Ok(value: final v):
+    try {
+      final loc = await ref.read(locationServiceProvider).current();
+      if (!mounted) return;
+      if (loc == null) {
         setState(() {
-          _busy = false;
-          _arrivalCode = v.arrivalCode;
-          _arriveError = null;
+          _arriveError = "Couldn't get your location. Make sure location is on and try again.";
         });
-      case Failure(message: final m):
-        setState(() {
-          _busy = false;
-          _arriveError = m;
-        });
+        return;
+      }
+      final result =
+          await ref.read(technicianJobRepositoryProvider).arrive(widget.bookingId, lat: loc.lat, lng: loc.lng);
+      if (!mounted) return;
+      switch (result) {
+        case Ok(value: final v):
+          setState(() {
+            _arrivalCode = v.arrivalCode;
+            _arriveError = null;
+          });
+        case Failure(message: final m):
+          setState(() => _arriveError = m);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _arriveError = 'Something went wrong.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -200,6 +215,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         );
       case JobAction.confirmCompletion:
         return _CodeEntryCard<void>(
+          key: const ValueKey('completionCodeCard'),
           fieldKey: const Key('completionCodeField'),
           buttonKey: const Key('confirmCompletionBtn'),
           buttonLabel: 'Confirm completion',
@@ -207,6 +223,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         );
       case JobAction.confirmCash:
         return _CodeEntryCard<CashResultDto>(
+          key: const ValueKey('cashCodeCard'),
           fieldKey: const Key('cashCodeField'),
           buttonKey: const Key('confirmCashBtn'),
           buttonLabel: 'Confirm cash received',
@@ -447,12 +464,17 @@ class _CodeEntryCardState<T> extends State<_CodeEntryCard<T>> {
       _busy = true;
       _error = null;
     });
-    final result = await widget.onSubmit(code);
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      if (result case Failure(message: final m)) _error = m;
-    });
+    try {
+      final result = await widget.onSubmit(code);
+      if (!mounted) return;
+      if (result case Failure(message: final m)) {
+        setState(() => _error = m);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Something went wrong.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -467,6 +489,7 @@ class _CodeEntryCardState<T> extends State<_CodeEntryCard<T>> {
               key: widget.fieldKey,
               controller: _controller,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               maxLength: 6,
               decoration: InputDecoration(labelText: 'Enter code', errorText: _error),
             ),

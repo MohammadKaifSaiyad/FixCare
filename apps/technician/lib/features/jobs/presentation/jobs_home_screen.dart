@@ -206,17 +206,26 @@ class _MyJobsSection extends ConsumerWidget {
   }
 }
 
-class _MyJobCard extends StatelessWidget {
+class _MyJobCard extends ConsumerWidget {
   const _MyJobCard({required this.job});
   final TechnicianJobDto job;
 
+  Future<void> _onTap(BuildContext context, WidgetRef ref) async {
+    await context.push('/job/${job.id}');
+    // The detail screen can change this job's state (en-route, arrive,
+    // start repair, ...) — refresh the list on return so it isn't stale.
+    if (!context.mounted) return;
+    ref.read(myJobsControllerProvider.notifier).refresh();
+  }
+
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      key: Key('myJob_${job.id}'),
-      onTap: () => context.push('/job/${job.id}'),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 10),
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: Key('myJob_${job.id}'),
+        onTap: () => _onTap(context, ref),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(

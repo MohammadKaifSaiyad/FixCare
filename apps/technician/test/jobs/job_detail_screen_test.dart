@@ -54,12 +54,18 @@ class _FakeRepo extends TechnicianJobRepository {
   Result<void>? confirmCompletionResult;
   Result<CashResultDto>? confirmCashResult;
 
+  /// When true, `enRoute` throws instead of returning a Result — simulates a
+  /// non-Dio failure (e.g. a malformed-response TypeError) that the repo's
+  /// `_guard` (DioException-only) would not catch.
+  bool enRouteThrows = false;
+
   @override
   Future<Result<List<TechnicianJobDto>>> mine() async => Ok([_dto(id: id, state: _state)]);
 
   @override
   Future<Result<void>> enRoute(String bookingId) async {
     enRouteCalls++;
+    if (enRouteThrows) throw StateError('boom');
     final r = enRouteResult ?? const Ok(null);
     if (r is Ok<void>) _state = 'EN_ROUTE';
     return r;
@@ -181,7 +187,7 @@ void main() {
 
     expect(repo.lastArrive, isNull);
     expect(
-      find.text("Location is needed to confirm you've arrived. Turn on location and try again."),
+      find.text("Couldn't get your location. Make sure location is on and try again."),
       findsOneWidget,
     );
 
@@ -234,6 +240,22 @@ void main() {
     await _disposeTree(tester);
   });
 
+  testWidgets('one-tap throw resets busy and shows a generic SnackBar', (tester) async {
+    final repo = _FakeRepo(initialState: 'ACCEPTED')..enRouteThrows = true;
+    await _pump(tester, repo);
+
+    final buttonFinder = find.byKey(const Key('enRouteBtn'));
+    await tester.tap(buttonFinder);
+    await tester.pumpAndSettle();
+
+    expect(repo.enRouteCalls, 1);
+    expect(find.text('Something went wrong.'), findsOneWidget);
+    // Busy was reset (not stuck disabled) — the button is enabled again.
+    expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNotNull);
+
+    await _disposeTree(tester);
+  });
+
   testWidgets('one-tap Failure shows a SnackBar with the message', (tester) async {
     final repo = _FakeRepo(initialState: 'ACCEPTED')
       ..enRouteResult = const Failure(FailureKind.unknown, 'This job is no longer available');
@@ -267,6 +289,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.lastCompletionCode, '123456');
+
+    await _disposeTree(tester);
+  });
+
+  testWidgets('code field strips non-digit characters', (tester) async {
+    final repo = _FakeRepo(initialState: 'REPAIR_COMPLETE');
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('completionCodeField')), 'ab12.3');
+    await tester.pump();
+
+    expect(find.text('123'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('confirmCompletionBtn'))).onPressed, isNull);
 
     await _disposeTree(tester);
   });

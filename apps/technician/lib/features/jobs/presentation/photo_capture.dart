@@ -129,7 +129,16 @@ class ImagePickerCameraService implements CameraService {
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
         return null;
       }
-      return await Geolocator.getCurrentPosition();
+      // Time-boxed: on weak/no GPS fix, getCurrentPosition would otherwise
+      // hang indefinitely. A TimeoutException is caught below same as any
+      // other location failure -> null (an un-geotagged photo; the backend
+      // allows a both-or-neither-null geotag).
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
     } catch (_) {
       // Location is best-effort — never block capture on a location failure.
       return null;
