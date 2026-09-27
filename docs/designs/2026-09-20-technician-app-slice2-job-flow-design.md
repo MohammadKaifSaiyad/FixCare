@@ -6,6 +6,23 @@
 **ADR:** `docs/adrs/ADR-0007-technician-camera-capture.md` (camera plugin)
 **Builds on:** technician Slice 1 (merged #35) — `TechnicianJobDto` + repo + jobs home.
 
+> **Implementation notes (2026-09-27) — where the build departed from this design.** Each was
+> ruled during execution (ledger rulings, `.superpowers/sdd/…/progress.md`):
+> - **Parts cart moved from the ARRIVED diagnosis form to the DIAGNOSED card.** The backend only
+>   accepts `addPart`/`removePart` in DIAGNOSED (the contract table below was right; the state table
+>   and Files list were not). `diagnosis_form.dart` = 2 photos + issue picker + submit;
+>   `parts_cart.dart` = cart + indicative estimate at DIAGNOSED.
+> - **`partsNeeded` is always offered at CUSTOMER_APPROVED** (the DTO has no parts to test "cart
+>   non-empty"; the backend rejects an empty cart with a clear message).
+> - **Errors are routed by card, not HTTP status** (`FailureKind` can't tell 409 from 422).
+> - **Photo queue** keyed per (booking, kind), retakes re-upload, a generation guard beats stale
+>   retries, permanent 4xx failures stop and show the backend message (transient ones retry, capped).
+> - **The R2 PUT uses a bare Dio** (it previously leaked the JWT via the auth interceptor) — see ADR-0007.
+> - **The job poll** is one-shot, sequenced (late responses dropped) and pauses in the background.
+> - File name correction: the DTO file is `technician_job_dto.dart` (not `…_dtos.dart`).
+> - Open follow-ups (backend/product): single-job GET, `parts[]` + `categoryId` on the DTO, estimate
+>   versioning / "estimate ready" before approval, `isMocked` arrival signal — see STATUS.md.
+
 ---
 
 ## Goal

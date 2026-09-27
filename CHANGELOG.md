@@ -8,6 +8,29 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-09-27 — Technician app Slice 2: drive a job end-to-end (on branch)
+
+- **The technician can now drive a job from accept to cash** on a state-driven job-detail screen (`/job/:id`):
+  en-route → arrive (mints the arrival code; the customer's confirmation moves the job) → diagnose (2 evidence
+  photos + issue) → parts cart at DIAGNOSED (catalog prices, indicative estimate) → start repair / parts-needed /
+  parts-acquired → complete repair (3 evidence photos) → confirm completion / cash by entering the customer's codes.
+  On `feature/technician-app-slice2-job-flow`, ready for PR. Built via SDD; 234 app tests, analyze clean.
+- **Camera-evidence pipeline (ADR-0007: image_picker 1.2.3, flutter_image_compress 2.5.1, geolocator 14.0.3)** —
+  camera-only, capture-time timestamp + geotag, <500KB, in-app retrying upload queue with per-(job, kind) state, a
+  retake generation guard, and terminal-vs-transient failure handling (permanent 4xx stop and show the backend's
+  message; transient retry, capped at 6).
+- **Fixed before it shipped: the R2 photo PUT went through the authenticated Dio** — the auth interceptor would
+  have sent the technician's JWT to Cloudflare and R2 would have rejected every production upload. Now a bare Dio
+  + non-2xx throws + real-transport tests (stub socket, real interceptor).
+- **Android location**: FINE + COARSE declared; approximate-only / permanently-denied / services-off each get a
+  specific message and a Settings link. Camera-access denial is surfaced with a Settings link (previously silent).
+- **Job poll** is one-shot and sequenced (late responses dropped) and pauses in the background.
+- **Backend: dev-only `POST /dev/photos/mark-uploaded`** — not registered in production, 404 unless storage is
+  `DevPhotoStorage`, `requireAuth` + strict Zod; lets local photo confirm pass. Backend 371/371.
+- **Plan deviation:** the parts cart moved from the diagnosis form to DIAGNOSED (the backend only accepts parts
+  there). **Pilot blockers logged in STATUS**: no `parts[]` on the technician DTO (cart lost on restart →
+  duplicate lines), no estimate version on approve, instant labor-only approval.
+
 ## 2026-09-19 — Customer auth-interceptor retried-401 fix (on branch)
 
 - **Fixes a latent session-stuck bug** in `apps/customer/lib/core/network/auth_interceptor.dart` (found during

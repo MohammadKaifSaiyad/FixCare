@@ -28,6 +28,18 @@ entry point anywhere in the app**.
 - Upload goes through the backend's presigned-PUT + confirm contract; a HEAD verify
   server-side means the evidence must actually exist (not be claimed).
 
+**Pins (recorded at implementation, 2026-09-27):** `image_picker 1.2.3` (called only with
+`source: ImageSource.camera`, `maxWidth: 1920`, `imageQuality: 85`), `flutter_image_compress 2.5.1`
+(quality ladder, then dimension downscale, to stay under the 500KB budget), `geolocator 14.0.3`
+(one-shot reads with a 20s time limit; Android declares FINE + COARSE; approximate-only grants are
+refused for arrival and produce no geotag).
+
+**Upload client (added during implementation):** the presigned PUT to R2 goes through a
+**bare Dio with no interceptors**, never the app's authenticated client — otherwise the auth
+interceptor attaches the technician's JWT to the R2 request (leaking it to a third party, and R2
+rejects presigned requests that also carry an `Authorization` header). Guarded by real-transport
+tests (`apps/technician/test/jobs/photo_put_test.dart`).
+
 ## Alternatives considered
 
 1. **`image_picker` with gallery enabled.** Rejected outright — a gallery import lets a
