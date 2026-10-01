@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:fixcare_technician/core/format.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/jobs_home_screen.dart';
@@ -86,6 +88,15 @@ void main() {
     expect(find.textContaining('A/27 Umiya Nagar'), findsOneWidget);
   });
 
+  testWidgets('available + my-job cards show the slot in local time (formatScheduledSlot), never raw ISO',
+      (tester) async {
+    await _pump(tester, _FakeJobRepo(mine: [_dto(id: 'm1')]));
+
+    final expected = 'Scheduled: ${formatScheduledSlot('2026-09-20T09:00:00.000Z')}';
+    expect(find.text(expected), findsNWidgets(2));
+    expect(find.textContaining('2026-09-20T'), findsNothing);
+  });
+
   testWidgets('empty available list shows noJobsEmpty', (tester) async {
     await _pump(tester, _EmptyJobRepo());
     expect(find.byKey(const Key('noJobsEmpty')), findsOneWidget);
@@ -139,5 +150,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.acceptCalls, 1);
+  });
+
+  testWidgets('tapping a my-job navigates to /job/:id', (tester) async {
+    final repo = _FakeJobRepo(available: [], mine: [_dto(id: 'b1')]);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const JobsHomeScreen()),
+        GoRoute(
+          path: '/job/:id',
+          builder: (_, state) => Text('detail ${state.pathParameters['id']}'),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('myJob_b1')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('myJob_b1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('detail b1'), findsOneWidget);
   });
 }

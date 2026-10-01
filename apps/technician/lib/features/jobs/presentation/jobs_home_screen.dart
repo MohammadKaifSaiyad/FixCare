@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/format.dart';
 import '../../../core/result.dart';
@@ -137,7 +138,7 @@ class _AvailableJobCard extends ConsumerWidget {
             const SizedBox(height: 4),
             Text(_addressLine(job.address)),
             const SizedBox(height: 4),
-            Text('Scheduled: ${job.scheduledSlot}'),
+            Text('Scheduled: ${formatScheduledSlot(job.scheduledSlot)}'),
             const SizedBox(height: 4),
             Text(job.customer.maskedPhone),
             const SizedBox(height: 10),
@@ -205,33 +206,46 @@ class _MyJobsSection extends ConsumerWidget {
   }
 }
 
-class _MyJobCard extends StatelessWidget {
+class _MyJobCard extends ConsumerWidget {
   const _MyJobCard({required this.job});
   final TechnicianJobDto job;
 
+  Future<void> _onTap(BuildContext context, WidgetRef ref) async {
+    await context.push('/job/${job.id}');
+    // The detail screen can change this job's state (en-route, arrive,
+    // start repair, ...) — refresh the list on return so it isn't stale.
+    if (!context.mounted) return;
+    ref.read(myJobsControllerProvider.notifier).refresh();
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(job.service.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-            const SizedBox(height: 4),
-            Text('Visit fee ${rupees(job.visitFeePaise)} · Labor ${rupees(job.laborPaise)}'),
-            const SizedBox(height: 4),
-            Text(job.zone.name),
-            const SizedBox(height: 4),
-            Text(_addressLine(job.address)),
-            const SizedBox(height: 4),
-            Text('Scheduled: ${job.scheduledSlot}'),
-            const SizedBox(height: 4),
-            Text(job.customer.maskedPhone),
-            const SizedBox(height: 4),
-            Text('State: ${job.state}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: Key('myJob_${job.id}'),
+        onTap: () => _onTap(context, ref),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(job.service.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text('Visit fee ${rupees(job.visitFeePaise)} · Labor ${rupees(job.laborPaise)}'),
+              const SizedBox(height: 4),
+              Text(job.zone.name),
+              const SizedBox(height: 4),
+              Text(_addressLine(job.address)),
+              const SizedBox(height: 4),
+              Text('Scheduled: ${formatScheduledSlot(job.scheduledSlot)}'),
+              const SizedBox(height: 4),
+              Text(job.customer.maskedPhone),
+              const SizedBox(height: 4),
+              Text('State: ${job.state}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
         ),
       ),
     );

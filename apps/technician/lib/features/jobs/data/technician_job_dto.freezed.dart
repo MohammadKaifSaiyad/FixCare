@@ -1758,4 +1758,1105 @@ $JobCustomerDtoCopyWith<$Res> get customer {
 }
 }
 
+
+/// @nodoc
+mixin _$ArriveResultDto {
+
+ String get arrivalCode; bool? get withinGeofence;
+/// Create a copy of ArriveResultDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ArriveResultDtoCopyWith<ArriveResultDto> get copyWith => _$ArriveResultDtoCopyWithImpl<ArriveResultDto>(this as ArriveResultDto, _$identity);
+
+  /// Serializes this ArriveResultDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as ArriveResultDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ArriveResultDto&&(identical(other.arrivalCode, _this.arrivalCode) || other.arrivalCode == _this.arrivalCode)&&(identical(other.withinGeofence, _this.withinGeofence) || other.withinGeofence == _this.withinGeofence));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as ArriveResultDto;
+  return Object.hash(runtimeType,_this.arrivalCode,_this.withinGeofence);
+}
+
+@override
+String toString() {
+  final _this = this as ArriveResultDto;
+  return 'ArriveResultDto(arrivalCode: ${_this.arrivalCode}, withinGeofence: ${_this.withinGeofence})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ArriveResultDtoCopyWith<$Res>  {
+  factory $ArriveResultDtoCopyWith(ArriveResultDto value, $Res Function(ArriveResultDto) _then) = _$ArriveResultDtoCopyWithImpl;
+@useResult
+$Res call({
+ String arrivalCode, bool? withinGeofence
+});
+
+
+
+
+}
+/// @nodoc
+class _$ArriveResultDtoCopyWithImpl<$Res>
+    implements $ArriveResultDtoCopyWith<$Res> {
+  _$ArriveResultDtoCopyWithImpl(this._self, this._then);
+
+  final ArriveResultDto _self;
+  final $Res Function(ArriveResultDto) _then;
+
+/// Create a copy of ArriveResultDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? arrivalCode = null,Object? withinGeofence = freezed,}) {
+  return _then(ArriveResultDto(
+arrivalCode: null == arrivalCode ? _self.arrivalCode : arrivalCode // ignore: cast_nullable_to_non_nullable
+as String,withinGeofence: freezed == withinGeofence ? _self.withinGeofence : withinGeofence // ignore: cast_nullable_to_non_nullable
+as bool?,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [ArriveResultDto].
+extension ArriveResultDtoPatterns on ArriveResultDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _ArriveResultDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _ArriveResultDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _ArriveResultDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _ArriveResultDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _ArriveResultDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _ArriveResultDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String arrivalCode,  bool? withinGeofence)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _ArriveResultDto() when $default != null:
+return $default(_that.arrivalCode,_that.withinGeofence);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String arrivalCode,  bool? withinGeofence)  $default,) {final _that = this;
+switch (_that) {
+case _ArriveResultDto():
+return $default(_that.arrivalCode,_that.withinGeofence);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String arrivalCode,  bool? withinGeofence)?  $default,) {final _that = this;
+switch (_that) {
+case _ArriveResultDto() when $default != null:
+return $default(_that.arrivalCode,_that.withinGeofence);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _ArriveResultDto implements ArriveResultDto {
+  const _ArriveResultDto({required this.arrivalCode, this.withinGeofence});
+  factory _ArriveResultDto.fromJson(Map<String, dynamic> json) => _$ArriveResultDtoFromJson(json);
+
+@override final  String arrivalCode;
+@override final  bool? withinGeofence;
+
+/// Create a copy of ArriveResultDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$ArriveResultDtoCopyWith<_ArriveResultDto> get copyWith => __$ArriveResultDtoCopyWithImpl<_ArriveResultDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$ArriveResultDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ArriveResultDto&&(identical(other.arrivalCode, arrivalCode) || other.arrivalCode == arrivalCode)&&(identical(other.withinGeofence, withinGeofence) || other.withinGeofence == withinGeofence));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,arrivalCode,withinGeofence);
+}
+
+@override
+String toString() {
+    return 'ArriveResultDto(arrivalCode: $arrivalCode, withinGeofence: $withinGeofence)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$ArriveResultDtoCopyWith<$Res> implements $ArriveResultDtoCopyWith<$Res> {
+  factory _$ArriveResultDtoCopyWith(_ArriveResultDto value, $Res Function(_ArriveResultDto) _then) = __$ArriveResultDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ String arrivalCode, bool? withinGeofence
+});
+
+
+
+
+}
+/// @nodoc
+class __$ArriveResultDtoCopyWithImpl<$Res>
+    implements _$ArriveResultDtoCopyWith<$Res> {
+  __$ArriveResultDtoCopyWithImpl(this._self, this._then);
+
+  final _ArriveResultDto _self;
+  final $Res Function(_ArriveResultDto) _then;
+
+/// Create a copy of ArriveResultDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? arrivalCode = null,Object? withinGeofence = freezed,}) {
+  return _then(_ArriveResultDto(
+arrivalCode: null == arrivalCode ? _self.arrivalCode : arrivalCode // ignore: cast_nullable_to_non_nullable
+as String,withinGeofence: freezed == withinGeofence ? _self.withinGeofence : withinGeofence // ignore: cast_nullable_to_non_nullable
+as bool?,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$CashResultDto {
+
+ String get id; String get state; int get cashDebtPaise;
+/// Create a copy of CashResultDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CashResultDtoCopyWith<CashResultDto> get copyWith => _$CashResultDtoCopyWithImpl<CashResultDto>(this as CashResultDto, _$identity);
+
+  /// Serializes this CashResultDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as CashResultDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CashResultDto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.state, _this.state) || other.state == _this.state)&&(identical(other.cashDebtPaise, _this.cashDebtPaise) || other.cashDebtPaise == _this.cashDebtPaise));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as CashResultDto;
+  return Object.hash(runtimeType,_this.id,_this.state,_this.cashDebtPaise);
+}
+
+@override
+String toString() {
+  final _this = this as CashResultDto;
+  return 'CashResultDto(id: ${_this.id}, state: ${_this.state}, cashDebtPaise: ${_this.cashDebtPaise})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CashResultDtoCopyWith<$Res>  {
+  factory $CashResultDtoCopyWith(CashResultDto value, $Res Function(CashResultDto) _then) = _$CashResultDtoCopyWithImpl;
+@useResult
+$Res call({
+ String id, String state, int cashDebtPaise
+});
+
+
+
+
+}
+/// @nodoc
+class _$CashResultDtoCopyWithImpl<$Res>
+    implements $CashResultDtoCopyWith<$Res> {
+  _$CashResultDtoCopyWithImpl(this._self, this._then);
+
+  final CashResultDto _self;
+  final $Res Function(CashResultDto) _then;
+
+/// Create a copy of CashResultDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? state = null,Object? cashDebtPaise = null,}) {
+  return _then(CashResultDto(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,state: null == state ? _self.state : state // ignore: cast_nullable_to_non_nullable
+as String,cashDebtPaise: null == cashDebtPaise ? _self.cashDebtPaise : cashDebtPaise // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [CashResultDto].
+extension CashResultDtoPatterns on CashResultDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _CashResultDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _CashResultDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _CashResultDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _CashResultDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _CashResultDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _CashResultDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String state,  int cashDebtPaise)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _CashResultDto() when $default != null:
+return $default(_that.id,_that.state,_that.cashDebtPaise);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String state,  int cashDebtPaise)  $default,) {final _that = this;
+switch (_that) {
+case _CashResultDto():
+return $default(_that.id,_that.state,_that.cashDebtPaise);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String state,  int cashDebtPaise)?  $default,) {final _that = this;
+switch (_that) {
+case _CashResultDto() when $default != null:
+return $default(_that.id,_that.state,_that.cashDebtPaise);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _CashResultDto implements CashResultDto {
+  const _CashResultDto({required this.id, required this.state, required this.cashDebtPaise});
+  factory _CashResultDto.fromJson(Map<String, dynamic> json) => _$CashResultDtoFromJson(json);
+
+@override final  String id;
+@override final  String state;
+@override final  int cashDebtPaise;
+
+/// Create a copy of CashResultDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$CashResultDtoCopyWith<_CashResultDto> get copyWith => __$CashResultDtoCopyWithImpl<_CashResultDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$CashResultDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CashResultDto&&(identical(other.id, id) || other.id == id)&&(identical(other.state, state) || other.state == state)&&(identical(other.cashDebtPaise, cashDebtPaise) || other.cashDebtPaise == cashDebtPaise));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,state,cashDebtPaise);
+}
+
+@override
+String toString() {
+    return 'CashResultDto(id: $id, state: $state, cashDebtPaise: $cashDebtPaise)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$CashResultDtoCopyWith<$Res> implements $CashResultDtoCopyWith<$Res> {
+  factory _$CashResultDtoCopyWith(_CashResultDto value, $Res Function(_CashResultDto) _then) = __$CashResultDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ String id, String state, int cashDebtPaise
+});
+
+
+
+
+}
+/// @nodoc
+class __$CashResultDtoCopyWithImpl<$Res>
+    implements _$CashResultDtoCopyWith<$Res> {
+  __$CashResultDtoCopyWithImpl(this._self, this._then);
+
+  final _CashResultDto _self;
+  final $Res Function(_CashResultDto) _then;
+
+/// Create a copy of CashResultDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? state = null,Object? cashDebtPaise = null,}) {
+  return _then(_CashResultDto(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,state: null == state ? _self.state : state // ignore: cast_nullable_to_non_nullable
+as String,cashDebtPaise: null == cashDebtPaise ? _self.cashDebtPaise : cashDebtPaise // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$PhotoSignDto {
+
+ String get url; String get key; String get expiresAt;
+/// Create a copy of PhotoSignDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PhotoSignDtoCopyWith<PhotoSignDto> get copyWith => _$PhotoSignDtoCopyWithImpl<PhotoSignDto>(this as PhotoSignDto, _$identity);
+
+  /// Serializes this PhotoSignDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PhotoSignDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PhotoSignDto&&(identical(other.url, _this.url) || other.url == _this.url)&&(identical(other.key, _this.key) || other.key == _this.key)&&(identical(other.expiresAt, _this.expiresAt) || other.expiresAt == _this.expiresAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PhotoSignDto;
+  return Object.hash(runtimeType,_this.url,_this.key,_this.expiresAt);
+}
+
+@override
+String toString() {
+  final _this = this as PhotoSignDto;
+  return 'PhotoSignDto(url: ${_this.url}, key: ${_this.key}, expiresAt: ${_this.expiresAt})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PhotoSignDtoCopyWith<$Res>  {
+  factory $PhotoSignDtoCopyWith(PhotoSignDto value, $Res Function(PhotoSignDto) _then) = _$PhotoSignDtoCopyWithImpl;
+@useResult
+$Res call({
+ String url, String key, String expiresAt
+});
+
+
+
+
+}
+/// @nodoc
+class _$PhotoSignDtoCopyWithImpl<$Res>
+    implements $PhotoSignDtoCopyWith<$Res> {
+  _$PhotoSignDtoCopyWithImpl(this._self, this._then);
+
+  final PhotoSignDto _self;
+  final $Res Function(PhotoSignDto) _then;
+
+/// Create a copy of PhotoSignDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? url = null,Object? key = null,Object? expiresAt = null,}) {
+  return _then(PhotoSignDto(
+url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
+as String,key: null == key ? _self.key : key // ignore: cast_nullable_to_non_nullable
+as String,expiresAt: null == expiresAt ? _self.expiresAt : expiresAt // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PhotoSignDto].
+extension PhotoSignDtoPatterns on PhotoSignDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PhotoSignDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PhotoSignDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PhotoSignDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _PhotoSignDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PhotoSignDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PhotoSignDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String url,  String key,  String expiresAt)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PhotoSignDto() when $default != null:
+return $default(_that.url,_that.key,_that.expiresAt);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String url,  String key,  String expiresAt)  $default,) {final _that = this;
+switch (_that) {
+case _PhotoSignDto():
+return $default(_that.url,_that.key,_that.expiresAt);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String url,  String key,  String expiresAt)?  $default,) {final _that = this;
+switch (_that) {
+case _PhotoSignDto() when $default != null:
+return $default(_that.url,_that.key,_that.expiresAt);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PhotoSignDto implements PhotoSignDto {
+  const _PhotoSignDto({required this.url, required this.key, required this.expiresAt});
+  factory _PhotoSignDto.fromJson(Map<String, dynamic> json) => _$PhotoSignDtoFromJson(json);
+
+@override final  String url;
+@override final  String key;
+@override final  String expiresAt;
+
+/// Create a copy of PhotoSignDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PhotoSignDtoCopyWith<_PhotoSignDto> get copyWith => __$PhotoSignDtoCopyWithImpl<_PhotoSignDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PhotoSignDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PhotoSignDto&&(identical(other.url, url) || other.url == url)&&(identical(other.key, key) || other.key == key)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,url,key,expiresAt);
+}
+
+@override
+String toString() {
+    return 'PhotoSignDto(url: $url, key: $key, expiresAt: $expiresAt)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PhotoSignDtoCopyWith<$Res> implements $PhotoSignDtoCopyWith<$Res> {
+  factory _$PhotoSignDtoCopyWith(_PhotoSignDto value, $Res Function(_PhotoSignDto) _then) = __$PhotoSignDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ String url, String key, String expiresAt
+});
+
+
+
+
+}
+/// @nodoc
+class __$PhotoSignDtoCopyWithImpl<$Res>
+    implements _$PhotoSignDtoCopyWith<$Res> {
+  __$PhotoSignDtoCopyWithImpl(this._self, this._then);
+
+  final _PhotoSignDto _self;
+  final $Res Function(_PhotoSignDto) _then;
+
+/// Create a copy of PhotoSignDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? url = null,Object? key = null,Object? expiresAt = null,}) {
+  return _then(_PhotoSignDto(
+url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
+as String,key: null == key ? _self.key : key // ignore: cast_nullable_to_non_nullable
+as String,expiresAt: null == expiresAt ? _self.expiresAt : expiresAt // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$PhotoConfirmDto {
+
+ String get id; String get kind; String get capturedAt;
+/// Create a copy of PhotoConfirmDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PhotoConfirmDtoCopyWith<PhotoConfirmDto> get copyWith => _$PhotoConfirmDtoCopyWithImpl<PhotoConfirmDto>(this as PhotoConfirmDto, _$identity);
+
+  /// Serializes this PhotoConfirmDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PhotoConfirmDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PhotoConfirmDto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.kind, _this.kind) || other.kind == _this.kind)&&(identical(other.capturedAt, _this.capturedAt) || other.capturedAt == _this.capturedAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PhotoConfirmDto;
+  return Object.hash(runtimeType,_this.id,_this.kind,_this.capturedAt);
+}
+
+@override
+String toString() {
+  final _this = this as PhotoConfirmDto;
+  return 'PhotoConfirmDto(id: ${_this.id}, kind: ${_this.kind}, capturedAt: ${_this.capturedAt})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PhotoConfirmDtoCopyWith<$Res>  {
+  factory $PhotoConfirmDtoCopyWith(PhotoConfirmDto value, $Res Function(PhotoConfirmDto) _then) = _$PhotoConfirmDtoCopyWithImpl;
+@useResult
+$Res call({
+ String id, String kind, String capturedAt
+});
+
+
+
+
+}
+/// @nodoc
+class _$PhotoConfirmDtoCopyWithImpl<$Res>
+    implements $PhotoConfirmDtoCopyWith<$Res> {
+  _$PhotoConfirmDtoCopyWithImpl(this._self, this._then);
+
+  final PhotoConfirmDto _self;
+  final $Res Function(PhotoConfirmDto) _then;
+
+/// Create a copy of PhotoConfirmDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? kind = null,Object? capturedAt = null,}) {
+  return _then(PhotoConfirmDto(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as String,capturedAt: null == capturedAt ? _self.capturedAt : capturedAt // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PhotoConfirmDto].
+extension PhotoConfirmDtoPatterns on PhotoConfirmDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PhotoConfirmDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PhotoConfirmDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PhotoConfirmDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _PhotoConfirmDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PhotoConfirmDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PhotoConfirmDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String kind,  String capturedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PhotoConfirmDto() when $default != null:
+return $default(_that.id,_that.kind,_that.capturedAt);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String kind,  String capturedAt)  $default,) {final _that = this;
+switch (_that) {
+case _PhotoConfirmDto():
+return $default(_that.id,_that.kind,_that.capturedAt);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String kind,  String capturedAt)?  $default,) {final _that = this;
+switch (_that) {
+case _PhotoConfirmDto() when $default != null:
+return $default(_that.id,_that.kind,_that.capturedAt);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PhotoConfirmDto implements PhotoConfirmDto {
+  const _PhotoConfirmDto({required this.id, required this.kind, required this.capturedAt});
+  factory _PhotoConfirmDto.fromJson(Map<String, dynamic> json) => _$PhotoConfirmDtoFromJson(json);
+
+@override final  String id;
+@override final  String kind;
+@override final  String capturedAt;
+
+/// Create a copy of PhotoConfirmDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PhotoConfirmDtoCopyWith<_PhotoConfirmDto> get copyWith => __$PhotoConfirmDtoCopyWithImpl<_PhotoConfirmDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PhotoConfirmDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PhotoConfirmDto&&(identical(other.id, id) || other.id == id)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.capturedAt, capturedAt) || other.capturedAt == capturedAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,kind,capturedAt);
+}
+
+@override
+String toString() {
+    return 'PhotoConfirmDto(id: $id, kind: $kind, capturedAt: $capturedAt)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PhotoConfirmDtoCopyWith<$Res> implements $PhotoConfirmDtoCopyWith<$Res> {
+  factory _$PhotoConfirmDtoCopyWith(_PhotoConfirmDto value, $Res Function(_PhotoConfirmDto) _then) = __$PhotoConfirmDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ String id, String kind, String capturedAt
+});
+
+
+
+
+}
+/// @nodoc
+class __$PhotoConfirmDtoCopyWithImpl<$Res>
+    implements _$PhotoConfirmDtoCopyWith<$Res> {
+  __$PhotoConfirmDtoCopyWithImpl(this._self, this._then);
+
+  final _PhotoConfirmDto _self;
+  final $Res Function(_PhotoConfirmDto) _then;
+
+/// Create a copy of PhotoConfirmDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? kind = null,Object? capturedAt = null,}) {
+  return _then(_PhotoConfirmDto(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as String,capturedAt: null == capturedAt ? _self.capturedAt : capturedAt // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
 // dart format on

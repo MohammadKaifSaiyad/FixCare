@@ -5,6 +5,8 @@ FailureKind failureKindFromStatus(int? status) {
     case 401: return FailureKind.unauthorized;
     case 429: return FailureKind.rateLimited;
     case 400: return FailureKind.validation;
+    // A gateway/request timeout is transient (retry, not a rejection) — never the backend saying no.
+    case 408: return FailureKind.network;
     case null: return FailureKind.unknown;
     default: return status >= 500 ? FailureKind.server : FailureKind.unknown;
   }

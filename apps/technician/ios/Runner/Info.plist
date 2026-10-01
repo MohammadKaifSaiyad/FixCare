@@ -8,6 +8,19 @@
 	     Debug build configuration (INFOPLIST_FILE in project.pbxproj). That is what
 	     makes it genuinely debug-only — the iOS mirror of Android's debug source
 	     set (src/debug/res/xml/network_security_config.xml). -->
+	<!-- Camera-evidence pipeline (ADR-0007). The technician captures the
+	     mandatory evidence photos live (camera-only; no gallery — a fraud
+	     vector) and each capture reads a one-shot geotag. iOS requires a
+	     purpose string for both, or the OS kills the app on first use. Location
+	     is when-in-use only (capture-time one-shot, NOT background tracking). -->
+	<key>NSCameraUsageDescription</key>
+	<string>FixCare needs the camera to take the on-site repair photos that verify your work.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>FixCare uses your location to confirm you've arrived at the job and to tag the repair photos you take there.</string>
+	<!-- Required by App Store policy for image_picker even for camera-only use.
+	     The app never opens the photo library (camera-only evidence). -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FixCare takes repair photos with the camera only and never imports photos from your library.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

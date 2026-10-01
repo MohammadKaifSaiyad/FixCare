@@ -9,7 +9,7 @@ import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.typ
 import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
-import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody, type ConfirmCashBody } from './technician-jobs.schemas.js';
+import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, photoKind, type PhotoKindValue, type ArriveBody, type DiagnoseBody, type AddPartBody, type SignPhotoBody, type ConfirmPhotoBody, type ConfirmCompletionBody, type ConfirmCashBody } from './technician-jobs.schemas.js';
 import { verifyCashReceiptCode, cashCollectedLast24hPaise } from '../bookings/cash.js';
 import { config } from '../../shared/config.js';
 import { recordCashCollected } from '../settlements/settlements.service.js';
@@ -285,6 +285,29 @@ export async function completeRepair(userId: string, bookingId: string): Promise
  *  a change to the layout cannot drift between the two (B5's repair kinds reuse both paths). */
 function photoKeyPrefix(bookingId: string, kind: PhotoKindValue): string {
   return `jobs/${bookingId}/${kind}-`;
+}
+
+/** Mirrors photoKeyPrefix's shape: jobs/<bookingId>/<KIND>-<rest>.jpg. */
+const PHOTO_KEY_PATTERN = /^jobs\/([^/]+)\/([A-Z_]+)-[^/.]+\.jpg$/;
+
+/**
+ * Dev-only tooling's ownership guard (finding 8; CLAUDE.md "verify ownership, not just
+ * authentication"): the dev mark-uploaded hook lets its caller mark ANY key as uploaded, so without
+ * this, any authenticated technician (or non-technician) could mark evidence for a job that isn't
+ * theirs. Parses the bookingId/kind out of the key, then re-runs the same checks the real photo
+ * routes use. No state-window check — confirm re-asserts that itself.
+ */
+export async function assertTechnicianOwnsPhotoKey(userId: string, key: string): Promise<void> {
+  const match = PHOTO_KEY_PATTERN.exec(key);
+  const kindCandidate = match?.[2];
+  if (!match || !kindCandidate || !photoKind.safeParse(kindCandidate).success) {
+    throw new UnprocessableError('Invalid photo key');
+  }
+  const bookingId = match[1]!;
+  const tech = await requireTechnician(userId);
+  const booking = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, select: { technicianId: true } });
+  if (!booking) throw new NotFoundError('Job not found');
+  if (booking.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you');
 }
 
 /** Presign a photo upload slot. Window is determined by kind (DIAGNOSIS_* in ARRIVED, REPAIR_* in REPAIR_IN_PROGRESS). */

@@ -4,35 +4,32 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-09-19_
+_Last updated: 2026-09-27_
 
 ---
 
 ## Phase
-**Month 5 — customer app (Flutter).** Backend booking module COMPLETE (B1→B7 merged, PR #21). Build order
-(ADR-0004) advanced to the **customer app** (`apps/customer`, Android + iOS per ADR-0005; Riverpod codegen +
-go_router + dio + secure-storage). **Merged:** Slice 1 auth (#22), iOS-target/web-drop (#23), design-fidelity
-(#24), Slice 2 (#25/#26), **Slice 3 discovery+booking (#27)**, **founder bug-fixes (#28)**, **contract-smoke
-test (#29)**, **Slice 4 booking tracking (#30)**, **Slice 5 payment (#31)**, **dev harness (#32)**, **real-Razorpay-
-gateway (#33)**. **Customer app Slices 1-5 all merged.** Build order (ADR-0004) advanced to the **technician app**
-(`apps/technician`) — Slice 1 complete on branch, ready for PR. Money still on Razorpay test keys until KYC (UPI
-method blocked on Razorpay account activation — see Blocked on).
+**Technician app (Flutter).** Backend booking module COMPLETE (B1→B7, PR #21); **customer app Slices 1-5 all
+merged** (#22-#33). Build order (ADR-0004) is on the **technician app** (`apps/technician`, Android + iOS per
+ADR-0005): **Slice 1 scaffold+auth+jobs merged (#35)**, customer interceptor retried-401 back-port merged (#36),
+**Slice 2 "drive a job" complete on branch, ready for PR**. Money still on Razorpay test keys until KYC (UPI method
+blocked on Razorpay account activation — see Blocked on).
 
 ## Active task
-**Technician app Slice 1 — scaffold + phone-OTP auth + jobs** COMPLETE on `feature/technician-app-slice1-scaffold-auth`
-(commits `dcb765f..9fda61f`), **ready for PR → `main`**. New Flutter app `apps/technician` (Android+iOS), backbone
-copied+adapted from the customer app (Result/TokenStore/dio+single-flight interceptor/theme/token-gate — carries the
-no-global-content-type fix). Phone-OTP auth with `role:TECHNICIAN`; `GET /me/profile` → `TechnicianProfileDto`; a
-**verification gate** — VERIFIED → jobs home, else a status screen (pending vs suspended copy), keyed on the profile's
-TechnicianStatus and **failing closed** (unhydrated → PENDING, never VERIFIED). Jobs feature: `TechnicianJobDto`
-(directional PII — full address, masked phone, no name) + repo (available/mine/accept, 403/409/422 surfaced) + jobs
-home (list + accept with per-card busy). Built via SDD (6 tasks, each spec+quality reviewed; final whole-branch review
-MERGE-READY; `/code-review` caught + fixed 2 release-config regressions — missing INTERNET perm in the release
-manifest, undeclared Outfit font — plus a retried-401 onAuthLost edge). 31 tests; `flutter analyze` clean. Unblocks
-the OTHER side of every keystone handshake (accept→…→confirm-cash), so end-to-end testing no longer needs the
-dev-drive-booking harness. Design/plan: `docs/designs/2026-09-19-…`, `docs/plans/2026-09-19-…`.
-**Next: PR → `main`. Then iOS pod-less build check; then technician Slice 2 (drive a job: en-route→arrive→diagnose→
-photos→complete→confirm-cash) — the real end-to-end.**
+**Technician app Slice 2 — drive a job end-to-end** COMPLETE on `feature/technician-app-slice2-job-flow`
+(commits `e29d59f..HEAD`), **ready for PR → `main`**. After accept the technician drives the whole job from a
+state-driven job-detail screen (`/job/:id`): en-route → arrive (**mints** the arrival code; only the customer's
+confirmation moves it to ARRIVED) → diagnose (**2 mandatory evidence photos** + issue picker) → parts cart at
+DIAGNOSED (catalog prices only, indicative estimate) → start repair / parts-needed / parts-acquired → complete
+repair (**3 mandatory photos**) → confirm completion + confirm cash by **entering the customer's 6-digit codes**.
+Camera-evidence pipeline (ADR-0007): camera-only capture, capture-time timestamp + geotag, <500KB, in-app retrying
+upload queue (per job+kind state, retake generation guard, terminal vs transient failures), presigned PUT via a
+**bare Dio** (fixed a JWT-to-R2 leak that would also have failed every prod upload). Dev-only backend route
+`POST /dev/photos/mark-uploaded` (not registered in prod, DevPhotoStorage-only, authed) makes photos testable
+locally. Built via SDD (8 tasks + 7a split, each reviewed; final review = whole-branch + flutter-widget-reviewer +
+fraud-vector-checker + golden-rules-auditor → one fix wave). **249 app tests, analyze clean; backend 375/375, tsc
+clean.** Design/plan: `docs/designs/2026-09-20-…`, `docs/plans/2026-09-20-…`.
+**Next: PR → `main`; on-device smoke (camera needs a physical phone); then the pilot-blocker follow-ups below.**
 
 ## PRIOR active task (customer app Slice 5 — payment, MERGED #31; kept below for history)
 **Customer app Slice 5 — payment** COMPLETE on `feature/customer-app-slice5-payment` (commits `5c337a3..ebe211b`),
@@ -52,6 +49,9 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 **Next: PR → `main` (founder pushes/merges). Then Razorpay TEST keys to exercise UPI end-to-end, or the next slice.**
 
 ## Last shipped
+- **Technician app Slice 1 — scaffold + phone-OTP auth + jobs** (**merged PR #35**) — new Flutter app
+  `apps/technician`; backbone adapted from the customer app; VERIFIED-gated jobs home (available/mine/accept).
+  31 tests. Plus **customer auth-interceptor retried-401 back-port** (**merged PR #36**).
 - **Customer app Slice 5 — payment** (`feature/customer-app-slice5-payment`, on branch, `5c337a3..ebe211b`) — pay
   card with UPI (`razorpay_flutter`, keyId-gated) + cash (receipt-OTP handshake, customer displays not submits).
   Bodyless pay calls; paid only via poll/webhook (never client-trusted); pure `payViewFor` mapper; keyId-null
@@ -222,22 +222,34 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR the Slice-5 branch** → `main` (founder pushes/merges `feature/customer-app-slice5-payment`). Then run a
-   clean `flutter build ios` on the Mac to wire `razorpay_flutter`'s pod (the pbxproj/Podfile.lock were left
-   uncommitted — pod resolution was incomplete in this env).
-2. **Razorpay TEST keys** — add `RAZORPAY_KEY_ID/KEY_SECRET/WEBHOOK_SECRET` (test-mode, pre-KYC from the
-   dashboard) to `apps/backend/.env` so `/pay` returns a non-null `keyId` and UPI checkout runs end-to-end in the
-   app. Cash is fully testable today without them. Apply for **Razorpay KYC + Route** now if not in flight.
-3. **Customer app next slice** — candidates: full technician app (unblocks the other side of the arrival/
-   completion/cash handshakes), or the parked Slice-4 background-poll follow-up. Provision Cloudflare R2 (`R2_*`)
-   before the photo-evidence work. Backend B2b accept-timer still deferred (30-sec unclaimed-job re-broadcast).
+1. **PR technician Slice 2** → `main` (founder pushes/merges `feature/technician-app-slice2-job-flow`). Then a
+   clean `flutter build ios` on the Mac to wire the new pods (image_picker / flutter_image_compress / geolocator).
+2. **On-device smoke** of the full job flow against the local backend (dev photo hook): a **physical Android 12+
+   phone** (ideally 2-3GB RAM) and an **iPhone** — the iOS simulator has no camera. Include deny-then-allow for
+   camera + location. Record anything found (e.g. image_picker activity-kill → `retrieveLostData`).
+3. **Pilot-blocker backend follow-up PR** (see Deferred follow-ups → "Technician Slice 2"): single-job GET with
+   `parts[]` + `categoryId`, estimate versioning / "estimate ready" gate. Provision Cloudflare R2 (`R2_*`) — and
+   fix the presign settings first.
 
 ## Deferred follow-ups (carry forward)
-- **Customer app auth-interceptor retried-401 back-port** (found during technician Slice 1 `/code-review`):
-  `apps/customer/lib/core/network/auth_interceptor.dart` has a latent bug — when a token refresh succeeds but the
-  retried request itself 401s (new token already revoked / clock skew), it neither clears tokens nor calls
-  `onAuthLost`, leaving the customer session-stuck. The technician app fixed it (files were byte-identical);
-  **back-port the fix to the customer app in its own small PR + a covering test.** Non-blocking, low frequency.
+- **Technician Slice 2 — BLOCK any real-customer pilot until fixed** (backend/product; found by the final review
+  + fraud-vector-checker): (a) the technician DTO has no `parts[]`, so the DIAGNOSED cart is session-only — after an
+  app restart it shows empty and re-adding a part creates a DUPLICATE backend line (inflated estimate); (b)
+  `approveDiagnosis` carries no estimate version / expected total — the customer can approve a total they never saw
+  while the technician is still adding parts; (c) parts can only be added in DIAGNOSED, so a customer who approves
+  instantly approves a labor-only estimate. Fix together: single-job `GET /technician/jobs/:id` (or
+  `mine?active=true`) returning `parts[]` + `service.categoryId` (also removes the all-issues/all-parts picker
+  friction and the every-5s full-history re-download + photo re-signing), plus an "estimate ready" step or
+  `approve {expectedTotalPaise}` → 409 on mismatch.
+- **Technician Slice 2 — other follow-ups (non-blocking):** `Position.isMocked` arrival signal (needs backend
+  `arriveBody` field + a block-vs-flag product decision); **R2 presign before provisioning** — set
+  `requestChecksumCalculation: 'WHEN_REQUIRED'` on the S3Client (recent SDKs add checksum params R2 rejects) and note
+  content-type is unsignable in the presigner (jpeg-only not cryptographically enforced, despite the comment in
+  `r2-storage.ts`); `NODE_ENV` defaults to `development` (fail-open — an unset prod env would register the dev photo
+  route and devOtp); dev route checks auth not the TECHNICIAN role; iOS `BYPASS_PERMISSION_LOCATION_ALWAYS` Podfile
+  macro before the first TestFlight upload (ITMS-90683); upload queue not reset on logout (≤1 stray retry, backend
+  rejects it); `image_picker` `retrieveLostData` for low-memory activity kills is unhandled; real-backend contract
+  smoke for the technician flow.
 - **Slice 5 payment follow-up (non-blocking — final review MERGE-READY, Golden Rules held):** (a) **iOS pod
   integration** — run a clean `flutter build ios` on the Mac to pull `razorpay_flutter`'s pod into Podfile.lock +
   pbxproj (the incomplete first-time-CocoaPods scaffolding in the working tree was intentionally NOT committed);
@@ -321,4 +333,4 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 - **Build order:** Backend → Customer app → Technician app → Admin → Merchant
   (ADR-0004). Operate via direct API calls (Bruno/Postman) until admin is built.
 - Branch model: trunk-based, `feature/*` → PR → `/code-review` → `main` (ADR-0002).
-- Current week's retro: `docs/progress/weekly-notes/` (none yet — first on Saturday).
+- Latest weekly retro: `docs/progress/weekly-notes/2026-09-26.md` (retros for 09-12 and 09-19 were skipped).
