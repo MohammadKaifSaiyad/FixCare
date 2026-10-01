@@ -29,7 +29,7 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
   blocked while a cart edit is in flight. DIAGNOSED is now a read-only "Estimate sent — waiting for the customer to
   approve or decline" card with the frozen lines + total. The session-only cart provider was removed.
 - **Customer app unchanged.**
-- **Recorded, not fixed:** `mine()` is still active-only (jobs-home payload grows with history); revising an estimate
+- **Recorded, not fixed:** `mine()` still returns the technician's full job history, not yet trimmed to active jobs (so the jobs-home payload grows with history); revising an estimate
   after sending is unsupported (customer declines); a rare duplicate-line risk if an add's response and the follow-up
   refetch both fail and the technician re-taps Add before the next 5s poll. Two auth bugs found in a dev run
   (technician login with a customer's number silently logs into the customer account; "Verification pending" never

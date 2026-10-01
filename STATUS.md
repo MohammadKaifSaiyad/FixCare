@@ -246,7 +246,7 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 - **Job estimate integrity — remaining from the old Slice 2 pilot-blocker bullet** (the blockers themselves — cart
   lost on restart/duplicate lines, no estimate version on approve, instant labor-only approval — are RESOLVED by
   `feature/job-estimate-integrity`: the cart is built and frozen before the customer can approve, and the app reads it
-  from the server): (a) `mine()` is still active-only, so the jobs-home payload grows with history; (b) revising an
+  from the server): (a) `mine()` still returns the technician's full job history (not yet trimmed to active jobs), so the jobs-home payload grows with history; (b) revising an
   estimate after sending is not supported (the customer declines); (c) rare duplicate-line risk — if a part add's
   response AND the follow-up refetch both fail and the technician re-taps Add before the next 5s poll, the backend
   (which does not de-duplicate) creates a second line.
