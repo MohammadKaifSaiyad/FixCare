@@ -181,10 +181,10 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
 
     return Scaffold(
       key: const Key('jobDetailScreen'),
-      appBar: AppBar(title: Text(async.value?.bookingNumber ?? 'Job')),
+      appBar: AppBar(title: Text(async.value?.job.bookingNumber ?? 'Job')),
       body: SafeArea(
         child: switch (async) {
-          AsyncData(value: final job) => _buildBody(job),
+          AsyncData(value: final detail) => _buildBody(detail),
           AsyncError(:final error) => _buildError(error is JobVanishedException ? error.toString() : null),
           _ => const Center(child: CircularProgressIndicator()),
         },
@@ -212,18 +212,20 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     );
   }
 
-  Widget _buildBody(TechnicianJobDto job) {
+  Widget _buildBody(TechnicianJobDetailDto detail) {
+    final job = detail.job;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _JobInfoCard(job: job),
         const SizedBox(height: 16),
-        _buildActionCard(job),
+        _buildActionCard(detail),
       ],
     );
   }
 
-  Widget _buildActionCard(TechnicianJobDto job) {
+  Widget _buildActionCard(TechnicianJobDetailDto detail) {
+    final job = detail.job;
     switch (jobActionFor(job)) {
       case JobAction.enRoute:
         return _OneTapCard(

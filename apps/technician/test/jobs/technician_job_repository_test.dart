@@ -195,4 +195,12 @@ void main() {
     adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, ['not', 'a', 'map']));
     expect((await repo.job('b1') as Failure).kind, FailureKind.server);
   });
+
+  test('job(id) 200 with a malformed body (non-object parts entry) → Failure(server), never a thrown TypeError', () async {
+    // job(id) is the job-detail screen's 5s poll target: an escaping parse error would silently stop polling.
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, {..._job(), 'parts': ['oops']}));
+    final f = await repo.job('b1') as Failure<TechnicianJobDetailDto>;
+    expect(f.kind, FailureKind.server);
+    expect(f.message, 'Unexpected response from the server.');
+  });
 }

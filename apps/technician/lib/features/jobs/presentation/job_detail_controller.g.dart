@@ -8,62 +8,41 @@ part of 'job_detail_controller.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Loads and adaptively polls a single job for the job-detail screen.
+/// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
+/// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without
+/// the technician acting — and reads the job's real parts cart.
 ///
-/// There is no single-job GET on the technician API — jobs are only ever
-/// listed via `mine()`. This controller re-fetches the full list on every
-/// poll tick and finds the job by id within it, so it can observe
-/// customer-side state transitions (e.g. arrival confirmation, completion
-/// confirmation, cash decline) without the technician taking any action.
-///
-/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
-/// the current poll completes, so a slow network never stacks overlapping
-/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
-/// response is applied only if it is newer than the last one applied — an
-/// older response landing late (e.g. a poll issued before an action, arriving
-/// after the action's refetch) is dropped instead of regressing the card.
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after the current poll completes,
+/// so a slow network never stacks requests. Every fetch (poll or [refetch]) takes a sequence number and is
+/// applied only if newer than the last one applied — a late response never regresses the card.
 /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
 @ProviderFor(JobDetail)
 final jobDetailProvider = JobDetailFamily._();
 
-/// Loads and adaptively polls a single job for the job-detail screen.
+/// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
+/// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without
+/// the technician acting — and reads the job's real parts cart.
 ///
-/// There is no single-job GET on the technician API — jobs are only ever
-/// listed via `mine()`. This controller re-fetches the full list on every
-/// poll tick and finds the job by id within it, so it can observe
-/// customer-side state transitions (e.g. arrival confirmation, completion
-/// confirmation, cash decline) without the technician taking any action.
-///
-/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
-/// the current poll completes, so a slow network never stacks overlapping
-/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
-/// response is applied only if it is newer than the last one applied — an
-/// older response landing late (e.g. a poll issued before an action, arriving
-/// after the action's refetch) is dropped instead of regressing the card.
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after the current poll completes,
+/// so a slow network never stacks requests. Every fetch (poll or [refetch]) takes a sequence number and is
+/// applied only if newer than the last one applied — a late response never regresses the card.
 /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 final class JobDetailProvider
-    extends $AsyncNotifierProvider<JobDetail, TechnicianJobDto> {
-  /// Loads and adaptively polls a single job for the job-detail screen.
+    extends $AsyncNotifierProvider<JobDetail, TechnicianJobDetailDto> {
+  /// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
+  /// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without
+  /// the technician acting — and reads the job's real parts cart.
   ///
-  /// There is no single-job GET on the technician API — jobs are only ever
-  /// listed via `mine()`. This controller re-fetches the full list on every
-  /// poll tick and finds the job by id within it, so it can observe
-  /// customer-side state transitions (e.g. arrival confirmation, completion
-  /// confirmation, cash decline) without the technician taking any action.
-  ///
-  /// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
-  /// the current poll completes, so a slow network never stacks overlapping
-  /// requests. Every fetch (poll or [refetch]) takes a sequence number and its
-  /// response is applied only if it is newer than the last one applied — an
-  /// older response landing late (e.g. a poll issued before an action, arriving
-  /// after the action's refetch) is dropped instead of regressing the card.
+  /// Polling is a chain of ONE-SHOT timers: the next tick is armed only after the current poll completes,
+  /// so a slow network never stacks requests. Every fetch (poll or [refetch]) takes a sequence number and is
+  /// applied only if newer than the last one applied — a late response never regresses the card.
   /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
   JobDetailProvider._({
     required JobDetailFamily super.from,
     required String super.argument,
   }) : super(
-         retry: null,
+         retry: _retryUnlessVanished,
          name: r'jobDetailProvider',
          isAutoDispose: true,
          dependencies: null,
@@ -95,56 +74,42 @@ final class JobDetailProvider
   }
 }
 
-String _$jobDetailHash() => r'58a87a7648fb2297602d7316f64720c953e2c133';
+String _$jobDetailHash() => r'e58efbb2e4e19a65a8395b8660f214aa3a72adea';
 
-/// Loads and adaptively polls a single job for the job-detail screen.
+/// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
+/// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without
+/// the technician acting — and reads the job's real parts cart.
 ///
-/// There is no single-job GET on the technician API — jobs are only ever
-/// listed via `mine()`. This controller re-fetches the full list on every
-/// poll tick and finds the job by id within it, so it can observe
-/// customer-side state transitions (e.g. arrival confirmation, completion
-/// confirmation, cash decline) without the technician taking any action.
-///
-/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
-/// the current poll completes, so a slow network never stacks overlapping
-/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
-/// response is applied only if it is newer than the last one applied — an
-/// older response landing late (e.g. a poll issued before an action, arriving
-/// after the action's refetch) is dropped instead of regressing the card.
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after the current poll completes,
+/// so a slow network never stacks requests. Every fetch (poll or [refetch]) takes a sequence number and is
+/// applied only if newer than the last one applied — a late response never regresses the card.
 /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
 final class JobDetailFamily extends $Family
     with
         $ClassFamilyOverride<
           JobDetail,
-          AsyncValue<TechnicianJobDto>,
-          TechnicianJobDto,
-          FutureOr<TechnicianJobDto>,
+          AsyncValue<TechnicianJobDetailDto>,
+          TechnicianJobDetailDto,
+          FutureOr<TechnicianJobDetailDto>,
           String
         > {
   JobDetailFamily._()
     : super(
-        retry: null,
+        retry: _retryUnlessVanished,
         name: r'jobDetailProvider',
         dependencies: null,
         $allTransitiveDependencies: null,
         isAutoDispose: true,
       );
 
-  /// Loads and adaptively polls a single job for the job-detail screen.
+  /// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
+  /// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without
+  /// the technician acting — and reads the job's real parts cart.
   ///
-  /// There is no single-job GET on the technician API — jobs are only ever
-  /// listed via `mine()`. This controller re-fetches the full list on every
-  /// poll tick and finds the job by id within it, so it can observe
-  /// customer-side state transitions (e.g. arrival confirmation, completion
-  /// confirmation, cash decline) without the technician taking any action.
-  ///
-  /// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
-  /// the current poll completes, so a slow network never stacks overlapping
-  /// requests. Every fetch (poll or [refetch]) takes a sequence number and its
-  /// response is applied only if it is newer than the last one applied — an
-  /// older response landing late (e.g. a poll issued before an action, arriving
-  /// after the action's refetch) is dropped instead of regressing the card.
+  /// Polling is a chain of ONE-SHOT timers: the next tick is armed only after the current poll completes,
+  /// so a slow network never stacks requests. Every fetch (poll or [refetch]) takes a sequence number and is
+  /// applied only if newer than the last one applied — a late response never regresses the card.
   /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
   JobDetailProvider call(String bookingId) =>
@@ -154,37 +119,34 @@ final class JobDetailFamily extends $Family
   String toString() => r'jobDetailProvider';
 }
 
-/// Loads and adaptively polls a single job for the job-detail screen.
+/// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
+/// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without
+/// the technician acting — and reads the job's real parts cart.
 ///
-/// There is no single-job GET on the technician API — jobs are only ever
-/// listed via `mine()`. This controller re-fetches the full list on every
-/// poll tick and finds the job by id within it, so it can observe
-/// customer-side state transitions (e.g. arrival confirmation, completion
-/// confirmation, cash decline) without the technician taking any action.
-///
-/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after
-/// the current poll completes, so a slow network never stacks overlapping
-/// requests. Every fetch (poll or [refetch]) takes a sequence number and its
-/// response is applied only if it is newer than the last one applied — an
-/// older response landing late (e.g. a poll issued before an action, arriving
-/// after the action's refetch) is dropped instead of regressing the card.
+/// Polling is a chain of ONE-SHOT timers: the next tick is armed only after the current poll completes,
+/// so a slow network never stacks requests. Every fetch (poll or [refetch]) takes a sequence number and is
+/// applied only if newer than the last one applied — a late response never regresses the card.
 /// [pause]/[resume] stop and restart the chain while the app is backgrounded.
 
-abstract class _$JobDetail extends $AsyncNotifier<TechnicianJobDto> {
+abstract class _$JobDetail extends $AsyncNotifier<TechnicianJobDetailDto> {
   late final _$args = ref.$arg as String;
   String get bookingId => _$args;
 
-  FutureOr<TechnicianJobDto> build(String bookingId);
+  FutureOr<TechnicianJobDetailDto> build(String bookingId);
   @$mustCallSuper
   @override
   WhenComplete runBuild() {
     final ref =
-        this.ref as $Ref<AsyncValue<TechnicianJobDto>, TechnicianJobDto>;
+        this.ref
+            as $Ref<AsyncValue<TechnicianJobDetailDto>, TechnicianJobDetailDto>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<AsyncValue<TechnicianJobDto>, TechnicianJobDto>,
-              AsyncValue<TechnicianJobDto>,
+              AnyNotifier<
+                AsyncValue<TechnicianJobDetailDto>,
+                TechnicianJobDetailDto
+              >,
+              AsyncValue<TechnicianJobDetailDto>,
               Object?,
               Object?
             >;

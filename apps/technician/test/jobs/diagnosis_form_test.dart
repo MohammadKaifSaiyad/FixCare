@@ -44,7 +44,7 @@ class _FakeCatalogRepo extends CatalogRepository {
   Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) async => const Ok([]);
 }
 
-/// Fake job repo: handles mine() (recorded, for asserting a refetch happened),
+/// Fake job repo: handles job(id) (recorded, for asserting a refetch happened),
 /// diagnose() (recorded + scripted), and the photo sign/confirm calls the
 /// queue drives (always succeed immediately — no retry/backoff involved in
 /// these tests).
@@ -53,15 +53,19 @@ class _FakeJobRepo extends TechnicianJobRepository {
   _FakeJobRepo({required this._job}) : super(Dio());
 
   final TechnicianJobDto _job;
-  int mineCalls = 0;
+  int jobCalls = 0;
   int diagnoseCalls = 0;
   ({String id, String issueId})? lastDiagnose;
   Result<void> diagnoseResult = const Ok(null);
 
   @override
-  Future<Result<List<TechnicianJobDto>>> mine() async {
-    mineCalls++;
-    return Ok([_job]);
+  Future<Result<List<TechnicianJobDto>>> mine() async =>
+      throw StateError('the job-detail controller must not call mine()');
+
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    jobCalls++;
+    return Ok(TechnicianJobDetailDto(job: _job));
   }
 
   @override
@@ -200,13 +204,13 @@ void main() {
 
     expect(_submitBtn(tester).onPressed, isNotNull);
 
-    final mineCallsBefore = jobRepo.mineCalls;
+    final jobCallsBefore = jobRepo.jobCalls;
     await tester.tap(find.byKey(const Key('submitDiagnosisBtn')));
     await tester.pumpAndSettle();
 
     expect(jobRepo.diagnoseCalls, 1);
     expect(jobRepo.lastDiagnose, (id: 'b1', issueId: 'i1'));
-    expect(jobRepo.mineCalls, greaterThan(mineCallsBefore));
+    expect(jobRepo.jobCalls, greaterThan(jobCallsBefore));
 
     await _disposeTree(tester);
   });

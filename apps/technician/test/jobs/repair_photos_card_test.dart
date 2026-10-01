@@ -26,7 +26,7 @@ TechnicianJobDto _dto({List<Map<String, dynamic>> photos = const []}) =>
 Map<String, dynamic> _serverPhoto(String kind) =>
     {'kind': kind, 'capturedAt': '2026-09-20T10:00:00.000Z', 'url': 'https://x'};
 
-/// Fake job repo: mine() (recorded, to assert a refetch), completeRepair()
+/// Fake job repo: job(id) (recorded, to assert a refetch), completeRepair()
 /// (recorded + scripted, or throwing), and the photo sign/confirm calls the
 /// queue drives (always succeed immediately).
 class _FakeJobRepo extends TechnicianJobRepository {
@@ -34,15 +34,19 @@ class _FakeJobRepo extends TechnicianJobRepository {
   _FakeJobRepo({required this._job}) : super(Dio());
 
   final TechnicianJobDto _job;
-  int mineCalls = 0;
+  int jobCalls = 0;
   final List<String> completeRepairCalls = [];
   Result<void> completeRepairResult = const Ok(null);
   bool completeRepairThrows = false;
 
   @override
-  Future<Result<List<TechnicianJobDto>>> mine() async {
-    mineCalls++;
-    return Ok([_job]);
+  Future<Result<List<TechnicianJobDto>>> mine() async =>
+      throw StateError('the job-detail controller must not call mine()');
+
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    jobCalls++;
+    return Ok(TechnicianJobDetailDto(job: _job));
   }
 
   @override
@@ -173,12 +177,12 @@ void main() {
     expect(_completeBtn(tester).onPressed, isNotNull);
     expect(find.text(_helper), findsNothing);
 
-    final mineBefore = jobRepo.mineCalls;
+    final jobBefore = jobRepo.jobCalls;
     await tester.tap(find.byKey(const Key('completeRepairBtn')));
     await tester.pumpAndSettle();
 
     expect(jobRepo.completeRepairCalls, ['b1']);
-    expect(jobRepo.mineCalls, greaterThan(mineBefore));
+    expect(jobRepo.jobCalls, greaterThan(jobBefore));
     expect(find.byKey(const Key('completeRepairError')), findsNothing);
 
     await _disposeTree(tester);
@@ -210,13 +214,13 @@ void main() {
     final jobRepo = _FakeJobRepo(job: job)..completeRepairResult = const Failure(FailureKind.validation, msg);
     await _pump(tester, job: job, jobRepo: jobRepo, queue: _queue(jobRepo));
 
-    final mineBefore = jobRepo.mineCalls;
+    final jobBefore = jobRepo.jobCalls;
     await tester.tap(find.byKey(const Key('completeRepairBtn')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('completeRepairError')), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const Key('completeRepairError'))).data, msg);
-    expect(jobRepo.mineCalls, mineBefore);
+    expect(jobRepo.jobCalls, jobBefore);
     // busy reset: the technician can try again.
     expect(_completeBtn(tester).onPressed, isNotNull);
 

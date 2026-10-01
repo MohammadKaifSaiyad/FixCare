@@ -59,23 +59,23 @@ class _SwitchableLocationService implements LocationService {
   Future<LocationResult> current() async => result;
 }
 
-/// Fake repo whose `mine()` reflects a mutable internal state, so that
+/// Fake repo whose `job(id)` reflects a mutable internal state, so that
 /// `refetch()` (which the screen calls after every action) observes the
-/// effect of that action — mirrors a real backend round-trip.
+/// effect of that action — mirrors a real backend round-trip. The job-detail
+/// controller polls the single-job GET only, so `mine()` throws.
 class _FakeRepo extends TechnicianJobRepository {
-  _FakeRepo({required String initialState, this.id = 'b1'})
+  _FakeRepo({required String initialState})
       : _state = initialState,
         super(Dio());
 
-  final String id;
+  final String id = 'b1';
   String _state;
-  bool _vanished = false;
 
-  /// From now on, `mine()` returns a list without this job — simulates the
-  /// booking being reassigned/cancelled out from under the technician.
-  void vanish() => _vanished = true;
+  /// When non-null, `job()` returns this instead of the job — e.g. a 403/404
+  /// (reassigned/cancelled out from under the technician) or a network failure.
+  Result<TechnicianJobDetailDto>? jobResultOverride;
 
-  int mineCalls = 0;
+  int jobCalls = 0;
   int enRouteCalls = 0;
   int startRepairCalls = 0;
   int partsNeededCalls = 0;
@@ -98,10 +98,13 @@ class _FakeRepo extends TechnicianJobRepository {
   bool enRouteThrows = false;
 
   @override
-  Future<Result<List<TechnicianJobDto>>> mine() async {
-    mineCalls++;
-    if (_vanished) return const Ok([]);
-    return Ok([_dto(id: id, state: _state)]);
+  Future<Result<List<TechnicianJobDto>>> mine() async =>
+      throw StateError('the job-detail controller must not call mine()');
+
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String bookingId) async {
+    jobCalls++;
+    return jobResultOverride ?? Ok(TechnicianJobDetailDto(job: _dto(id: id, state: _state)));
   }
 
   @override
@@ -548,26 +551,43 @@ void main() {
   });
 
   testWidgets('error state shows jobDetailRetry, which reloads on tap', (tester) async {
-    final repo = _FakeRepo(initialState: 'ACCEPTED', id: 'other');
+    final repo = _FakeRepo(initialState: 'ACCEPTED')
+      ..jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
     await _pump(tester, repo);
 
     expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
     expect(find.text("Couldn't load this job."), findsOneWidget);
+    expect(find.text('This job is no longer assigned to you.'), findsNothing);
+
+    repo.jobResultOverride = null;
+    await tester.tap(find.byKey(const Key('jobDetailRetry')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('jobDetailRetry')), findsNothing);
+    expect(find.byKey(const Key('enRouteBtn')), findsOneWidget);
 
     await _disposeTree(tester);
   });
 
-  testWidgets('a job that vanishes after 3 consecutive misses shows its own message, not the generic one',
+  testWidgets('a 403 from the single-job GET shows "This job is no longer assigned to you."', (tester) async {
+    final repo = _FakeRepo(initialState: 'ACCEPTED')
+      ..jobResultOverride = const Failure(FailureKind.forbidden, 'This job is not assigned to you');
+    await _pump(tester, repo);
+    expect(find.text('This job is no longer assigned to you.'), findsOneWidget);
+    expect(find.text("Couldn't load this job."), findsNothing);
+    expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
+    await _disposeTree(tester);
+  });
+
+  testWidgets('a job reassigned/cancelled mid-poll (404) shows its own message, not the generic one',
       (tester) async {
     final repo = _FakeRepo(initialState: 'EN_ROUTE');
     await _pump(tester, repo);
-    expect(find.byKey(const Key('jobDetailScreen')), findsOneWidget);
+    expect(find.byKey(const Key('arriveBtn')), findsOneWidget);
 
-    repo.vanish();
-    await tester.pump(const Duration(seconds: 5)); // miss 1 — still shows the job
-    expect(find.byKey(const Key('jobDetailScreen')), findsOneWidget);
-    await tester.pump(const Duration(seconds: 5)); // miss 2
-    await tester.pump(const Duration(seconds: 5)); // miss 3 -> vanished
+    repo.jobResultOverride = const Failure(FailureKind.notFound, 'Job not found');
+    await tester.pump(const Duration(seconds: 5)); // the next poll sees the 404 — no 3-miss grace any more
+    await tester.pump();
 
     expect(find.text('This job is no longer assigned to you.'), findsOneWidget);
     expect(find.text("Couldn't load this job."), findsNothing);
@@ -701,22 +721,22 @@ void main() {
     addTearDown(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
     final repo = _FakeRepo(initialState: 'EN_ROUTE');
     await _pump(tester, repo);
-    final base = repo.mineCalls;
+    final base = repo.jobCalls;
 
     for (final s in const [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
       binding.handleAppLifecycleStateChanged(s);
     }
     await tester.pump(const Duration(seconds: 30));
-    expect(repo.mineCalls, base, reason: 'no polling while backgrounded');
+    expect(repo.jobCalls, base, reason: 'no polling while backgrounded');
 
     for (final s in const [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
       binding.handleAppLifecycleStateChanged(s);
     }
     await tester.pump();
-    expect(repo.mineCalls, base + 1, reason: 'an immediate refetch on resume');
+    expect(repo.jobCalls, base + 1, reason: 'an immediate refetch on resume');
 
     await tester.pump(const Duration(seconds: 5));
-    expect(repo.mineCalls, base + 2, reason: 'polling re-armed');
+    expect(repo.jobCalls, base + 2, reason: 'polling re-armed');
 
     await _disposeTree(tester);
   });
