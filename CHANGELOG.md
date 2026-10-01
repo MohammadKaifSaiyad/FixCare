@@ -8,6 +8,33 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-01 — Job estimate integrity: parts during diagnosis, cart frozen at diagnose (on branch)
+
+- **The cart is built during diagnosis and frozen when the estimate is sent** — closes the three Slice 2 pilot
+  blockers (cart lost on restart → duplicate lines; no estimate version on approve; instant labor-only approval).
+  On `feature/job-estimate-integrity` (cut from `main` after Slice 2 merged, #37), ready for PR. Backend 383/383,
+  technician app 268, `tsc` / `flutter analyze` clean. Design `docs/designs/2026-10-01-job-estimate-integrity-design.md`,
+  plan `docs/plans/2026-10-01-job-estimate-integrity.md`.
+- **Backend: part add/remove are ARRIVED-only; `POST /technician/jobs/:id/diagnose` freezes the cart** — any later
+  add/remove is a 409 (`The cart is locked — the diagnosis has been submitted`). The diagnose transition evidence
+  snapshots `partCount` + `partsTotalPaise`, so DIAGNOSED always shows the customer a final cart. Supersedes the
+  DIAGNOSED-only rule in the B4a design (note added there).
+- **Backend: `GET /catalog/parts?categoryId=` now returns the category's parts plus generic (uncategorised) parts.**
+- **Backend: new `GET /technician/jobs/:id`** (job + `parts[]` + active photos, assigned-technician only) and
+  `service.categoryId` on all technician job DTOs.
+- **Technician app: polls one job, renders the server cart.** `FailureKind.forbidden/notFound`; `job(id)`; job-detail
+  polls the single-job GET (403/404 → "This job is no longer assigned to you.", recovers if the job comes back).
+- **Technician app: the diagnosis form sends the complete estimate** — 2 photos + category-filtered issue picker +
+  server-backed parts cart + "Customer will see: ₹…" total, with a **confirm dialog before sending**; Submit is
+  blocked while a cart edit is in flight. DIAGNOSED is now a read-only "Estimate sent — waiting for the customer to
+  approve or decline" card with the frozen lines + total. The session-only cart provider was removed.
+- **Customer app unchanged.**
+- **Recorded, not fixed:** `mine()` is still active-only (jobs-home payload grows with history); revising an estimate
+  after sending is unsupported (customer declines); a rare duplicate-line risk if an add's response and the follow-up
+  refetch both fail and the technician re-taps Add before the next 5s poll. Two auth bugs found in a dev run
+  (technician login with a customer's number silently logs into the customer account; "Verification pending" never
+  re-checks status) are logged in STATUS → Deferred follow-ups.
+
 ## 2026-09-27 — Technician app Slice 2: drive a job end-to-end (on branch)
 
 - **The technician can now drive a job from accept to cash** on a state-driven job-detail screen (`/job/:id`):

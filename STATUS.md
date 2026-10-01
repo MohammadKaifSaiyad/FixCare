@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-09-27_
+_Last updated: 2026-10-01_
 
 ---
 
@@ -12,24 +12,28 @@ _Last updated: 2026-09-27_
 **Technician app (Flutter).** Backend booking module COMPLETE (B1→B7, PR #21); **customer app Slices 1-5 all
 merged** (#22-#33). Build order (ADR-0004) is on the **technician app** (`apps/technician`, Android + iOS per
 ADR-0005): **Slice 1 scaffold+auth+jobs merged (#35)**, customer interceptor retried-401 back-port merged (#36),
-**Slice 2 "drive a job" complete on branch, ready for PR**. Money still on Razorpay test keys until KYC (UPI method
-blocked on Razorpay account activation — see Blocked on).
+**Slice 2 "drive a job" merged (#37)**, and the **job estimate integrity** follow-up (the Slice 2 pilot blockers) is
+complete on branch, ready for PR. Money still on Razorpay test keys until KYC (UPI method blocked on Razorpay account
+activation — see Blocked on).
 
 ## Active task
-**Technician app Slice 2 — drive a job end-to-end** COMPLETE on `feature/technician-app-slice2-job-flow`
-(commits `e29d59f..HEAD`), **ready for PR → `main`**. After accept the technician drives the whole job from a
-state-driven job-detail screen (`/job/:id`): en-route → arrive (**mints** the arrival code; only the customer's
-confirmation moves it to ARRIVED) → diagnose (**2 mandatory evidence photos** + issue picker) → parts cart at
-DIAGNOSED (catalog prices only, indicative estimate) → start repair / parts-needed / parts-acquired → complete
-repair (**3 mandatory photos**) → confirm completion + confirm cash by **entering the customer's 6-digit codes**.
-Camera-evidence pipeline (ADR-0007): camera-only capture, capture-time timestamp + geotag, <500KB, in-app retrying
-upload queue (per job+kind state, retake generation guard, terminal vs transient failures), presigned PUT via a
-**bare Dio** (fixed a JWT-to-R2 leak that would also have failed every prod upload). Dev-only backend route
-`POST /dev/photos/mark-uploaded` (not registered in prod, DevPhotoStorage-only, authed) makes photos testable
-locally. Built via SDD (8 tasks + 7a split, each reviewed; final review = whole-branch + flutter-widget-reviewer +
-fraud-vector-checker + golden-rules-auditor → one fix wave). **249 app tests, analyze clean; backend 375/375, tsc
-clean.** Design/plan: `docs/designs/2026-09-20-…`, `docs/plans/2026-09-20-…`.
-**Next: PR → `main`; on-device smoke (camera needs a physical phone); then the pilot-blocker follow-ups below.**
+**Job estimate integrity** COMPLETE on `feature/job-estimate-integrity` (cut from `main` @ `9737679`, after
+Slice 2 merged), **ready for PR → `main`** (not pushed). Resolves the three Slice 2 pilot blockers: the customer can
+no longer approve an estimate the technician is still editing, and the technician app reads the cart from the server.
+- **Backend:** parts add/remove are **ARRIVED-only**; "Submit diagnosis" (`POST /technician/jobs/:id/diagnose`)
+  **freezes the cart** (409 `The cart is locked — the diagnosis has been submitted`) and snapshots `partCount` +
+  `partsTotalPaise` in the transition evidence, so DIAGNOSED always shows the customer a final cart.
+  `GET /catalog/parts?categoryId=` returns the category's parts + generic parts. New `GET /technician/jobs/:id`
+  (job + `parts[]` + active photos); `service.categoryId` on all technician job DTOs.
+- **Technician app:** `FailureKind.forbidden/notFound`; `job(id)`; job-detail polls the single job (403/404 → "This
+  job is no longer assigned to you.", recovers if it comes back). The ARRIVED diagnosis form carries the **complete
+  estimate** (2 photos + category-filtered issue picker + server-backed parts cart + "Customer will see: ₹…" + a
+  confirm dialog before sending; Submit blocked while a cart edit is in flight). DIAGNOSED is a read-only "Estimate
+  sent — waiting for the customer to approve or decline" card with the frozen lines + total. Session-only cart removed.
+  Customer app unchanged.
+- **Gates:** technician app **268 tests, analyze clean**; backend **383/383 (67 files), tsc clean**.
+  Design/plan: `docs/designs/2026-10-01-job-estimate-integrity-design.md`, `docs/plans/2026-10-01-job-estimate-integrity.md`.
+**Next: PR → `main` (founder pushes); on-device smoke (physical Android 12+ phone + iPhone); then the follow-ups below.**
 
 ## PRIOR active task (customer app Slice 5 — payment, MERGED #31; kept below for history)
 **Customer app Slice 5 — payment** COMPLETE on `feature/customer-app-slice5-payment` (commits `5c337a3..ebe211b`),
@@ -49,6 +53,12 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 **Next: PR → `main` (founder pushes/merges). Then Razorpay TEST keys to exercise UPI end-to-end, or the next slice.**
 
 ## Last shipped
+- **Technician app Slice 2 — drive a job end-to-end** (**merged PR #37**) — state-driven job-detail screen: en-route →
+  arrive (mints the arrival code) → diagnose (2 evidence photos + issue) → parts → repair (3 photos) → confirm
+  completion/cash by entering the customer's codes. Camera-evidence pipeline (ADR-0007: camera-only, capture-time
+  timestamp + geotag, <500KB, retrying upload queue, presigned PUT via a bare Dio — fixed a JWT-to-R2 leak). Dev-only
+  `POST /dev/photos/mark-uploaded` (not registered in prod). Built via SDD + final review → one fix wave.
+  249 app tests, backend 375/375.
 - **Technician app Slice 1 — scaffold + phone-OTP auth + jobs** (**merged PR #35**) — new Flutter app
   `apps/technician`; backbone adapted from the customer app; VERIFIED-gated jobs home (available/mine/accept).
   31 tests. Plus **customer auth-interceptor retried-401 back-port** (**merged PR #36**).
@@ -222,25 +232,30 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR technician Slice 2** → `main` (founder pushes/merges `feature/technician-app-slice2-job-flow`). Then a
-   clean `flutter build ios` on the Mac to wire the new pods (image_picker / flutter_image_compress / geolocator).
+1. **PR job estimate integrity** → `main` (founder pushes/merges `feature/job-estimate-integrity`). Then a clean
+   `flutter build ios` on the Mac to wire the Slice 2 pods (image_picker / flutter_image_compress / geolocator).
 2. **On-device smoke** of the full job flow against the local backend (dev photo hook): a **physical Android 12+
    phone** (ideally 2-3GB RAM) and an **iPhone** — the iOS simulator has no camera. Include deny-then-allow for
-   camera + location. Record anything found (e.g. image_picker activity-kill → `retrieveLostData`).
-3. **Pilot-blocker backend follow-up PR** (see Deferred follow-ups → "Technician Slice 2"): single-job GET with
-   `parts[]` + `categoryId`, estimate versioning / "estimate ready" gate. Provision Cloudflare R2 (`R2_*`) — and
-   fix the presign settings first.
+   camera + location, and the new diagnosis-form confirm dialog / cart-lock path. Record anything found (e.g.
+   image_picker activity-kill → `retrieveLostData`).
+3. **Auth follow-ups found in the dev run** (see Deferred follow-ups → "Technician auth"): reject a technician login
+   with a customer's number, and re-check status on the "Verification pending" screen. Then the remaining Slice 2
+   follow-ups; provision Cloudflare R2 (`R2_*`) — and fix the presign settings first.
 
 ## Deferred follow-ups (carry forward)
-- **Technician Slice 2 — BLOCK any real-customer pilot until fixed** (backend/product; found by the final review
-  + fraud-vector-checker): (a) the technician DTO has no `parts[]`, so the DIAGNOSED cart is session-only — after an
-  app restart it shows empty and re-adding a part creates a DUPLICATE backend line (inflated estimate); (b)
-  `approveDiagnosis` carries no estimate version / expected total — the customer can approve a total they never saw
-  while the technician is still adding parts; (c) parts can only be added in DIAGNOSED, so a customer who approves
-  instantly approves a labor-only estimate. Fix together: single-job `GET /technician/jobs/:id` (or
-  `mine?active=true`) returning `parts[]` + `service.categoryId` (also removes the all-issues/all-parts picker
-  friction and the every-5s full-history re-download + photo re-signing), plus an "estimate ready" step or
-  `approve {expectedTotalPaise}` → 409 on mismatch.
+- **Job estimate integrity — remaining from the old Slice 2 pilot-blocker bullet** (the blockers themselves — cart
+  lost on restart/duplicate lines, no estimate version on approve, instant labor-only approval — are RESOLVED by
+  `feature/job-estimate-integrity`: the cart is built and frozen before the customer can approve, and the app reads it
+  from the server): (a) `mine()` is still active-only, so the jobs-home payload grows with history; (b) revising an
+  estimate after sending is not supported (the customer declines); (c) rare duplicate-line risk — if a part add's
+  response AND the follow-up refetch both fail and the technician re-taps Add before the next 5s poll, the backend
+  (which does not de-duplicate) creates a second line.
+- **Technician auth (found in a dev run; fix together):** (a) **technician-app login with a number already registered
+  as a CUSTOMER silently logs into the customer account** — backend `verifyOtp`
+  (`apps/backend/src/modules/auth/auth.service.ts`) ignores the requested role for an existing phone; it should
+  reject with a clear "this number is registered as a customer" error, and the technician app should show it
+  instead of "Verification pending"; (b) the technician **"Verification pending" screen never re-checks status** — a
+  newly verified technician must log out and back in.
 - **Technician Slice 2 — other follow-ups (non-blocking):** `Position.isMocked` arrival signal (needs backend
   `arriveBody` field + a block-vs-flag product decision); **R2 presign before provisioning** — set
   `requestChecksumCalculation: 'WHEN_REQUIRED'` on the S3Client (recent SDKs add checksum params R2 rejects) and note
