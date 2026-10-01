@@ -134,6 +134,9 @@ async function ownAssignedBookingOrThrow(
  *  complete estimate and freezes it, so the customer can only ever approve a final cart (no instant
  *  labor-only approval, no bait-and-switch). */
 export const CART_LOCKED_MESSAGE = 'The cart is locked — the diagnosis has been submitted';
+const DUPLICATE_PART_MESSAGE = 'This part is already in the estimate — remove it to change the quantity';
+/** Upper bound on lines in one estimate (each line's qty is separately capped at 99 by the schema). */
+const MAX_CART_LINES = 20;
 
 /** Own + assigned + cart open. After diagnose (`diagnosedAt` set) the message says the cart is locked;
  *  before arrival it is the usual wrong-state 409. */
@@ -202,9 +205,11 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
     // The cart IS the estimate the customer will approve — snapshot exactly what was sent. Read after the
     // booking-row lock above: a part add that committed first is included; one racing this tx is rejected
     // by assertCartStillOpen once the state leaves ARRIVED.
-    const cart = await tx.bookingPart.findMany({ where: { bookingId }, select: { ceilingPricePaise: true, qty: true } });
+    // Per-line evidence (not just count + total): the exact cart the customer will see can be
+    // reconstructed from the audit log alone, even though removed lines are hard-deleted.
+    const cart = await tx.bookingPart.findMany({ where: { bookingId }, orderBy: { createdAt: 'asc' }, select: { sku: true, name: true, qty: true, ceilingPricePaise: true } });
     // transitionBooking checks the from-state (still ARRIVED in this tx) via its optimistic lock.
-    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id), partCount: cart.length, partsTotalPaise: sumParts(cart) });
+    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id), partCount: cart.length, partsTotalPaise: sumParts(cart), lines: cart });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'diagnosed', diagnosedIssueId: issue.id } } });
   });
   return { id: bookingId, state: 'DIAGNOSED' };
@@ -222,11 +227,17 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
   }
   const line = await prisma.$transaction(async (tx) => {
     // Re-assert ARRIVED inside the tx (optimistic guard): if "Submit diagnosis" committed concurrently the cart is frozen, so this matches 0 rows → reject.
+    // It also takes the booking row lock, so concurrent adds serialize here and the two checks below read the committed cart.
     await assertCartStillOpen(tx, bookingId);
+    // One line per part (qty is the only multiplier, capped by the schema) and a bounded line count —
+    // a technician cannot pad the estimate with repeated lines of the same part.
+    const existing = await tx.bookingPart.findMany({ where: { bookingId }, select: { partsCatalogId: true } });
+    if (existing.some((l) => l.partsCatalogId === cat.id)) throw new ConflictError(DUPLICATE_PART_MESSAGE);
+    if (existing.length >= MAX_CART_LINES) throw new UnprocessableError(`An estimate can list at most ${MAX_CART_LINES} parts`);
     const created = await tx.bookingPart.create({
       data: { bookingId, partsCatalogId: cat.id, sku: cat.sku, name: cat.name, ceilingPricePaise: cat.ceilingPricePaise, qty: body.qty },
     });
-    await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_added', sku: cat.sku, qty: body.qty } } });
+    await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_added', lineId: created.id, sku: created.sku, qty: created.qty, ceilingPricePaise: created.ceilingPricePaise } } });
     return created;
   });
   return { id: line.id };
@@ -258,8 +269,12 @@ export async function removePart(userId: string, bookingId: string, partId: stri
     await assertCartStillOpen(tx, bookingId);
     // deleteMany (scoped to {id, bookingId}) is idempotent — a concurrent double-remove deletes 0 rows
     // instead of throwing Prisma P2025; the findFirst above already established the 404 case.
-    await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
-    await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_removed', sku: line.sku } } });
+    const deleted = await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
+    // Audit only a real removal (the losing side of a double-remove changed nothing). The line is
+    // hard-deleted, so the audit carries its snapshot.
+    if (deleted.count > 0) {
+      await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'part_removed', lineId: line.id, sku: line.sku, qty: line.qty, ceilingPricePaise: line.ceilingPricePaise } } });
+    }
   });
 }
 
@@ -268,8 +283,8 @@ export async function partsNeeded(userId: string, bookingId: string): Promise<{ 
   const tech = await requireTechnician(userId);
   const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'CUSTOMER_APPROVED');
   await prisma.$transaction(async (tx) => {
-    // Count inside the tx so the audit's partCount is exactly the gated set (the cart is frozen
-    // outside DIAGNOSED anyway, but the in-tx read keeps the gate and its evidence atomic).
+    // Count inside the tx so the audit's partCount is exactly the gated set (the cart is frozen once
+    // the diagnosis is submitted anyway, but the in-tx read keeps the gate and its evidence atomic).
     const partCount = await tx.bookingPart.count({ where: { bookingId } });
     if (partCount === 0) throw new UnprocessableError('No parts in the approved estimate — start the repair instead');
     await transitionBooking(tx, booking, 'PARTS_REQUESTED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { partCount });

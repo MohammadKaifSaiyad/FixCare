@@ -50,6 +50,19 @@ describe('parts catalog', () => {
     expect(list.map((p: { sku: string }) => p.sku).sort()).toEqual(['IN-CAT', 'NO-CAT']);
   });
 
+  it('with ?categoryId= an INACTIVE or soft-deleted GENERIC part is still excluded', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const cat = (await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'AC' } })).json();
+    await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'GEN-OK', name: 'Generic ok', ceilingPricePaise: 100 } });
+    const inactive = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'GEN-INACTIVE', name: 'Generic inactive', ceilingPricePaise: 200 } })).json();
+    const deleted = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'GEN-DELETED', name: 'Generic deleted', ceilingPricePaise: 300 } })).json();
+    await prisma.partsCatalog.update({ where: { id: inactive.id }, data: { status: 'INACTIVE' } });
+    await prisma.partsCatalog.update({ where: { id: deleted.id }, data: { deletedAt: new Date() } });
+    const cust = await makeCustomerToken();
+    const list = (await app.inject({ method: 'GET', url: `/catalog/parts?categoryId=${cat.id}`, headers: auth(cust) })).json();
+    expect(list.map((p: { sku: string }) => p.sku)).toEqual(['GEN-OK']);
+  });
+
   it('SUPPORT cannot create a part → 403', async () => {
     const sup = await makeAdminToken('SUPPORT');
     const res = await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(sup), payload: { sku: 'X', name: 'X', ceilingPricePaise: 100 } });

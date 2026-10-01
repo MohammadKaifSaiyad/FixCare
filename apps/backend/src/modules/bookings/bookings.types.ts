@@ -26,9 +26,12 @@ export interface BookingDto {
   technician?: { name: string; maskedPhone: string };
   // Set once a technician has recorded a diagnosis (snapshot name, not a live FK lookup).
   diagnosis: { issueName: string } | null;
-  // The price-snapshotted parts cart. Empty until the technician adds parts post-diagnosis.
+  // The price-snapshotted parts cart. During ARRIVED this is the technician's work-in-progress cart
+  // (built while diagnosing); it freezes when the diagnosis is submitted. No customer surface should
+  // render it before DIAGNOSED.
   parts: { id: string; sku: string; name: string; ceilingPricePaise: number; qty: number }[];
-  // Computed from the labor/visit-fee snapshots + the cart. Labor-only (parts []) until diagnosis.
+  // Computed from the labor/visit-fee snapshots + the cart. Before DIAGNOSED it is indicative only
+  // (includes the work-in-progress cart, no visit-fee credit) — not a quote; see computeEstimate.
   estimate: Estimate;
   // Active photo evidence with SHORT-LIVED signed read URLs (15 min) — raw r2Key never leaves the API.
   photos: PhotoSummary[];

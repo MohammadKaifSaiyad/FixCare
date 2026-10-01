@@ -43,10 +43,17 @@ describe('GET /technician/jobs/:id', () => {
   it('another technician → 403; a customer → 403; an unverified technician → 403; a missing job → 404', async () => {
     const { c, bookingId } = await arrivedJob();
     const other = await makeTechnician(['AC']);
-    expect((await app.inject({ method: 'GET', url: `/technician/jobs/${bookingId}`, headers: auth(other.token) })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: `/technician/jobs/${bookingId}`, headers: auth(c.token) })).statusCode).toBe(403);
+    const foreign = await app.inject({ method: 'GET', url: `/technician/jobs/${bookingId}`, headers: auth(other.token) });
+    expect(foreign.statusCode).toBe(403);
+    expect(foreign.json().message).toBe('This job is not assigned to you');
+    const asCustomer = await app.inject({ method: 'GET', url: `/technician/jobs/${bookingId}`, headers: auth(c.token) });
+    expect(asCustomer.statusCode).toBe(403);
+    expect(asCustomer.json().message).toBe('Technician access required');
     const pending = await makeTechnician(['AC'], 'PENDING');
-    expect((await app.inject({ method: 'GET', url: `/technician/jobs/${bookingId}`, headers: auth(pending.token) })).statusCode).toBe(403);
+    const unverified = await app.inject({ method: 'GET', url: `/technician/jobs/${bookingId}`, headers: auth(pending.token) });
+    expect(unverified.statusCode).toBe(403);
+    // The app shows this one verbatim (a suspended/unverified technician is not "no longer assigned").
+    expect(unverified.json().message).toBe('Verified technician required');
     const t2 = await makeTechnician(['AC']);
     const missing = await app.inject({ method: 'GET', url: '/technician/jobs/00000000-0000-0000-0000-000000000000', headers: auth(t2.token) });
     expect(missing.statusCode).toBe(404);
