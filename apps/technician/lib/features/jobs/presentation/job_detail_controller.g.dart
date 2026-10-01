@@ -74,7 +74,7 @@ final class JobDetailProvider
   }
 }
 
-String _$jobDetailHash() => r'e58efbb2e4e19a65a8395b8660f214aa3a72adea';
+String _$jobDetailHash() => r'fa64473c3b9758ba7e909d86a0cefe8ca9b9a0db';
 
 /// Loads and adaptively polls ONE job (`GET /technician/jobs/:id`) for the job-detail screen, so it can
 /// observe customer-side transitions (arrival confirmation, approval, completion, cash decline) without

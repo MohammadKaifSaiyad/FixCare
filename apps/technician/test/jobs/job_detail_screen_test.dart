@@ -75,6 +75,9 @@ class _FakeRepo extends TechnicianJobRepository {
   /// (reassigned/cancelled out from under the technician) or a network failure.
   Result<TechnicianJobDetailDto>? jobResultOverride;
 
+  /// The server-side parts cart the single-job GET returns alongside the job.
+  List<JobPartLineDto> parts = const [];
+
   int jobCalls = 0;
   int enRouteCalls = 0;
   int startRepairCalls = 0;
@@ -104,7 +107,7 @@ class _FakeRepo extends TechnicianJobRepository {
   @override
   Future<Result<TechnicianJobDetailDto>> job(String bookingId) async {
     jobCalls++;
-    return jobResultOverride ?? Ok(TechnicianJobDetailDto(job: _dto(id: id, state: _state)));
+    return jobResultOverride ?? Ok(TechnicianJobDetailDto(job: _dto(id: id, state: _state), parts: parts));
   }
 
   @override
@@ -506,10 +509,14 @@ void main() {
     await _disposeTree(tester);
   });
 
-  testWidgets('DIAGNOSED shows waitingApprovalCard', (tester) async {
-    final repo = _FakeRepo(initialState: 'DIAGNOSED');
+  testWidgets('DIAGNOSED shows the read-only estimate-sent card with the frozen total', (tester) async {
+    final repo = _FakeRepo(initialState: 'DIAGNOSED')
+      ..parts = const [
+        JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000),
+      ];
     await _pump(tester, repo);
     expect(find.byKey(const Key('waitingApprovalCard')), findsOneWidget);
+    expect(find.byKey(const Key('estimateTotal')), findsOneWidget);
     await _disposeTree(tester);
   });
 

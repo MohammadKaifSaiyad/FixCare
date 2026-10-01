@@ -1,77 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/format.dart';
 import '../../../core/result.dart';
 import '../../../core/theme.dart';
 import '../data/catalog_repository.dart';
 import '../data/technician_job_repository.dart';
+import 'job_detail_controller.dart';
 
-part 'parts_cart.g.dart';
-
-/// One line the technician has added to the (not-yet-submitted) parts cart
-/// for this job — a catalog part plus a quantity, keyed by the id the backend
-/// returned from `addPart` (needed to `removePart` later).
-@immutable
-class CartLine {
-  const CartLine({required this.lineId, required this.part, required this.qty});
-
-  final String lineId;
-  final PartCatalogDto part;
-  final int qty;
+/// What the customer will see at DIAGNOSED — mirrors the backend quote (computeEstimate): labor +
+/// Σ(snapshot ceiling price × qty) − visit fee (credited once quoted), floored at 0. Integer paise; only
+/// `rupees()` formats. Shared by the diagnosis form preview and the read-only DIAGNOSED card.
+int estimatePaise(TechnicianJobDto job, List<JobPartLineDto> parts) {
+  final partsTotal = parts.fold<int>(0, (sum, p) => sum + p.ceilingPricePaise * p.qty);
+  final total = job.laborPaise + partsTotal - job.visitFeePaise;
+  return total < 0 ? 0 : total;
 }
 
-/// Session-scoped cart state per job (keepAlive: survives leaving and
-/// re-opening the job detail screen within the same app session — NOT an app
-/// restart; the job DTO carries no parts array to rehydrate from, so a
-/// restart losing the in-progress cart is a deferred follow-up). Backend
-/// `addPart`/`removePart` are the source of truth; this just mirrors what
-/// succeeded there so the UI can render the cart + estimate.
-@Riverpod(keepAlive: true)
-class JobCart extends _$JobCart {
-  @override
-  List<CartLine> build(String bookingId) => const [];
-
-  void add(CartLine line) => state = [...state, line];
-
-  void remove(String lineId) => state = state.where((l) => l.lineId != lineId).toList();
-}
-
-/// Pure, integer-paise estimate: labor + parts (ceiling price × qty) − visit
-/// fee (already collected/locked at arrival), floored at 0. Never negative —
-/// a customer never sees a negative "estimate".
-int indicativeEstimatePaise(TechnicianJobDto job, List<CartLine> lines) {
-  final partsTotal = lines.fold<int>(0, (sum, l) => sum + l.part.ceilingPricePaise * l.qty);
-  final estimate = job.laborPaise + partsTotal - job.visitFeePaise;
-  return estimate < 0 ? 0 : estimate;
-}
-
-final _partsProvider = FutureProvider.autoDispose<Result<List<PartCatalogDto>>>((ref) {
-  return ref.read(catalogRepositoryProvider).parts();
+/// Parts catalog for a job's category (the backend returns that category + generic parts). `null` (an
+/// older backend without categoryId) → unfiltered. autoDispose: re-fetched each time the form opens.
+final partsCatalogProvider =
+    FutureProvider.autoDispose.family<Result<List<PartCatalogDto>>, String?>((ref, categoryId) {
+  return ref.read(catalogRepositoryProvider).parts(categoryId: categoryId);
 });
 
-/// DIAGNOSED: the cart is open (the backend only accepts addPart/removePart
-/// while the booking is DIAGNOSED — it locks the moment the customer
-/// approves or declines the estimate).
-class PartsCartCard extends ConsumerStatefulWidget {
-  const PartsCartCard({super.key, required this.job});
+/// The parts section of the diagnosis form (ARRIVED). The cart shown is ALWAYS the backend's
+/// (`detail.parts`): every add/remove goes to the backend and then refetches the job — whatever the
+/// outcome — so an app restart, a lost response, or a locked cart can never show a stale or duplicated
+/// cart. Catalog prices only (Golden Rule 4): the technician picks a part and a qty, never a price.
+class PartsSection extends ConsumerStatefulWidget {
+  const PartsSection({super.key, required this.detail, required this.onBusyChanged});
 
-  final TechnicianJobDto job;
+  final TechnicianJobDetailDto detail;
+
+  /// Whether any cart edit is in flight — the form blocks "Submit diagnosis" until the cart settles, so the
+  /// estimate sent is exactly the one on screen.
+  final ValueChanged<bool> onBusyChanged;
 
   @override
-  ConsumerState<PartsCartCard> createState() => _PartsCartCardState();
+  ConsumerState<PartsSection> createState() => _PartsSectionState();
 }
 
-class _PartsCartCardState extends ConsumerState<PartsCartCard> {
+class _PartsSectionState extends ConsumerState<PartsSection> {
   final _filterController = TextEditingController();
   String _filter = '';
-
-  // Selected qty per part (1..99, default 1) — UI-only until Add is tapped.
-  final Map<String, int> _qty = {};
-
-  // Per-action busy sets: only the button for the in-flight part/line is
-  // disabled, and a repeat tap on it is a no-op (ignored double-tap).
+  final Map<String, int> _qty = {}; // selected qty per catalog part (1..99, default 1) — UI-only until Add
   final Set<String> _busyPartIds = {};
   final Set<String> _busyLineIds = {};
 
@@ -90,107 +63,91 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
     super.dispose();
   }
 
+  String get _jobId => widget.detail.job.id;
   int _qtyFor(String partId) => _qty[partId] ?? 1;
-
   void _incQty(String partId) => setState(() => _qty[partId] = (_qtyFor(partId) + 1).clamp(1, 99));
   void _decQty(String partId) => setState(() => _qty[partId] = (_qtyFor(partId) - 1).clamp(1, 99));
 
+  void _reportBusy() => widget.onBusyChanged(_busyPartIds.isNotEmpty || _busyLineIds.isNotEmpty);
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _addPart(PartCatalogDto part) async {
     if (_busyPartIds.contains(part.id)) return;
+    final repo = ref.read(technicianJobRepositoryProvider);
+    final detail = ref.read(jobDetailProvider(_jobId).notifier);
     setState(() => _busyPartIds.add(part.id));
+    _reportBusy();
     try {
-      final qty = _qtyFor(part.id);
-      // Read BEFORE the await: if the card unmounts mid-request (the
-      // technician leaves the job), `ref` is gone, but the backend has still
-      // added the line — the keepAlive cart must record it, or a re-add would
-      // duplicate it on the customer's estimate.
-      final repo = ref.read(technicianJobRepositoryProvider);
-      final cart = ref.read(jobCartProvider(widget.job.id).notifier);
-      final result = await repo.addPart(widget.job.id, partsCatalogId: part.id, qty: qty);
-      switch (result) {
-        case Ok(value: final lineId):
-          cart.add(CartLine(lineId: lineId, part: part, qty: qty));
-        case Failure(message: final m):
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-      }
+      final result = await repo.addPart(_jobId, partsCatalogId: part.id, qty: _qtyFor(part.id));
+      if (result case Failure(message: final m)) _snack(m);
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Something went wrong.')));
-      }
+      _snack('Something went wrong.');
     } finally {
-      if (mounted) setState(() => _busyPartIds.remove(part.id));
+      // Refetch on EVERY outcome: a timed-out add the backend applied shows up; a 409 locked / 403
+      // not-assigned moves the screen on. The cart on screen is always the server's.
+      if (mounted) await detail.refetch();
+      if (mounted) {
+        setState(() => _busyPartIds.remove(part.id));
+        _reportBusy();
+      }
     }
   }
 
-  Future<void> _removeLine(CartLine line) async {
-    if (_busyLineIds.contains(line.lineId)) return;
-    setState(() => _busyLineIds.add(line.lineId));
+  Future<void> _removeLine(JobPartLineDto line) async {
+    if (_busyLineIds.contains(line.id)) return;
+    final repo = ref.read(technicianJobRepositoryProvider);
+    final detail = ref.read(jobDetailProvider(_jobId).notifier);
+    setState(() => _busyLineIds.add(line.id));
+    _reportBusy();
     try {
-      // Read BEFORE the await (see _addPart): a removal the backend applied
-      // must leave the keepAlive cart even if the card unmounted meanwhile.
-      final repo = ref.read(technicianJobRepositoryProvider);
-      final cart = ref.read(jobCartProvider(widget.job.id).notifier);
-      final result = await repo.removePart(widget.job.id, line.lineId);
-      switch (result) {
-        case Ok():
-          cart.remove(line.lineId);
-        case Failure(message: final m):
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-      }
+      final result = await repo.removePart(_jobId, line.id);
+      if (result case Failure(message: final m)) _snack(m);
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Something went wrong.')));
-      }
+      _snack('Something went wrong.');
     } finally {
-      if (mounted) setState(() => _busyLineIds.remove(line.lineId));
+      if (mounted) await detail.refetch();
+      if (mounted) {
+        setState(() => _busyLineIds.remove(line.id));
+        _reportBusy();
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final job = widget.job;
-    final lines = ref.watch(jobCartProvider(job.id));
-    final partsAsync = ref.watch(_partsProvider);
-
-    return Card(
-      key: const Key('waitingApprovalCard'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Waiting for the customer to approve the estimate. Add the parts this repair '
-              'needs now — the cart locks once the customer decides.',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('partsFilter'),
-              controller: _filterController,
-              decoration: const InputDecoration(labelText: 'Filter parts'),
-            ),
-            const SizedBox(height: 12),
-            _buildPartsList(partsAsync),
-            if (lines.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('In cart', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              for (final line in lines) _buildCartLine(line),
-            ],
-            const SizedBox(height: 16),
-            Text(
-              'Indicative estimate: ${rupees(indicativeEstimatePaise(job, lines))}',
-              key: const Key('indicativeEstimate'),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              '(labor + parts − visit fee; the customer sees the final amount)',
-              style: TextStyle(fontSize: 12, color: FixCareColors.textMuted),
-            ),
-          ],
+    final detail = widget.detail;
+    final partsAsync = ref.watch(partsCatalogProvider(detail.job.service.categoryId));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Parts', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('partsFilter'),
+          controller: _filterController,
+          decoration: const InputDecoration(labelText: 'Filter parts'),
         ),
-      ),
+        const SizedBox(height: 12),
+        _buildPartsList(partsAsync),
+        if (detail.parts.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('In this estimate', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          for (final line in detail.parts) _buildCartLine(line),
+        ],
+        const SizedBox(height: 16),
+        Text(
+          'Customer will see: ${rupees(estimatePaise(detail.job, detail.parts))}',
+          key: const Key('customerWillSee'),
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        const Text('(labor + parts − visit fee)', style: TextStyle(fontSize: 12, color: FixCareColors.textMuted)),
+      ],
     );
   }
 
@@ -203,9 +160,7 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
     };
   }
 
-  /// A load failure must be recoverable in place: the cart window is
-  /// time-critical (it locks the moment the customer decides), so a network
-  /// blip can't force the technician to leave and re-enter the job.
+  /// A load failure must be recoverable in place — the technician is at the customer's door.
   Widget _partsError(String message) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,7 +171,7 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
           alignment: Alignment.centerLeft,
           child: TextButton(
             key: const Key('partsRetry'),
-            onPressed: () => ref.invalidate(_partsProvider),
+            onPressed: () => ref.invalidate(partsCatalogProvider(widget.detail.job.service.categoryId)),
             child: const Text('Retry'),
           ),
         ),
@@ -225,14 +180,9 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
   }
 
   Widget _partsColumn(List<PartCatalogDto> parts) {
-    final filtered =
-        _filter.isEmpty ? parts : parts.where((p) => p.name.toLowerCase().contains(_filter)).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      // Low-end devices: a plain Column of rows (no nested ListView/scrollable
-      // inside the screen's outer ListView).
-      children: [for (final p in filtered) _buildPartRow(p)],
-    );
+    final filtered = _filter.isEmpty ? parts : parts.where((p) => p.name.toLowerCase().contains(_filter)).toList();
+    // Low-end devices: a plain Column of rows (no nested scrollable inside the screen's ListView).
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final p in filtered) _buildPartRow(p)]);
   }
 
   Widget _buildPartRow(PartCatalogDto part) {
@@ -247,24 +197,13 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(part.name),
-                Text(
-                  rupees(part.ceilingPricePaise),
-                  style: const TextStyle(fontSize: 12, color: FixCareColors.textMuted),
-                ),
+                Text(rupees(part.ceilingPricePaise), style: const TextStyle(fontSize: 12, color: FixCareColors.textMuted)),
               ],
             ),
           ),
-          IconButton(
-            key: Key('qtyMinus_${part.id}'),
-            icon: const Icon(Icons.remove),
-            onPressed: busy ? null : () => _decQty(part.id),
-          ),
+          IconButton(key: Key('qtyMinus_${part.id}'), icon: const Icon(Icons.remove), onPressed: busy ? null : () => _decQty(part.id)),
           Text('$qty'),
-          IconButton(
-            key: Key('qtyPlus_${part.id}'),
-            icon: const Icon(Icons.add),
-            onPressed: busy ? null : () => _incQty(part.id),
-          ),
+          IconButton(key: Key('qtyPlus_${part.id}'), icon: const Icon(Icons.add), onPressed: busy ? null : () => _incQty(part.id)),
           FilledButton(
             key: Key('addPartBtn_${part.id}'),
             onPressed: busy ? null : () => _addPart(part),
@@ -277,22 +216,62 @@ class _PartsCartCardState extends ConsumerState<PartsCartCard> {
     );
   }
 
-  Widget _buildCartLine(CartLine line) {
-    final busy = _busyLineIds.contains(line.lineId);
+  Widget _buildCartLine(JobPartLineDto line) {
+    final busy = _busyLineIds.contains(line.id);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        key: Key('cartLine_${line.lineId}'),
+        key: Key('cartLine_${line.id}'),
         children: [
-          Expanded(
-            child: Text('${line.part.name} × ${line.qty} · ${rupees(line.part.ceilingPricePaise * line.qty)}'),
-          ),
+          Expanded(child: Text('${line.name} × ${line.qty} · ${rupees(line.ceilingPricePaise * line.qty)}')),
           IconButton(
-            key: Key('removePartBtn_${line.lineId}'),
+            key: Key('removePartBtn_${line.id}'),
             icon: const Icon(Icons.delete_outline),
             onPressed: busy ? null : () => _removeLine(line),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// DIAGNOSED: the estimate has been sent and the cart is frozen (the backend rejects any change). Read-only
+/// — the customer approves or declines in their app; the job poll moves this screen on.
+class EstimateSentCard extends StatelessWidget {
+  const EstimateSentCard({super.key, required this.detail});
+
+  final TechnicianJobDetailDto detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('waitingApprovalCard'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Estimate sent — waiting for the customer to approve or decline',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            if (detail.parts.isEmpty)
+              const Text('Labor only — no parts.', key: Key('estimateLaborOnly'))
+            else
+              for (final p in detail.parts)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Text('${p.name} × ${p.qty} · ${rupees(p.ceilingPricePaise * p.qty)}', key: Key('estimateLine_${p.id}')),
+                ),
+            const SizedBox(height: 12),
+            Text(
+              'Total: ${rupees(estimatePaise(detail.job, detail.parts))}',
+              key: const Key('estimateTotal'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
       ),
     );
   }
