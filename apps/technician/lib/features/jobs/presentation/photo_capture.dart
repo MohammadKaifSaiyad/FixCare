@@ -404,7 +404,11 @@ class PhotoUploadQueue extends ChangeNotifier {
         FailureKind.network || FailureKind.server || FailureKind.rateLimited => null,
         // 401/400 and every other 4xx (403/409/422…): the backend said no —
         // retrying the same request cannot succeed. Its message, verbatim.
-        FailureKind.unauthorized || FailureKind.validation || FailureKind.unknown => error.message,
+        FailureKind.unauthorized ||
+        FailureKind.forbidden ||
+        FailureKind.notFound ||
+        FailureKind.validation ||
+        FailureKind.unknown => error.message,
       };
     }
     if (error is PhotoUploadException) {

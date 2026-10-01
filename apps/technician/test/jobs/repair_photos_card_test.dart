@@ -30,9 +30,10 @@ Map<String, dynamic> _serverPhoto(String kind) =>
 /// (recorded + scripted, or throwing), and the photo sign/confirm calls the
 /// queue drives (always succeed immediately).
 class _FakeJobRepo extends TechnicianJobRepository {
-  _FakeJobRepo({required this.job}) : super(Dio());
+  // Private `_job`: a public `job` field would collide with TechnicianJobRepository.job(id).
+  _FakeJobRepo({required this._job}) : super(Dio());
 
-  TechnicianJobDto job;
+  final TechnicianJobDto _job;
   int mineCalls = 0;
   final List<String> completeRepairCalls = [];
   Result<void> completeRepairResult = const Ok(null);
@@ -41,7 +42,7 @@ class _FakeJobRepo extends TechnicianJobRepository {
   @override
   Future<Result<List<TechnicianJobDto>>> mine() async {
     mineCalls++;
-    return Ok([job]);
+    return Ok([_job]);
   }
 
   @override

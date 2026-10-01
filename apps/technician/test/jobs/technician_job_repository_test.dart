@@ -155,4 +155,44 @@ void main() {
         data: {'kind': 'REPAIR_OLD_PART', 'key': 'jobs/b1/REPAIR_OLD_PART-y.jpg', 'capturedAt': '2026-09-20T10:00:00.000Z'});
     expect(await repo.confirmPhoto('b1', kind: 'REPAIR_OLD_PART', key: 'jobs/b1/REPAIR_OLD_PART-y.jpg', capturedAt: '2026-09-20T10:00:00.000Z'), isA<Ok<PhotoConfirmDto>>());
   });
+
+  test('job(id) is a bodyless GET and parses the job + parts + categoryId', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, {
+      ..._job(),
+      'state': 'ARRIVED',
+      'service': {'name': 'Ceiling fan repair', 'requiredSkill': 'FAN', 'categoryId': 'cat-fan'},
+      'parts': [
+        {'id': 'l1', 'partsCatalogId': 'p1', 'sku': 'CAP', 'name': 'Capacitor', 'qty': 2, 'ceilingPricePaise': 15000},
+      ],
+    }));
+    final v = (await repo.job('b1') as Ok<TechnicianJobDetailDto>).value;
+    expect(v.job.state, 'ARRIVED');
+    expect(v.job.service.categoryId, 'cat-fan');
+    expect(v.parts, const [
+      JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000),
+    ]);
+  });
+
+  test('job(id) with no parts key → empty parts; no categoryId → null', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, _job()));
+    final v = (await repo.job('b1') as Ok<TechnicianJobDetailDto>).value;
+    expect(v.parts, isEmpty);
+    expect(v.job.service.categoryId, isNull);
+  });
+
+  test('job(id) 404 → Failure(notFound, message); 403 → Failure(forbidden, message)', () async {
+    adapter.onGet('/technician/jobs/gone', (s) => s.reply(404, {'code': 'NOT_FOUND', 'message': 'Job not found'}));
+    final gone = await repo.job('gone') as Failure<TechnicianJobDetailDto>;
+    expect(gone.kind, FailureKind.notFound);
+    expect(gone.message, 'Job not found');
+    adapter.onGet('/technician/jobs/theirs', (s) => s.reply(403, {'code': 'FORBIDDEN', 'message': 'This job is not assigned to you'}));
+    final theirs = await repo.job('theirs') as Failure<TechnicianJobDetailDto>;
+    expect(theirs.kind, FailureKind.forbidden);
+    expect(theirs.message, 'This job is not assigned to you');
+  });
+
+  test('job(id) non-object body → Failure(server)', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, ['not', 'a', 'map']));
+    expect((await repo.job('b1') as Failure).kind, FailureKind.server);
+  });
 }

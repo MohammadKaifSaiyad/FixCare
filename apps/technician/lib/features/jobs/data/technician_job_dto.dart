@@ -4,7 +4,10 @@ part 'technician_job_dto.g.dart';
 
 @freezed
 abstract class JobServiceDto with _$JobServiceDto {
-  const factory JobServiceDto({required String name, required String requiredSkill}) = _JobServiceDto;
+  // categoryId: the job's service category — filters the issue/parts pickers. Nullable so an older
+  // backend (or a fixture) without it still parses; pickers then fall back to unfiltered lists.
+  const factory JobServiceDto({required String name, required String requiredSkill, String? categoryId}) =
+      _JobServiceDto;
   factory JobServiceDto.fromJson(Map<String, dynamic> j) => _$JobServiceDtoFromJson(j);
 }
 
@@ -56,6 +59,30 @@ abstract class TechnicianJobDto with _$TechnicianJobDto {
     @Default(<JobPhotoDto>[]) List<JobPhotoDto> photos,
   }) = _TechnicianJobDto;
   factory TechnicianJobDto.fromJson(Map<String, dynamic> j) => _$TechnicianJobDtoFromJson(j);
+}
+
+/// One cart line as the backend stores it — the snapshot price, never a live catalog read (Golden Rule 4).
+@freezed
+abstract class JobPartLineDto with _$JobPartLineDto {
+  const factory JobPartLineDto({
+    required String id,
+    required String partsCatalogId,
+    required String sku,
+    required String name,
+    required int qty,
+    required int ceilingPricePaise,
+  }) = _JobPartLineDto;
+  factory JobPartLineDto.fromJson(Map<String, dynamic> j) => _$JobPartLineDtoFromJson(j);
+}
+
+/// GET /technician/jobs/:id — the job plus its parts cart. Composed (not a subtype) so every existing
+/// helper/card keeps taking the plain [TechnicianJobDto]. Parsed by [TechnicianJobRepository.job].
+@freezed
+abstract class TechnicianJobDetailDto with _$TechnicianJobDetailDto {
+  const factory TechnicianJobDetailDto({
+    required TechnicianJobDto job,
+    @Default(<JobPartLineDto>[]) List<JobPartLineDto> parts,
+  }) = _TechnicianJobDetailDto;
 }
 
 @freezed

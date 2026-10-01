@@ -59,6 +59,23 @@ class TechnicianJobRepository {
     return _parseList(res);
   });
 
+  /// The job-detail screen's poll target: one job + its parts cart. 403 = not yours, 404 = gone.
+  Future<Result<TechnicianJobDetailDto>> job(String id) => _guard(() async {
+    final res = await _dio.get('/technician/jobs/$id');
+    final status = res.statusCode ?? 0;
+    if (status < 200 || status >= 300) return Failure(failureKindFromStatus(status), _msg(res.data));
+    final data = res.data;
+    if (data is! Map) return const Failure(FailureKind.server, 'Unexpected response from the server.');
+    final map = data.cast<String, dynamic>();
+    final rawParts = map['parts'];
+    return Ok(TechnicianJobDetailDto(
+      job: TechnicianJobDto.fromJson(map),
+      parts: rawParts is List
+          ? rawParts.map((e) => JobPartLineDto.fromJson((e as Map).cast<String, dynamic>())).toList()
+          : const <JobPartLineDto>[],
+    ));
+  });
+
   Future<Result<TechnicianJobDto>> accept(String id) => _guard(() async {
     final res = await _dio.post('/technician/jobs/$id/accept');
     return _ok<TechnicianJobDto>(res, (data) => TechnicianJobDto.fromJson((data as Map).cast<String, dynamic>()));

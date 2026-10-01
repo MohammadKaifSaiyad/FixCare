@@ -10,12 +10,14 @@ _JobServiceDto _$JobServiceDtoFromJson(Map<String, dynamic> json) =>
     _JobServiceDto(
       name: json['name'] as String,
       requiredSkill: json['requiredSkill'] as String,
+      categoryId: json['categoryId'] as String?,
     );
 
 Map<String, dynamic> _$JobServiceDtoToJson(_JobServiceDto instance) =>
     <String, dynamic>{
       'name': instance.name,
       'requiredSkill': instance.requiredSkill,
+      'categoryId': instance.categoryId,
     };
 
 _JobZoneDto _$JobZoneDtoFromJson(Map<String, dynamic> json) =>
@@ -93,6 +95,26 @@ Map<String, dynamic> _$TechnicianJobDtoToJson(_TechnicianJobDto instance) =>
       'address': instance.address,
       'customer': instance.customer,
       'photos': instance.photos,
+    };
+
+_JobPartLineDto _$JobPartLineDtoFromJson(Map<String, dynamic> json) =>
+    _JobPartLineDto(
+      id: json['id'] as String,
+      partsCatalogId: json['partsCatalogId'] as String,
+      sku: json['sku'] as String,
+      name: json['name'] as String,
+      qty: (json['qty'] as num).toInt(),
+      ceilingPricePaise: (json['ceilingPricePaise'] as num).toInt(),
+    );
+
+Map<String, dynamic> _$JobPartLineDtoToJson(_JobPartLineDto instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'partsCatalogId': instance.partsCatalogId,
+      'sku': instance.sku,
+      'name': instance.name,
+      'qty': instance.qty,
+      'ceilingPricePaise': instance.ceilingPricePaise,
     };
 
 _ArriveResultDto _$ArriveResultDtoFromJson(Map<String, dynamic> json) =>

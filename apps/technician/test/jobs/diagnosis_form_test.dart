@@ -49,9 +49,10 @@ class _FakeCatalogRepo extends CatalogRepository {
 /// queue drives (always succeed immediately — no retry/backoff involved in
 /// these tests).
 class _FakeJobRepo extends TechnicianJobRepository {
-  _FakeJobRepo({required this.job}) : super(Dio());
+  // Private `_job`: a public `job` field would collide with TechnicianJobRepository.job(id).
+  _FakeJobRepo({required this._job}) : super(Dio());
 
-  TechnicianJobDto job;
+  final TechnicianJobDto _job;
   int mineCalls = 0;
   int diagnoseCalls = 0;
   ({String id, String issueId})? lastDiagnose;
@@ -60,7 +61,7 @@ class _FakeJobRepo extends TechnicianJobRepository {
   @override
   Future<Result<List<TechnicianJobDto>>> mine() async {
     mineCalls++;
-    return Ok([job]);
+    return Ok([_job]);
   }
 
   @override
