@@ -244,7 +244,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           onPressed: _onArrive,
         );
       case JobAction.diagnose:
-        return DiagnosisForm(job: job);
+        return DiagnosisForm(detail: detail);
       case JobAction.waitingApproval:
         return EstimateSentCard(detail: detail);
       case JobAction.startRepair:

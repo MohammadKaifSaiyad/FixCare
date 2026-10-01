@@ -525,6 +525,7 @@ void main() {
     await _pump(tester, repo);
     expect(find.byType(DiagnosisForm), findsOneWidget);
     expect(find.byKey(const Key('issuePicker')), findsOneWidget);
+    expect(find.byKey(const Key('partsFilter')), findsOneWidget);
     await _disposeTree(tester);
   });
 
