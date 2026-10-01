@@ -596,6 +596,33 @@ void main() {
     await _disposeTree(tester);
   });
 
+  testWidgets('a vanish that clears (transient 404 blip, job unchanged) returns to the job on resume', (tester) async {
+    final binding = tester.binding;
+    addTearDown(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+    final repo = _FakeRepo(initialState: 'EN_ROUTE');
+    await _pump(tester, repo);
+
+    repo.jobResultOverride = const Failure(FailureKind.notFound, 'Job not found');
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(find.text('This job is no longer assigned to you.'), findsOneWidget);
+
+    repo.jobResultOverride = null; // the blip is over; the job is exactly as before
+    for (final st in const [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+      binding.handleAppLifecycleStateChanged(st);
+    }
+    for (final st in const [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      binding.handleAppLifecycleStateChanged(st);
+    }
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('This job is no longer assigned to you.'), findsNothing);
+    expect(find.byKey(const Key('arriveBtn')), findsOneWidget);
+
+    await _disposeTree(tester);
+  });
+
   testWidgets('arrive Failure text uses FixCareColors.errorText (not Colors.red)', (tester) async {
     final repo = _FakeRepo(initialState: 'EN_ROUTE')
       ..arriveResult = const Failure(FailureKind.unknown, 'You are too far from the customer location');

@@ -102,7 +102,9 @@ class JobDetail extends _$JobDetail {
       case Ok(value: final detail):
         _appliedSeq = seq;
         _vanished = false;
-        final current = state.value;
+        // An AsyncError (a vanish) keeps the previous good value, so `state.value` is non-null there too:
+        // never take the "unchanged → no notify" shortcut while errored, or the stale error would linger.
+        final current = state.hasError ? null : state.value;
         if (current != null && _sameIgnoringPhotoUrls(current, detail)) return;
         state = AsyncData(detail);
       case Failure(kind: final k) when _isGone(k):

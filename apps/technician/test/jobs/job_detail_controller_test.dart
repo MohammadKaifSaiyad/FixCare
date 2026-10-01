@@ -431,24 +431,51 @@ void main() {
     });
   });
 
-  test('after a vanish, a successful refetch() recovers the job and re-arms polling', () {
+  test('after a vanish, a successful refetch() of an UNCHANGED job clears the error (AsyncData) and re-arms polling', () {
     fakeAsync((async) {
       final repo = _FakeRepo();
       final container = _container(repo);
-      container.listen(jobDetailProvider('b1'), (_, _) {});
+      final seen = <AsyncValue<TechnicianJobDetailDto>>[];
+      container.listen(jobDetailProvider('b1'), (_, next) => seen.add(next));
       async.flushMicrotasks();
       repo.nextJobResult = const Failure(FailureKind.notFound, 'Job not found');
       async.elapse(jobPollInterval);
       async.flushMicrotasks();
       expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+      final notificationsAfterVanish = seen.length;
 
-      container.read(jobDetailProvider('b1').notifier).refetch();
+      container.read(jobDetailProvider('b1').notifier).refetch(); // same job content as before the vanish
       async.flushMicrotasks();
-      expect(container.read(jobDetailProvider('b1')).value?.job.id, 'b1');
+      final recovered = container.read(jobDetailProvider('b1'));
+      expect(recovered, isA<AsyncData<TechnicianJobDetailDto>>(), reason: 'a stale AsyncError must not linger');
+      expect(recovered.hasError, isFalse);
+      expect(recovered.value?.job.id, 'b1');
+      expect(seen.length, notificationsAfterVanish + 1, reason: 'listeners (the screen) are told it recovered');
+      expect(seen.last, isA<AsyncData<TechnicianJobDetailDto>>());
+
       final calls = repo.jobCalls;
       async.elapse(jobPollInterval);
       async.flushMicrotasks();
       expect(repo.jobCalls, calls + 1, reason: 'polling resumed');
+    });
+  });
+
+  test('a transient 403 blip then resume() (job unchanged) recovers to AsyncData', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.forbidden, 'This job is not assigned to you');
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+
+      container.read(jobDetailProvider('b1').notifier).pause();
+      container.read(jobDetailProvider('b1').notifier).resume();
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')), isA<AsyncData<TechnicianJobDetailDto>>());
+      expect(container.read(jobDetailProvider('b1')).hasError, isFalse);
     });
   });
 
