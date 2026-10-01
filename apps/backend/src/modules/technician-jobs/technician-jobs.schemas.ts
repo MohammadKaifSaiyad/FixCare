@@ -55,3 +55,5 @@ export type ConfirmCompletionBody = z.infer<typeof confirmCompletionBody>;
 
 export const confirmCashBody = z.object({ code: z.string().length(6) }).strict();
 export type ConfirmCashBody = z.infer<typeof confirmCashBody>;
+
+export const jobIdParams = z.object({ id: z.string().min(1).max(64) }).strict();

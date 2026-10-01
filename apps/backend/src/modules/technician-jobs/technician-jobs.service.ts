@@ -5,7 +5,7 @@ import { verifyCompletionCode } from '../bookings/completion-code.js';
 import { haversineMeters } from '../../shared/utils/geo.js';
 import { mintArrivalCode } from '../bookings/arrival-code.js';
 import { ARRIVAL_GEOFENCE_METERS } from '../bookings/bookings.constants.js';
-import { toTechnicianJobDto, type TechnicianJobDto } from './technician-jobs.types.js';
+import { toTechnicianJobDto, toTechnicianJobDetailDto, type TechnicianJobDto, type TechnicianJobDetailDto } from './technician-jobs.types.js';
 import { toPhotoSummaries } from '../bookings/bookings.types.js';
 import { photoStorage } from '../../shared/third-party/r2-storage.js';
 import { randomUUID } from 'node:crypto';
@@ -36,7 +36,7 @@ export async function listAvailableJobs(userId: string): Promise<TechnicianJobDt
     include: { address: true, service: true, customer: { include: { user: true } } },
     orderBy: { createdAt: 'desc' },
   });
-  return bookings.map((b) => toTechnicianJobDto(b, b.address, b.service.requiredSkill, b.customer.user.phone));
+  return bookings.map((b) => toTechnicianJobDto(b, b.address, b.service, b.customer.user.phone));
 }
 
 export async function listMyJobs(userId: string): Promise<TechnicianJobDto[]> {
@@ -46,7 +46,26 @@ export async function listMyJobs(userId: string): Promise<TechnicianJobDto[]> {
     include: { address: true, service: true, customer: { include: { user: true } }, photos: { where: { deletedAt: null } } },
     orderBy: { createdAt: 'desc' },
   });
-  return Promise.all(bookings.map(async (b) => toTechnicianJobDto(b, b.address, b.service.requiredSkill, b.customer.user.phone, await toPhotoSummaries(b.photos))));
+  return Promise.all(bookings.map(async (b) => toTechnicianJobDto(b, b.address, b.service, b.customer.user.phone, await toPhotoSummaries(b.photos))));
+}
+
+/** One job, in full, for its assigned technician — the job-detail screen's poll target (one booking + its
+ *  cart + its photos, instead of the whole history). Any state is readable while assigned. */
+export async function getMyJob(userId: string, bookingId: string): Promise<TechnicianJobDetailDto> {
+  const tech = await requireTechnician(userId);
+  const b = await prisma.booking.findFirst({
+    where: { id: bookingId, deletedAt: null },
+    include: {
+      address: true,
+      service: true,
+      customer: { include: { user: true } },
+      photos: { where: { deletedAt: null } },
+      bookingParts: { orderBy: { createdAt: 'asc' } },
+    },
+  });
+  if (!b) throw new NotFoundError('Job not found');
+  if (b.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you');
+  return toTechnicianJobDetailDto(b, b.address, b.service, b.customer.user.phone, await toPhotoSummaries(b.photos), b.bookingParts);
 }
 
 export async function acceptJob(userId: string, bookingId: string): Promise<TechnicianJobDto> {
@@ -81,7 +100,7 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
     where: { id: bookingId, deletedAt: null },
     include: { address: true, service: true, customer: { include: { user: true } } },
   });
-  return toTechnicianJobDto(full, full.address, full.service.requiredSkill, full.customer.user.phone);
+  return toTechnicianJobDto(full, full.address, full.service, full.customer.user.phone);
 }
 
 export async function skipJob(userId: string, bookingId: string): Promise<void> {
