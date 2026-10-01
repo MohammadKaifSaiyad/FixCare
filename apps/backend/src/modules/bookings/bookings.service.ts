@@ -219,7 +219,7 @@ export async function approveDiagnosis(userId: string, id: string): Promise<Book
   const booking = await ownDiagnosedBookingOrThrow(userId, id);
   const { updated, parts } = await prisma.$transaction(async (tx) => {
     // Read the cart inside the tx so the audit evidence reflects EXACTLY the cart frozen at approval
-    // (the transition makes DIAGNOSED-only add/remove illegal, so the cart cannot change after this).
+    // (the cart was frozen when the technician submitted the diagnosis — part edits are ARRIVED-only).
     const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
     const row = await transitionBooking(
       tx, booking, 'CUSTOMER_APPROVED', { type: 'USER', kind: 'CUSTOMER', id: userId },

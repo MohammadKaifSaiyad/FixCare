@@ -1,12 +1,15 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
 import { prisma, resetDb } from '../schema/helpers.js';
 import { flushTestRedis } from '../helpers/redis.js';
 import { makeCustomer, makeTechnician, seedBookable, seedIssue, seedDiagnosisPhotos } from './helpers.js';
 
-const app = await buildApp();
-afterAll(() => app.close());
-beforeEach(async () => { await resetDb(); await flushTestRedis(); });
+// A fresh app per test: the global rate limiter (100 req/min, in-memory, per app instance) would
+// otherwise be shared by every request in this file, which now exceeds it (429s in the late tests).
+let app: FastifyInstance;
+beforeEach(async () => { app = await buildApp(); await resetDb(); await flushTestRedis(); });
+afterEach(() => app.close());
 function auth(t: string) { return { authorization: `Bearer ${t}` }; }
 function future() { return new Date(Date.now() + 86_400_000).toISOString(); }
 
@@ -55,8 +58,7 @@ describe('diagnose + parts cart', () => {
   });
 
   it('add a part snapshots the ceiling price; a catalog edit after add does NOT change the line', async () => {
-    const { t, bookingId, issue, part } = await arrivedBooking();
-    await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+    const { t, bookingId, part } = await arrivedBooking();
     const add = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 2 } });
     expect(add.statusCode).toBe(201);
     await prisma.partsCatalog.update({ where: { id: part.id }, data: { ceilingPricePaise: 999999 } });
@@ -67,27 +69,67 @@ describe('diagnose + parts cart', () => {
   });
 
   it('qty < 1 → 400; unknown catalog part → 404; remove unknown line → 404', async () => {
-    const { t, bookingId, issue, part } = await arrivedBooking();
-    await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+    const { t, bookingId, part } = await arrivedBooking();
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 0 } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 100 } })).statusCode).toBe(400); // qty cap
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: '00000000-0000-0000-0000-000000000000', qty: 1 } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `/technician/jobs/${bookingId}/parts/00000000-0000-0000-0000-000000000000`, headers: auth(t.token) })).statusCode).toBe(404);
   });
 
-  it('add/remove only while DIAGNOSED; remove works + writes audit', async () => {
-    const { t, bookingId, issue, part } = await arrivedBooking();
-    await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+  it('add/remove work while ARRIVED; remove works + writes audit', async () => {
+    const { t, bookingId, part } = await arrivedBooking();
     const line = (await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 1 } })).json();
     expect((await app.inject({ method: 'DELETE', url: `/technician/jobs/${bookingId}/parts/${line.id}`, headers: auth(t.token) })).statusCode).toBe(204);
     expect(await prisma.bookingPart.count({ where: { bookingId } })).toBe(0);
     const audits = await prisma.auditLog.findMany({ where: { action: 'DIAGNOSIS_UPDATED' } });
-    expect(audits.length).toBeGreaterThanOrEqual(3);
+    expect(audits.length).toBeGreaterThanOrEqual(2); // part_added + part_removed
+  });
+
+  it('after diagnose the cart is locked: add and remove → 409 with the locked message', async () => {
+    const { t, bookingId, issue, part } = await arrivedBooking();
+    const line = (await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 1 } })).json();
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(200);
+    const add = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 1 } });
+    expect(add.statusCode).toBe(409);
+    expect(add.json().message).toBe('The cart is locked — the diagnosis has been submitted');
+    const del = await app.inject({ method: 'DELETE', url: `/technician/jobs/${bookingId}/parts/${line.id}`, headers: auth(t.token) });
+    expect(del.statusCode).toBe(409);
+    expect(del.json().message).toBe('The cart is locked — the diagnosis has been submitted');
+    expect(await prisma.bookingPart.count({ where: { bookingId } })).toBe(1);
+  });
+
+  it('before arrival the cart is not open: add while EN_ROUTE → 409 "Job is not in ARRIVED"', async () => {
+    const c = await makeCustomer();
+    const f = await seedBookable(c.customerId);
+    const t = await makeTechnician(['AC']);
+    const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
+    await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) });
+    await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/en-route`, headers: auth(t.token) });
+    const part = await prisma.partsCatalog.create({ data: { sku: `P-${Math.random().toString(36).slice(2, 8)}`, name: 'Capacitor', ceilingPricePaise: 50000, categoryId: f.cat.id } });
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 1 } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toBe('Job is not in ARRIVED');
+  });
+
+  it('diagnose records the cart it sent (partCount + partsTotalPaise) in the transition evidence', async () => {
+    const { t, bookingId, issue, part } = await arrivedBooking(); // part = 50000 paise
+    await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 2 } });
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(200);
+    const rows = await prisma.auditLog.findMany({ where: { action: 'BOOKING_STATE_CHANGED' } });
+    const toDiagnosed = rows.map((r) => r.metadata as Record<string, unknown>).find((m) => m.bookingId === bookingId && m.to === 'DIAGNOSED');
+    expect(toDiagnosed).toMatchObject({ partCount: 1, partsTotalPaise: 100000 });
+  });
+
+  it('an empty cart is a valid labor-only estimate (partCount 0, partsTotalPaise 0)', async () => {
+    const { t, bookingId, issue } = await arrivedBooking();
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } })).statusCode).toBe(200);
+    const rows = await prisma.auditLog.findMany({ where: { action: 'BOOKING_STATE_CHANGED' } });
+    const toDiagnosed = rows.map((r) => r.metadata as Record<string, unknown>).find((m) => m.bookingId === bookingId && m.to === 'DIAGNOSED');
+    expect(toDiagnosed).toMatchObject({ partCount: 0, partsTotalPaise: 0 });
   });
 
   it('a part from a different category → 422; a generic (null-category) part is allowed', async () => {
-    const { t, bookingId, issue } = await arrivedBooking();
-    await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+    const { t, bookingId } = await arrivedBooking();
     const otherCat = await prisma.serviceCategory.create({ data: { name: `Other-${Math.random().toString(36).slice(2, 8)}` } });
     const wrongPart = await prisma.partsCatalog.create({ data: { sku: `W-${Math.random().toString(36).slice(2, 8)}`, name: 'Wrong', ceilingPricePaise: 1000, categoryId: otherCat.id } });
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId: wrongPart.id, qty: 1 } })).statusCode).toBe(422);
@@ -99,8 +141,8 @@ describe('diagnose + parts cart', () => {
 describe('approve / decline', () => {
   async function diagnosedWithPart() {
     const a = await arrivedBooking();
-    await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/diagnose`, headers: auth(a.t.token), payload: { diagnosedIssueId: a.issue.id } });
     await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/parts`, headers: auth(a.t.token), payload: { partsCatalogId: a.part.id, qty: 1 } });
+    await app.inject({ method: 'POST', url: `/technician/jobs/${a.bookingId}/diagnose`, headers: auth(a.t.token), payload: { diagnosedIssueId: a.issue.id } });
     return a;
   }
 

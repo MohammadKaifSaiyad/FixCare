@@ -13,7 +13,7 @@ import { DIAGNOSIS_KINDS, REPAIR_KINDS, PHOTO_WINDOW, photoKind, type PhotoKindV
 import { verifyCashReceiptCode, cashCollectedLast24hPaise } from '../bookings/cash.js';
 import { config } from '../../shared/config.js';
 import { recordCashCollected } from '../settlements/settlements.service.js';
-import { computeEstimate } from '../bookings/estimate.js';
+import { computeEstimate, sumParts } from '../bookings/estimate.js';
 
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
@@ -111,6 +111,21 @@ async function ownAssignedBookingOrThrow(
   return b;
 }
 
+/** The cart is editable only while the technician is diagnosing (ARRIVED). "Submit diagnosis" sends the
+ *  complete estimate and freezes it, so the customer can only ever approve a final cart (no instant
+ *  labor-only approval, no bait-and-switch). */
+export const CART_LOCKED_MESSAGE = 'The cart is locked — the diagnosis has been submitted';
+
+/** Own + assigned + cart open. After diagnose (`diagnosedAt` set) the message says the cart is locked;
+ *  before arrival it is the usual wrong-state 409. */
+async function ownOpenCartBookingOrThrow(techId: string, bookingId: string) {
+  const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
+  if (!b) throw new NotFoundError('Job not found');
+  if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
+  if (b.state !== 'ARRIVED') throw new ConflictError(b.diagnosedAt ? CART_LOCKED_MESSAGE : 'Job is not in ARRIVED');
+  return b;
+}
+
 /** ACCEPTED → EN_ROUTE ("on my way"). Returns a minimal status object the technician app needs. */
 export async function enRouteJob(userId: string, bookingId: string): Promise<{ id: string; state: 'EN_ROUTE' }> {
   const tech = await requireTechnician(userId);
@@ -165,8 +180,12 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
     if (!DIAGNOSIS_KINDS.every((k) => slots.has(k))) {
       throw new UnprocessableError('2 diagnosis photos required (overview + close-up)');
     }
+    // The cart IS the estimate the customer will approve — snapshot exactly what was sent. Read after the
+    // booking-row lock above: a part add that committed first is included; one racing this tx is rejected
+    // by assertCartStillOpen once the state leaves ARRIVED.
+    const cart = await tx.bookingPart.findMany({ where: { bookingId }, select: { ceilingPricePaise: true, qty: true } });
     // transitionBooking checks the from-state (still ARRIVED in this tx) via its optimistic lock.
-    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id) });
+    await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id), partCount: cart.length, partsTotalPaise: sumParts(cart) });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'diagnosed', diagnosedIssueId: issue.id } } });
   });
   return { id: bookingId, state: 'DIAGNOSED' };
@@ -174,7 +193,7 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
 
 export async function addPart(userId: string, bookingId: string, body: AddPartBody): Promise<{ id: string }> {
   const tech = await requireTechnician(userId);
-  const booking = await ownAssignedBookingOrThrow(tech.id, bookingId, 'DIAGNOSED');
+  const booking = await ownOpenCartBookingOrThrow(tech.id, bookingId);
   const cat = await prisma.partsCatalog.findFirst({ where: { id: body.partsCatalogId, deletedAt: null, status: 'ACTIVE' } });
   if (!cat) throw new NotFoundError('Part not found');
   // A category-scoped part must match the booking's service category (no padding the cart with
@@ -183,9 +202,8 @@ export async function addPart(userId: string, bookingId: string, body: AddPartBo
     throw new UnprocessableError('This part does not apply to this service category');
   }
   const line = await prisma.$transaction(async (tx) => {
-    // Re-assert DIAGNOSED inside the tx (optimistic guard, same idiom as transitionBooking): if the
-    // customer approved/declined concurrently the cart is frozen, so this matches 0 rows → reject.
-    await assertStillDiagnosed(tx, bookingId);
+    // Re-assert ARRIVED inside the tx (optimistic guard): if "Submit diagnosis" committed concurrently the cart is frozen, so this matches 0 rows → reject.
+    await assertCartStillOpen(tx, bookingId);
     const created = await tx.bookingPart.create({
       data: { bookingId, partsCatalogId: cat.id, sku: cat.sku, name: cat.name, ceilingPricePaise: cat.ceilingPricePaise, qty: body.qty },
     });
@@ -207,18 +225,18 @@ async function assertStillInState(
   if (r.count === 0) throw new ConflictError(message);
 }
 
-/** Cart freeze: a concurrent approve/decline already left DIAGNOSED. */
-async function assertStillDiagnosed(tx: import('@prisma/client').Prisma.TransactionClient, bookingId: string): Promise<void> {
-  await assertStillInState(tx, bookingId, 'DIAGNOSED', 'The cart is frozen — the booking is no longer in DIAGNOSED');
+/** Cart freeze: a concurrent "Submit diagnosis" already moved the booking out of ARRIVED. */
+async function assertCartStillOpen(tx: import('@prisma/client').Prisma.TransactionClient, bookingId: string): Promise<void> {
+  await assertStillInState(tx, bookingId, 'ARRIVED', CART_LOCKED_MESSAGE);
 }
 
 export async function removePart(userId: string, bookingId: string, partId: string): Promise<void> {
   const tech = await requireTechnician(userId);
-  await ownAssignedBookingOrThrow(tech.id, bookingId, 'DIAGNOSED');
+  await ownOpenCartBookingOrThrow(tech.id, bookingId);
   const line = await prisma.bookingPart.findFirst({ where: { id: partId, bookingId } });
   if (!line) throw new NotFoundError('Part line not found');
   await prisma.$transaction(async (tx) => {
-    await assertStillDiagnosed(tx, bookingId);
+    await assertCartStillOpen(tx, bookingId);
     // deleteMany (scoped to {id, bookingId}) is idempotent — a concurrent double-remove deletes 0 rows
     // instead of throwing Prisma P2025; the findFirst above already established the 404 case.
     await tx.bookingPart.deleteMany({ where: { id: partId, bookingId } });
