@@ -359,13 +359,24 @@ class _DiagnosisCardState extends ConsumerState<_DiagnosisCard> {
                     child: Text('${p.name} × ${p.qty}',
                         style: const TextStyle(fontSize: 13.5, color: FixCareColors.textSecondary)),
                   ),
-                  Text(rupees(p.ceilingPricePaise),
+                  // The LINE total (price × qty) — matches what the technician's app shows for the line.
+                  Text(rupees(p.ceilingPricePaise * p.qty),
                       style: const TextStyle(fontSize: 13.5, color: FixCareColors.textSecondary)),
                 ],
               ),
             ),
         ],
         const Divider(height: 24, color: FixCareColors.border),
+        // The breakdown the total is made of, so the card reconciles on its own (labor + parts − credit).
+        _EstimateRow(key: const Key('estimateLaborRow'), label: 'Labor', amount: rupees(b.estimate.laborPaise)),
+        if (b.parts.isNotEmpty)
+          _EstimateRow(key: const Key('estimatePartsRow'), label: 'Parts', amount: rupees(b.estimate.partsPaise)),
+        _EstimateRow(
+          key: const Key('estimateVisitCreditRow'),
+          label: 'Visit fee credit',
+          amount: '−${rupees(b.estimate.visitFeeCreditPaise)}',
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             const Expanded(
@@ -393,6 +404,27 @@ class _DiagnosisCardState extends ConsumerState<_DiagnosisCard> {
           child: const Text('Decline'),
         ),
       ],
+    );
+  }
+}
+
+/// One label/amount line of the approve card's estimate breakdown.
+class _EstimateRow extends StatelessWidget {
+  const _EstimateRow({super.key, required this.label, required this.amount});
+  final String label;
+  final String amount;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 13.5, color: FixCareColors.textSecondary);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(amount, style: style),
+        ],
+      ),
     );
   }
 }
