@@ -587,6 +587,27 @@ void main() {
     await _disposeTree(tester);
   });
 
+  testWidgets('a 403 "Verified technician required" (suspended) shows that message verbatim, not the vanished copy, and stops polling',
+      (tester) async {
+    final repo = _FakeRepo(initialState: 'EN_ROUTE');
+    await _pump(tester, repo);
+    expect(find.byKey(const Key('arriveBtn')), findsOneWidget);
+
+    repo.jobResultOverride = const Failure(FailureKind.forbidden, 'Verified technician required');
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+
+    expect(find.text('Verified technician required'), findsOneWidget);
+    expect(find.text('This job is no longer assigned to you.'), findsNothing);
+    expect(find.text("Couldn't load this job."), findsNothing);
+    expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
+    final calls = repo.jobCalls;
+    await tester.pump(const Duration(seconds: 30));
+    expect(repo.jobCalls, calls, reason: 'polling stopped');
+
+    await _disposeTree(tester);
+  });
+
   testWidgets('a job reassigned/cancelled mid-poll (404) shows its own message, not the generic one',
       (tester) async {
     final repo = _FakeRepo(initialState: 'EN_ROUTE');

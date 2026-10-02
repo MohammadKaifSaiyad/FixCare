@@ -27,26 +27,37 @@ final partsCatalogProvider =
 /// The parts section of the diagnosis form (ARRIVED). The cart shown is ALWAYS the backend's
 /// (`detail.parts`): every add/remove goes to the backend and then refetches the job — whatever the
 /// outcome — so an app restart, a lost response, or a locked cart can never show a stale or duplicated
-/// cart. Catalog prices only (Golden Rule 4): the technician picks a part and a qty, never a price.
+/// cart. If that refetch fails, the cart on screen is marked unconfirmed (Submit stays blocked) until a
+/// fetch succeeds. Catalog prices only (Golden Rule 4): the technician picks a part and a qty, never a price.
 class PartsSection extends ConsumerStatefulWidget {
-  const PartsSection({super.key, required this.detail, required this.onBusyChanged});
+  const PartsSection({super.key, required this.detail, required this.onBusyChanged, this.enabled = true});
 
   final TechnicianJobDetailDto detail;
 
-  /// Whether any cart edit is in flight — the form blocks "Submit diagnosis" until the cart settles, so the
-  /// estimate sent is exactly the one on screen.
+  /// Whether the cart is unsettled — an edit in flight, or the cart on screen not yet confirmed by the
+  /// server. The form blocks "Submit diagnosis" while true, so the estimate sent is the one on screen.
   final ValueChanged<bool> onBusyChanged;
+
+  /// False while the estimate is being sent (confirm dialog open / diagnose in flight): every cart control
+  /// is disabled, so nothing can change between "Send estimate" and the backend freezing the cart.
+  final bool enabled;
 
   @override
   ConsumerState<PartsSection> createState() => _PartsSectionState();
 }
 
+/// With an empty filter the catalog list shows at most this many rows (low-end devices: a plain Column,
+/// no lazy list inside the screen's ListView) — typing narrows to every match.
+const _unfilteredPartRows = 8;
+
 class _PartsSectionState extends ConsumerState<PartsSection> {
   final _filterController = TextEditingController();
   String _filter = '';
-  final Map<String, int> _qty = {}; // selected qty per catalog part (1..99, default 1) — UI-only until Add
   final Set<String> _busyPartIds = {};
   final Set<String> _busyLineIds = {};
+  // The last refetch after a cart edit failed: what the server holds may differ from the screen.
+  bool _cartUnconfirmed = false;
+  bool _retrying = false;
 
   @override
   void initState() {
@@ -54,7 +65,25 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
     _filterController.addListener(_onFilterChanged);
   }
 
-  void _onFilterChanged() => setState(() => _filter = _filterController.text.trim().toLowerCase());
+  // The controller also notifies on cursor/selection moves — rebuild only when the filter text changed.
+  void _onFilterChanged() {
+    final next = _filterController.text.trim().toLowerCase();
+    if (next == _filter) return;
+    setState(() => _filter = next);
+  }
+
+  @override
+  void didUpdateWidget(PartsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new job arriving (the poll applied a changed job) is the server's cart again — confirmed. The
+    // parent's busy flag is updated after this frame (never setState an ancestor mid-build).
+    if (_cartUnconfirmed && oldWidget.detail != widget.detail) {
+      _cartUnconfirmed = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reportBusy();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -64,32 +93,45 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
   }
 
   String get _jobId => widget.detail.job.id;
-  int _qtyFor(String partId) => _qty[partId] ?? 1;
-  void _incQty(String partId) => setState(() => _qty[partId] = (_qtyFor(partId) + 1).clamp(1, 99));
-  void _decQty(String partId) => setState(() => _qty[partId] = (_qtyFor(partId) - 1).clamp(1, 99));
 
-  void _reportBusy() => widget.onBusyChanged(_busyPartIds.isNotEmpty || _busyLineIds.isNotEmpty);
+  void _reportBusy() => widget.onBusyChanged(
+      _busyPartIds.isNotEmpty || _busyLineIds.isNotEmpty || _cartUnconfirmed || _retrying);
 
   void _snack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _addPart(PartCatalogDto part) async {
-    if (_busyPartIds.contains(part.id)) return;
+  /// Refetch the job so the cart on screen is the server's; a failed (or throwing) refetch leaves it
+  /// unconfirmed. Never throws.
+  Future<void> _confirmCart(JobDetail detail) async {
+    if (!mounted) return;
+    var ok = false;
+    try {
+      ok = await detail.refetch();
+    } catch (_) {
+      ok = false;
+    }
+    if (mounted) setState(() => _cartUnconfirmed = !ok);
+  }
+
+  Future<void> _addPart(PartCatalogDto part, int qty) async {
+    if (!widget.enabled || _busyPartIds.contains(part.id)) return;
     final repo = ref.read(technicianJobRepositoryProvider);
     final detail = ref.read(jobDetailProvider(_jobId).notifier);
     setState(() => _busyPartIds.add(part.id));
     _reportBusy();
     try {
-      final result = await repo.addPart(_jobId, partsCatalogId: part.id, qty: _qtyFor(part.id));
-      if (result case Failure(message: final m)) _snack(m);
-    } catch (_) {
-      _snack('Something went wrong.');
-    } finally {
+      try {
+        final result = await repo.addPart(_jobId, partsCatalogId: part.id, qty: qty);
+        if (result case Failure(message: final m)) _snack(m);
+      } catch (_) {
+        _snack('Something went wrong.');
+      }
       // Refetch on EVERY outcome: a timed-out add the backend applied shows up; a 409 locked / 403
       // not-assigned moves the screen on. The cart on screen is always the server's.
-      if (mounted) await detail.refetch();
+      await _confirmCart(detail);
+    } finally {
       if (mounted) {
         setState(() => _busyPartIds.remove(part.id));
         _reportBusy();
@@ -98,20 +140,37 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
   }
 
   Future<void> _removeLine(JobPartLineDto line) async {
-    if (_busyLineIds.contains(line.id)) return;
+    if (!widget.enabled || _busyLineIds.contains(line.id)) return;
     final repo = ref.read(technicianJobRepositoryProvider);
     final detail = ref.read(jobDetailProvider(_jobId).notifier);
     setState(() => _busyLineIds.add(line.id));
     _reportBusy();
     try {
-      final result = await repo.removePart(_jobId, line.id);
-      if (result case Failure(message: final m)) _snack(m);
-    } catch (_) {
-      _snack('Something went wrong.');
+      try {
+        final result = await repo.removePart(_jobId, line.id);
+        if (result case Failure(message: final m)) _snack(m);
+      } catch (_) {
+        _snack('Something went wrong.');
+      }
+      await _confirmCart(detail);
     } finally {
-      if (mounted) await detail.refetch();
       if (mounted) {
         setState(() => _busyLineIds.remove(line.id));
+        _reportBusy();
+      }
+    }
+  }
+
+  Future<void> _retryConfirm() async {
+    if (!widget.enabled || _retrying) return;
+    final detail = ref.read(jobDetailProvider(_jobId).notifier);
+    setState(() => _retrying = true);
+    _reportBusy();
+    try {
+      await _confirmCart(detail);
+    } finally {
+      if (mounted) {
+        setState(() => _retrying = false);
         _reportBusy();
       }
     }
@@ -129,6 +188,7 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
         TextField(
           key: const Key('partsFilter'),
           controller: _filterController,
+          enabled: widget.enabled,
           decoration: const InputDecoration(labelText: 'Filter parts'),
         ),
         const SizedBox(height: 12),
@@ -138,6 +198,22 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
           const Text('In this estimate', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           for (final line in detail.parts) _buildCartLine(line),
+        ],
+        if (_cartUnconfirmed) ...[
+          const SizedBox(height: 12),
+          Row(
+            key: const Key('cartUnconfirmedNotice'),
+            children: [
+              const Expanded(
+                child: Text("Couldn't confirm the latest parts.", style: TextStyle(color: FixCareColors.errorText)),
+              ),
+              TextButton(
+                key: const Key('cartUnconfirmedRetry'),
+                onPressed: widget.enabled && !_retrying ? _retryConfirm : null,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ],
         const SizedBox(height: 16),
         Text(
@@ -171,7 +247,9 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
           alignment: Alignment.centerLeft,
           child: TextButton(
             key: const Key('partsRetry'),
-            onPressed: () => ref.invalidate(partsCatalogProvider(widget.detail.job.service.categoryId)),
+            onPressed: widget.enabled
+                ? () => ref.invalidate(partsCatalogProvider(widget.detail.job.service.categoryId))
+                : null,
             child: const Text('Retry'),
           ),
         ),
@@ -180,39 +258,34 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
   }
 
   Widget _partsColumn(List<PartCatalogDto> parts) {
-    final filtered = _filter.isEmpty ? parts : parts.where((p) => p.name.toLowerCase().contains(_filter)).toList();
+    final matches = _filter.isEmpty ? parts : parts.where((p) => p.name.toLowerCase().contains(_filter)).toList();
+    if (matches.isEmpty) {
+      return const Text('No matching parts', key: Key('partsEmpty'), style: TextStyle(color: FixCareColors.textMuted));
+    }
+    final shown = _filter.isEmpty && matches.length > _unfilteredPartRows ? matches.take(_unfilteredPartRows).toList() : matches;
+    final hidden = matches.length - shown.length;
     // Low-end devices: a plain Column of rows (no nested scrollable inside the screen's ListView).
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final p in filtered) _buildPartRow(p)]);
-  }
-
-  Widget _buildPartRow(PartCatalogDto part) {
-    final qty = _qtyFor(part.id);
-    final busy = _busyPartIds.contains(part.id);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(part.name),
-                Text(rupees(part.ceilingPricePaise), style: const TextStyle(fontSize: 12, color: FixCareColors.textMuted)),
-              ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final p in shown)
+          _PartRow(
+            key: ValueKey(p.id),
+            part: p,
+            busy: _busyPartIds.contains(p.id),
+            enabled: widget.enabled,
+            onAdd: (qty) => _addPart(p, qty),
+          ),
+        if (hidden > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Type to find more parts ($hidden more)',
+              key: const Key('partsMoreHint'),
+              style: const TextStyle(fontSize: 12, color: FixCareColors.textMuted),
             ),
           ),
-          IconButton(key: Key('qtyMinus_${part.id}'), icon: const Icon(Icons.remove), onPressed: busy ? null : () => _decQty(part.id)),
-          Text('$qty'),
-          IconButton(key: Key('qtyPlus_${part.id}'), icon: const Icon(Icons.add), onPressed: busy ? null : () => _incQty(part.id)),
-          FilledButton(
-            key: Key('addPartBtn_${part.id}'),
-            onPressed: busy ? null : () => _addPart(part),
-            child: busy
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Add'),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -226,8 +299,69 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
           Expanded(child: Text('${line.name} × ${line.qty} · ${rupees(line.ceilingPricePaise * line.qty)}')),
           IconButton(
             key: Key('removePartBtn_${line.id}'),
+            tooltip: 'Remove part',
             icon: const Icon(Icons.delete_outline),
-            onPressed: busy ? null : () => _removeLine(line),
+            onPressed: busy || !widget.enabled ? null : () => _removeLine(line),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One catalog part with its own qty stepper — a qty tap rebuilds only this row. `busy` (an add of this
+/// part in flight) comes from the section.
+class _PartRow extends StatefulWidget {
+  const _PartRow({super.key, required this.part, required this.busy, required this.enabled, required this.onAdd});
+
+  final PartCatalogDto part;
+  final bool busy;
+  final bool enabled;
+  final ValueChanged<int> onAdd;
+
+  @override
+  State<_PartRow> createState() => _PartRowState();
+}
+
+class _PartRowState extends State<_PartRow> {
+  int _qty = 1; // 1..99 (the backend's per-line cap) — UI-only until Add
+
+  @override
+  Widget build(BuildContext context) {
+    final part = widget.part;
+    final active = widget.enabled && !widget.busy;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(part.name),
+                Text(rupees(part.ceilingPricePaise), style: const TextStyle(fontSize: 12, color: FixCareColors.textMuted)),
+              ],
+            ),
+          ),
+          IconButton(
+            key: Key('qtyMinus_${part.id}'),
+            tooltip: 'Fewer',
+            icon: const Icon(Icons.remove),
+            onPressed: active ? () => setState(() => _qty = (_qty - 1).clamp(1, 99)) : null,
+          ),
+          Text('$_qty'),
+          IconButton(
+            key: Key('qtyPlus_${part.id}'),
+            tooltip: 'More',
+            icon: const Icon(Icons.add),
+            onPressed: active ? () => setState(() => _qty = (_qty + 1).clamp(1, 99)) : null,
+          ),
+          FilledButton(
+            key: Key('addPartBtn_${part.id}'),
+            onPressed: active ? () => widget.onAdd(_qty) : null,
+            child: widget.busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Add'),
           ),
         ],
       ),

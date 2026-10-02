@@ -185,7 +185,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       body: SafeArea(
         child: switch (async) {
           AsyncData(value: final detail) => _buildBody(detail),
-          AsyncError(:final error) => _buildError(error is JobVanishedException ? error.toString() : null),
+          AsyncError(:final error) =>
+            _buildError(error is JobVanishedException || error is JobAccessException ? error.toString() : null),
           _ => const Center(child: CircularProgressIndicator()),
         },
       ),
@@ -193,7 +194,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   }
 
   /// [specificMessage] is shown verbatim when the error is one the screen
-  /// knows how to explain (e.g. the vanished-job case); otherwise the generic
+  /// knows how to explain (the vanished-job copy, or the backend's own 403
+  /// message such as "Verified technician required"); otherwise the generic
   /// copy is kept so an ordinary fetch failure isn't over-explained.
   Widget _buildError(String? specificMessage) {
     return Center(

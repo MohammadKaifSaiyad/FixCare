@@ -76,6 +76,22 @@ class _FakeRepo extends TechnicianJobRepository {
   }
 }
 
+/// job(id) throws (a non-Failure error escaping the repository) while `throwing` is set; otherwise Ok.
+class _ThrowingRepo extends TechnicianJobRepository {
+  _ThrowingRepo() : super(Dio());
+  bool throwing = false;
+  int jobCalls = 0;
+  String state = 'EN_ROUTE';
+  @override
+  Future<Result<List<TechnicianJobDto>>> mine() async => throw StateError(_mineForbidden);
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    jobCalls++;
+    if (throwing) throw StateError('boom');
+    return _d(state);
+  }
+}
+
 ProviderContainer _container(TechnicianJobRepository repo) {
   final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
   addTearDown(c.dispose);
@@ -493,6 +509,125 @@ void main() {
       expect(repo.calls, 2);
       async.elapse(const Duration(minutes: 1));
       expect(repo.calls, 2);
+    });
+  });
+
+  test('refetch() reports the outcome: true on Ok (changed or unchanged), false on a Failure', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      final results = <bool>[];
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // unchanged job → still confirmed
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add);
+      async.flushMicrotasks();
+      repo.current = _j('ARRIVED');
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // changed → applied
+      async.flushMicrotasks();
+      expect(results, [true, false, true]);
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
+    });
+  });
+
+  test('refetch() whose response is dropped as stale reports false', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED'));
+      async.flushMicrotasks();
+      final results = <bool>[];
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // #2 (older)
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // #3 (newer)
+      async.flushMicrotasks();
+      repo.pending[2].complete(_d('DIAGNOSED'));
+      async.flushMicrotasks();
+      repo.pending[1].complete(_d('ARRIVED')); // lands late → dropped
+      async.flushMicrotasks();
+      expect(results, [true, false]);
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
+      c.read(jobDetailProvider('b1').notifier).pause();
+    });
+  });
+
+  test('a job() that THROWS keeps the last good state, keeps polling, and refetch() reports false', () {
+    fakeAsync((async) {
+      final repo = _ThrowingRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'EN_ROUTE');
+
+      repo.throwing = true;
+      async.elapse(jobPollInterval); // a poll whose fetch throws
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'EN_ROUTE', reason: 'keep last good');
+      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
+      final results = <bool>[];
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add);
+      async.flushMicrotasks();
+      expect(results, [false]);
+
+      repo.throwing = false;
+      repo.state = 'ARRIVED';
+      final calls = repo.jobCalls;
+      async.elapse(jobPollInterval);
+      expect(repo.jobCalls, calls + 1, reason: 'the poll chain survived the throw');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
+    });
+  });
+
+  test('403 other than "not assigned" (e.g. suspended) → AsyncError(JobAccessException) with the backend message; polling stops', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.forbidden, 'Verified technician required');
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      final s = c.read(jobDetailProvider('b1'));
+      expect(s.error, isA<JobAccessException>());
+      expect(s.error, isNot(isA<JobVanishedException>()));
+      expect(s.error.toString(), 'Verified technician required');
+      final calls = repo.jobCalls;
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, calls, reason: 'polling stopped');
+    });
+  });
+
+  test('403 "Verified technician required" on first load → AsyncError(JobAccessException), not retried', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo()..nextJobResult = const Failure(FailureKind.forbidden, 'Verified technician required');
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).error, isA<JobAccessException>());
+      expect(c.read(jobDetailProvider('b1')).error.toString(), 'Verified technician required');
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, 1);
+    });
+  });
+
+  test('a refetch that lands before the first load keeps the newer response (first load never regresses it)', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(repo.calls, 1); // first load in flight
+      c.read(jobDetailProvider('b1').notifier).resume(); // e.g. foregrounded mid-load
+      async.flushMicrotasks();
+      expect(repo.calls, 2);
+      repo.pending[1].complete(_d('DIAGNOSED')); // the newer one lands first
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED')); // the first load lands late
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
+      c.read(jobDetailProvider('b1').notifier).pause();
     });
   });
 }
