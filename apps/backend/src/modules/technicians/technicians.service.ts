@@ -1,10 +1,12 @@
-import type { Prisma, Technician } from '@prisma/client';
+import type { Prisma, Technician, TechnicianStatus } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../shared/errors.js';
 import { findActiveZones, zoneRefs } from '../catalog/catalog.service.js';
-import { toTechnicianProfileDto, type TechnicianProfileDto } from './technicians.types.js';
-import type { TechnicianPatchBody } from './technicians.schemas.js';
-import { applyTechnicianTransition, INVALID_TECHNICIAN_TRANSITION } from './technicians.lifecycle.js';
+import { countActiveJobsForTechnician } from '../bookings/bookings.state.js';
+import type { ZoneRef } from '../catalog/catalog.types.js';
+import { toAdminTechnicianDto, toTechnicianProfileDto, type AdminTechnicianDto, type TechnicianProfileDto } from './technicians.types.js';
+import type { AdminTechnicianPatchBody, TechnicianPatchBody } from './technicians.schemas.js';
+import { applyTechnicianTransition, INVALID_TECHNICIAN_TRANSITION, type TechnicianReviewAction } from './technicians.lifecycle.js';
 
 /** The technician's own edits are allowed only while PENDING (new, or sent back by ops). */
 export const PROFILE_LOCKED = 'PROFILE_LOCKED';
@@ -74,4 +76,64 @@ export async function submitForReview(userId: string): Promise<TechnicianProfile
   }
   await prisma.$transaction((tx) => applyTechnicianTransition(tx, t.id, 'submit', { type: 'USER', id: userId }));
   return getTechnicianProfile(userId);
+}
+
+const adminInclude = { user: { select: { phone: true } }, zones: { select: { zoneId: true } } } satisfies Prisma.TechnicianInclude;
+type AdminRow = Prisma.TechnicianGetPayload<{ include: typeof adminInclude }>;
+
+async function toAdminDtos(rows: AdminRow[]): Promise<AdminTechnicianDto[]> {
+  const refs = await zoneRefs([...new Set(rows.flatMap((r) => r.zones.map((z) => z.zoneId)))]);
+  const byId = new Map(refs.map((z) => [z.id, z]));
+  return rows.map((r) => {
+    const zones = r.zones.map((z) => byId.get(z.zoneId)).filter((z): z is ZoneRef => z !== undefined);
+    return toAdminTechnicianDto(r, r.user.phone, zones.sort((a, b) => a.name.localeCompare(b.name)));
+  });
+}
+
+async function getAdminTechnician(technicianId: string): Promise<AdminTechnicianDto> {
+  const row = await prisma.technician.findFirst({ where: { id: technicianId, deletedAt: null }, include: adminInclude });
+  if (!row) throw new NotFoundError('Technician not found');
+  return (await toAdminDtos([row]))[0]!;
+}
+
+/** Ops' review queue: oldest submission first (never-submitted last), then oldest account. */
+export async function listTechnicians(status?: TechnicianStatus): Promise<AdminTechnicianDto[]> {
+  const rows = await prisma.technician.findMany({
+    where: { deletedAt: null, ...(status ? { status } : {}) },
+    include: adminInclude,
+    orderBy: [{ submittedAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+  });
+  return toAdminDtos(rows);
+}
+
+export async function reviewTechnician(
+  adminUserId: string,
+  technicianId: string,
+  action: Exclude<TechnicianReviewAction, 'submit'>,
+  reason?: string,
+): Promise<AdminTechnicianDto> {
+  await prisma.$transaction(async (tx) => {
+    const t = await tx.technician.findFirst({ where: { id: technicianId, deletedAt: null }, select: { id: true } });
+    if (!t) throw new NotFoundError('Technician not found');
+    if (action === 'suspend' && (await countActiveJobsForTechnician(tx, technicianId)) > 0) {
+      throw new ConflictError('This technician has an active job — resolve it before suspending', 'TECHNICIAN_HAS_ACTIVE_JOB');
+    }
+    await applyTechnicianTransition(tx, technicianId, action, { type: 'ADMIN', id: adminUserId }, reason);
+  });
+  return getAdminTechnician(technicianId);
+}
+
+/** Ops changes skills / zones in any status (the technician's own edits stop at submit). */
+export async function adminUpdateTechnician(adminUserId: string, technicianId: string, patch: AdminTechnicianPatchBody): Promise<AdminTechnicianDto> {
+  if (patch.zoneIds) await assertActiveZones(patch.zoneIds);
+  await prisma.$transaction(async (tx) => {
+    const t = await tx.technician.findFirst({ where: { id: technicianId, deletedAt: null }, select: { id: true } });
+    if (!t) throw new NotFoundError('Technician not found');
+    if (patch.skills) await tx.technician.update({ where: { id: t.id }, data: { skills: patch.skills } });
+    if (patch.zoneIds) await replaceZones(tx, t.id, patch.zoneIds);
+    await tx.auditLog.create({
+      data: { action: 'PROFILE_UPDATED', actorType: 'ADMIN', actorId: adminUserId, subjectId: t.id, metadata: { fields: Object.keys(patch), by: 'admin' } },
+    });
+  });
+  return getAdminTechnician(technicianId);
 }

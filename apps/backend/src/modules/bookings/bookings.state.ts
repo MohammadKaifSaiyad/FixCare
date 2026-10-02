@@ -101,3 +101,15 @@ export async function transitionBooking(
   const updated = await tx.booking.findUniqueOrThrow({ where: { id: booking.id } });
   return updated;
 }
+
+/** Assigned-booking states in which the technician still has work (or a cash collection) left. Ops may not
+ *  suspend a technician mid-job — every job route requires VERIFIED, so it would strand the customer.
+ *  PAYMENT_RECEIVED onward, cancellations and DISPUTED (ops owns it) need nothing more from them. */
+export const TECHNICIAN_ACTIVE_STATES: readonly BookingState[] = [
+  'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'DIAGNOSED', 'CUSTOMER_APPROVED', 'PARTS_REQUESTED', 'PARTS_ACQUIRED',
+  'REPAIR_IN_PROGRESS', 'REPAIR_COMPLETE', 'CUSTOMER_CONFIRMED', 'DECLINED_BY_CUSTOMER',
+];
+
+export async function countActiveJobsForTechnician(tx: Prisma.TransactionClient, technicianId: string): Promise<number> {
+  return tx.booking.count({ where: { technicianId, deletedAt: null, state: { in: [...TECHNICIAN_ACTIVE_STATES] } } });
+}

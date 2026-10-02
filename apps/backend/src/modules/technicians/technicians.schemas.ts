@@ -15,3 +15,18 @@ export const technicianPatchBody = z
   .strict()
   .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
 export type TechnicianPatchBody = z.infer<typeof technicianPatchBody>;
+
+export const technicianIdParams = z.object({ id: z.string().uuid('Invalid technician id') });
+
+export const listTechniciansQuery = z
+  .object({ status: z.enum(['PENDING', 'KYC_SUBMITTED', 'VERIFIED', 'SUSPENDED', 'DEACTIVATED']).optional() })
+  .strict();
+
+export const reasonBody = z.object({ reason: z.string().trim().min(1, 'reason is required').max(500, 'reason is too long') }).strict();
+
+export const adminTechnicianPatchBody = z
+  .object({ skills: skillsField, zoneIds: zoneIdsField })
+  .partial()
+  .strict()
+  .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' });
+export type AdminTechnicianPatchBody = z.infer<typeof adminTechnicianPatchBody>;
