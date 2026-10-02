@@ -91,12 +91,31 @@ model Technician {
   // tx — the row update is also the lock serializing concurrent captures). B6c settlement decrements;
   // its ledger becomes the source of truth and this stays the cached balance. Never negative in B6b.
   cashDebtPaise Int @default(0)
+  // Slice 3 review loop. reviewNote = ops' reason when sending back or suspending (shown to the
+  // technician; cleared on verify / reinstate). submittedAt = last submit; reviewedAt = last ops decision.
+  reviewNote  String?
+  submittedAt DateTime?
+  reviewedAt  DateTime?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   deletedAt DateTime?
   bookings       Booking[]
   jobSkips       JobSkip[]
   ledgerEntries  LedgerEntry[]
+  zones          TechnicianZone[]
+}
+
+/// The service zones a technician works in. Dispatch only offers / lets them accept a booking whose
+/// snapshotted zoneId is one of these. Replaced wholesale on edit (technician while PENDING, ops any time).
+model TechnicianZone {
+  technicianId String
+  zoneId       String
+  createdAt    DateTime   @default(now())
+  technician   Technician @relation(fields: [technicianId], references: [id])
+  zone         Zone       @relation(fields: [zoneId], references: [id])
+
+  @@id([technicianId, zoneId])
+  @@index([zoneId])
 }
 
 model Merchant {
@@ -203,6 +222,7 @@ enum AuditAction {
   PAYMENT_EVENT
   SETTLEMENT_EVENT
   DISPUTE_EVENT
+  TECHNICIAN_STATUS_CHANGED
 }
 
 // =============================================================================
@@ -219,6 +239,7 @@ model Zone {
   servicePrices ServicePrice[]
   pincodeZones  PincodeZone[]
   addresses     Address[]
+  technicians   TechnicianZone[]
 }
 
 model ServiceCategory {
