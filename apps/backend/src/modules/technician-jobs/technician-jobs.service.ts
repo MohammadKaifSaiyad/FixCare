@@ -91,7 +91,7 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   if (!tech.zoneIds.includes(booking.zoneId)) throw new ForbiddenError('This job is outside your service zones', JOB_OUT_OF_ZONE);
   // B6c accept-gate (core-flow: "technician at cash debt limit → cannot accept"). Deferred from
   // B6b until settlement existed — auto-offset now gives a self-healing path out of the lockout.
-  // Note: requireTechnician returns only {id, skills}, so cashDebtPaise is fetched separately here.
+  // Note: requireTechnician returns {id, skills, zoneIds} (no cash debt), so cashDebtPaise is fetched separately here.
   // Pre-tx check, UX friction ONLY — a concurrent settlement could flip this between the read and
   // the accept tx. Deliberately NOT a financial invariant (no money moves in accept).
   const techRow = await prisma.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });

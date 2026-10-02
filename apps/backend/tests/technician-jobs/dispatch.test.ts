@@ -34,7 +34,7 @@ describe('technician dispatch — available + accept + skip', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId); // requiredSkill 'AC'
     await book(c.token, f.address.id, f.service.id);
-    const fan = await makeTechnician(['FAN']);
+    const fan = await makeTechnician(['FAN'], 'VERIFIED', [f.zone.id]);
     expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(fan.token) })).json()).toHaveLength(0);
     const pending = await makeTechnician(['AC'], 'PENDING');
     expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(pending.token) })).statusCode).toBe(403);
@@ -62,7 +62,7 @@ describe('technician dispatch — available + accept + skip', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const booking = await book(c.token, f.address.id, f.service.id);
-    const fan = await makeTechnician(['FAN']);
+    const fan = await makeTechnician(['FAN'], 'VERIFIED', [f.zone.id]);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(fan.token) })).statusCode).toBe(403);
     const ac1 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(ac1.token) });
