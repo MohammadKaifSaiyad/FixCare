@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-02_
 
 ---
 
@@ -30,8 +30,18 @@ no longer approve an estimate the technician is still editing, and the technicia
   estimate** (2 photos + category-filtered issue picker + server-backed parts cart + "Customer will see: ₹…" + a
   confirm dialog before sending; Submit blocked while a cart edit is in flight). DIAGNOSED is a read-only "Estimate
   sent — waiting for the customer to approve or decline" card with the frozen lines + total. Session-only cart removed.
-  Customer app unchanged.
-- **Gates:** technician app **268 tests, analyze clean**; backend **383/383 (67 files), tsc clean**.
+- **Final-review fix wave (4 commits):** backend — one line per part (409) + 20-line cap (422), per-line audit
+  evidence on diagnose/add/remove (remove audits only a real delete), decline evidence parity, ownership + race tests;
+  technician — `refetch()` reports success and an unconfirmed cart blocks Submit (`Couldn't confirm the latest parts.`
+  + Retry), throw-safe poll, cart locked while sending, the confirm dialog lists the lines + total, 8-row parts list,
+  a non-"not assigned" 403 (e.g. `Verified technician required`) shown verbatim; customer — the approve card shows
+  line totals + a Labor / Parts / Visit fee credit breakdown. Estimate-integrity vectors added to
+  `docs/02-product/fraud-defenses.md` (#16).
+- **Deploy order:** requires the matching backend — **deploy the backend first**. Slice-2 technician builds can only
+  send labor-only estimates (part adds 409); a new technician build on an old backend shows "no longer assigned" on
+  every job.
+- **Gates:** backend **392/392 (67 files), tsc clean**; technician app **290 tests, analyze clean**; customer app
+  **+178 ~5, analyze clean**.
   Design/plan: `docs/designs/2026-10-01-job-estimate-integrity-design.md`, `docs/plans/2026-10-01-job-estimate-integrity.md`.
 **Next: PR → `main` (founder pushes); on-device smoke (physical Android 12+ phone + iPhone); then the follow-ups below.**
 
@@ -236,20 +246,22 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
    `flutter build ios` on the Mac to wire the Slice 2 pods (image_picker / flutter_image_compress / geolocator).
 2. **On-device smoke** of the full job flow against the local backend (dev photo hook): a **physical Android 12+
    phone** (ideally 2-3GB RAM) and an **iPhone** — the iOS simulator has no camera. Include deny-then-allow for
-   camera + location, and the new diagnosis-form confirm dialog / cart-lock path. Record anything found (e.g.
+   camera + location, the new diagnosis-form confirm dialog / cart-lock path, and an airplane-mode toggle during a
+   part add at ARRIVED (should show "Couldn't confirm the latest parts." + Retry). Record anything found (e.g.
    image_picker activity-kill → `retrieveLostData`).
 3. **Auth follow-ups found in the dev run** (see Deferred follow-ups → "Technician auth"): reject a technician login
    with a customer's number, and re-check status on the "Verification pending" screen. Then the remaining Slice 2
    follow-ups; provision Cloudflare R2 (`R2_*`) — and fix the presign settings first.
 
 ## Deferred follow-ups (carry forward)
-- **Job estimate integrity — remaining from the old Slice 2 pilot-blocker bullet** (the blockers themselves — cart
-  lost on restart/duplicate lines, no estimate version on approve, instant labor-only approval — are RESOLVED by
-  `feature/job-estimate-integrity`: the cart is built and frozen before the customer can approve, and the app reads it
-  from the server): (a) `mine()` still returns the technician's full job history (not yet trimmed to active jobs), so the jobs-home payload grows with history; (b) revising an
-  estimate after sending is not supported (the customer declines); (c) rare duplicate-line risk — if a part add's
-  response AND the follow-up refetch both fail and the technician re-taps Add before the next 5s poll, the backend
-  (which does not de-duplicate) creates a second line.
+- **Job estimate integrity — deferred from the final review (the pilot blockers and the review's Important/Medium
+  items are fixed on `feature/job-estimate-integrity`):** (a) minimum-app-version gate for technician builds;
+  (b) bind the customer's approve to a cart version / expected total (latent while nothing writes parts after
+  ARRIVED) — optionally an `expectedPartsTotalPaise` check on diagnose; (c) estimate revision after sending, and a
+  rule watching visit-fee farming via deliberately bad estimates (product); (d) `getMyJob` returns the full address
+  after a cancel (parity with `mine()`); (e) diagnose is not bound to the cart the technician confirmed across two
+  sessions (technician-only); (f) a real-screen test of a poll tick at ARRIVED; (g) `mine()` still returns the full
+  job history (not yet trimmed to active jobs).
 - **Technician auth (found in a dev run; fix together):** (a) **technician-app login with a number already registered
   as a CUSTOMER silently logs into the customer account** — backend `verifyOtp`
   (`apps/backend/src/modules/auth/auth.service.ts`) ignores the requested role for an existing phone; it should

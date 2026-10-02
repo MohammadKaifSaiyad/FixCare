@@ -8,6 +8,34 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-02 — Job estimate integrity: final-review fix wave (on branch)
+
+- **Four final reviews (whole-branch, Golden Rules, fraud-vector, Flutter) found no Critical issues; this wave fixes
+  their Important/Medium items** — all about "the customer approves exactly the cart they saw". Backend 392/392,
+  technician app 290, customer app +178 ~5; `tsc` / `flutter analyze` clean.
+- **Backend:** one line per part (a second add of the same part → 409 `This part is already in the estimate — remove
+  it to change the quantity`) and at most 20 lines (→ 422), both checked inside the add transaction. The diagnose
+  evidence now lists every line (`lines: [{sku, name, qty, ceilingPricePaise}]`); add/remove audits carry `lineId`,
+  `qty`, `ceilingPricePaise`; a remove that deleted nothing writes no audit; decline evidence gains `partsTotalPaise`.
+  New tests: foreign-technician 403 / missing-job 404 on add + remove, an add racing the diagnose, the three 403
+  messages on the single-job GET, inactive/soft-deleted generic parts under `?categoryId=`. Stale comments fixed.
+- **Technician app:** `refetch()` returns whether the job came back; if the refetch after a cart edit fails, the form
+  shows `Couldn't confirm the latest parts.` + Retry and blocks Submit until a fetch succeeds (closes the old
+  duplicate-line risk). The poll survives an unexpected throw. The cart is locked while the confirm dialog is open
+  and while diagnose is in flight; the dialog lists each line and "Customer will see: ₹…"; a double tap opens one
+  dialog; a diagnose Failure still refetches. Parts list: 8 rows + "Type to find more parts (N more)", per-row qty
+  state, empty states, tooltips; full-width issue picker. A 403 other than "not assigned" (e.g. `Verified technician
+  required`) is shown verbatim instead of "no longer assigned". The first load no longer overwrites a newer refetch.
+- **Customer app:** the approve card shows each part's line total (not the unit price) and a Labor / Parts / Visit
+  fee credit breakdown above "Total payable".
+- **Docs:** estimate-integrity vectors in `docs/02-product/fraud-defenses.md` (#16).
+- **Deploy order:** requires the matching backend — deploy the backend first. Slice-2 technician builds can only
+  send labor-only estimates (part adds 409); a new technician build on an old backend shows "no longer assigned" on
+  every job.
+- **Deferred** (STATUS → Deferred follow-ups): min-app-version gate, approve bound to a cart version, estimate
+  revision + a visit-fee-farming rule, address after cancel in `getMyJob`, two-session diagnose binding, a real-screen
+  poll-tick test, `mine()` trimmed to active jobs.
+
 ## 2026-10-01 — Job estimate integrity: parts during diagnosis, cart frozen at diagnose (on branch)
 
 - **The cart is built during diagnosis and frozen when the estimate is sent** — closes the three Slice 2 pilot
