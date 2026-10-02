@@ -1,28 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/format.dart';
 import '../../../core/result.dart';
 import '../../../core/theme.dart';
 import '../data/catalog_repository.dart';
 import '../data/technician_job_repository.dart';
 import 'job_action.dart';
 import 'job_detail_controller.dart';
+import 'parts_cart.dart';
 import 'photo_capture.dart';
 
-/// The two evidence photos + issue picker + submit, at ARRIVED. Consumes the
-/// Task 7a photo queue ([photosReady], [PhotoSlot]) and the catalog's issue
-/// list. The backend re-validates the issue against the job's category on
-/// submit (the job DTO carries no categoryId) and 422s with a message this
-/// widget surfaces verbatim inline.
+/// The job category's issues (null = an older backend without categoryId → unfiltered). The backend still
+/// re-validates the issue's category on diagnose (422 surfaced inline).
 final _issuesProvider =
-    FutureProvider.autoDispose<Result<List<DiagnosedIssueDto>>>((ref) {
-  return ref.read(catalogRepositoryProvider).issues();
+    FutureProvider.autoDispose.family<Result<List<DiagnosedIssueDto>>, String?>((ref, categoryId) {
+  return ref.read(catalogRepositoryProvider).issues(categoryId: categoryId);
 });
 
+/// ARRIVED: the complete estimate — the two evidence photos, the diagnosed issue, and the parts cart. "Submit diagnosis" sends it to the customer and freezes the cart (backend-enforced).
 class DiagnosisForm extends ConsumerStatefulWidget {
-  const DiagnosisForm({super.key, required this.job});
+  const DiagnosisForm({super.key, required this.detail});
 
-  final TechnicianJobDto job;
+  final TechnicianJobDetailDto detail;
 
   @override
   ConsumerState<DiagnosisForm> createState() => _DiagnosisFormState();
@@ -31,25 +31,89 @@ class DiagnosisForm extends ConsumerStatefulWidget {
 class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
   String? _issueId;
   bool _busy = false;
+  bool _cartBusy = false;
+  // The confirm dialog is open: a second Submit tap opens nothing, and the cart is locked.
+  bool _confirming = false;
   String? _error;
 
-  Future<void> _submit() async {
+  Future<void> _confirmAndSubmit() async {
     final issueId = _issueId;
-    if (issueId == null || _busy) return;
+    if (issueId == null || _busy || _cartBusy || _confirming) return;
+    // Snapshot the cart (and the server's quote for it) the moment the dialog OPENS: the dialog shows
+    // exactly this, and diagnose sends these line ids — the backend 409s (ESTIMATE_CHANGED) if the cart it
+    // freezes is not this set, so the customer never receives an estimate the technician didn't review.
+    final parts = List<JobPartLineDto>.unmodifiable(widget.detail.parts);
+    final quote = widget.detail.customerQuote;
+    setState(() => _confirming = true);
+    bool? send;
+    try {
+      send = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Send estimate?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Send this estimate to the customer? You won't be able to change parts after this."),
+                const SizedBox(height: 12),
+                if (parts.isEmpty)
+                  const Text('Labor only — no parts.')
+                else
+                  for (final p in parts)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: PartLineText(p),
+                    ),
+                // The backend's quote for this cart; hidden (never recomputed) when none was sent.
+                if (quote != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Customer will see: ${rupees(quote.totalPayablePaise)}',
+                    key: const Key('confirmEstimateTotal'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(key: const Key('cancelSendEstimateBtn'), onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Not yet')),
+            FilledButton(key: const Key('confirmSendEstimateBtn'), onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Send estimate')),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
+    // Re-check after the dialog: the cart may have become unsettled while it was open.
+    if (send != true || !mounted || _cartBusy) return;
+    await _submit(issueId, [for (final p in parts) p.id]);
+  }
+
+  Future<void> _submit(String issueId, List<String> expectedPartLineIds) async {
+    final jobId = widget.detail.job.id;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await ref.read(technicianJobRepositoryProvider).diagnose(widget.job.id, issueId);
+      final result = await ref
+          .read(technicianJobRepositoryProvider)
+          .diagnose(jobId, issueId, expectedPartLineIds: expectedPartLineIds);
       if (!mounted) return;
       switch (result) {
         case Ok():
-          await ref.read(jobDetailProvider(widget.job.id).notifier).refetch();
+          await ref.read(jobDetailProvider(jobId).notifier).refetch();
         case Failure(message: final m):
-          setState(() => _error = m);
+          // Refetch anyway (a 409 because it was already sent moves the screen on; a 409 ESTIMATE_CHANGED
+          // shows the changed cart to review), then explain.
+          await ref.read(jobDetailProvider(jobId).notifier).refetch();
+          if (mounted) setState(() => _error = m);
       }
-    } catch (_) {
+    } catch (e, st) {
+      reportJobsError(e, st, 'while sending the diagnosis');
       if (mounted) setState(() => _error = 'Something went wrong.');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -58,9 +122,9 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
 
   @override
   Widget build(BuildContext context) {
-    final job = widget.job;
+    final job = widget.detail.job;
     final queue = ref.read(photoUploadQueueProvider);
-    final issuesAsync = ref.watch(_issuesProvider);
+    final issuesAsync = ref.watch(_issuesProvider(job.service.categoryId));
     // One list drives both the slots and the gate, so they cannot disagree.
     final kinds = requiredPhotoKinds('ARRIVED');
 
@@ -81,6 +145,14 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
             ],
             const SizedBox(height: 16),
             _buildIssuePicker(issuesAsync),
+            const SizedBox(height: 20),
+            PartsSection(
+              detail: widget.detail,
+              enabled: !_busy && !_confirming,
+              onBusyChanged: (busy) {
+                if (mounted && busy != _cartBusy) setState(() => _cartBusy = busy);
+              },
+            ),
             if (_error case final err?) ...[
               const SizedBox(height: 8),
               Text(err, key: const Key('diagnosisError'), style: const TextStyle(color: FixCareColors.errorText)),
@@ -90,7 +162,7 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
               listenable: queue,
               builder: (context, _) {
                 final ready = photosReady(queue, job, kinds);
-                final enabled = ready && _issueId != null && !_busy;
+                final enabled = ready && _issueId != null && !_busy && !_cartBusy;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -98,7 +170,7 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
                       alignment: Alignment.centerRight,
                       child: FilledButton(
                         key: const Key('submitDiagnosisBtn'),
-                        onPressed: enabled ? _submit : null,
+                        onPressed: enabled ? _confirmAndSubmit : null,
                         child: _busy
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Text('Submit diagnosis'),
@@ -106,8 +178,8 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
                     ),
                     if (!enabled) ...[
                       const SizedBox(height: 4),
-                      const Text(
-                        'Take both photos and pick the issue to continue.',
+                      Text(
+                        _cartBusy ? 'Updating the parts…' : 'Take both photos and pick the issue to continue.',
                         style: TextStyle(fontSize: 12, color: FixCareColors.textMuted),
                       ),
                     ],
@@ -123,12 +195,25 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
 
   Widget _buildIssuePicker(AsyncValue<Result<List<DiagnosedIssueDto>>> async) {
     return switch (async) {
-      AsyncData(value: Ok(value: final issues)) => DropdownButtonFormField<String>(
-          key: const Key('issuePicker'),
-          initialValue: _issueId,
-          decoration: const InputDecoration(labelText: 'Issue'),
-          items: [for (final i in issues) DropdownMenuItem(value: i.id, child: Text(i.name))],
-          onChanged: (v) => setState(() => _issueId = v),
+      AsyncData(value: Ok(value: final issues)) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<String>(
+              key: const Key('issuePicker'),
+              initialValue: _issueId,
+              isExpanded: true, // long issue names must not overflow a 360dp screen
+              decoration: const InputDecoration(labelText: 'Issue'),
+              items: [
+                for (final i in issues) DropdownMenuItem(value: i.id, child: Text(i.name, overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => setState(() => _issueId = v),
+            ),
+            if (issues.isEmpty) ...[
+              const SizedBox(height: 4),
+              const Text('No issues listed for this service',
+                  key: Key('issuesEmpty'), style: TextStyle(color: FixCareColors.textMuted)),
+            ],
+          ],
         ),
       AsyncData(value: Failure(message: final m)) => _issuesError(m),
       AsyncError() => _issuesError('Something went wrong.'),
@@ -146,7 +231,7 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
           alignment: Alignment.centerLeft,
           child: TextButton(
             key: const Key('issuesRetry'),
-            onPressed: () => ref.invalidate(_issuesProvider),
+            onPressed: () => ref.invalidate(_issuesProvider(widget.detail.job.service.categoryId)),
             child: const Text('Retry'),
           ),
         ),

@@ -179,6 +179,30 @@ Every fraud vector and its specific structural block.
 
 ---
 
+### 16. Estimate Integrity
+**Attack:** The customer approves an estimate that is not the one they looked at, or one that was padded. Five shapes:
+- **Bait-and-switch** — the technician changes the parts after the customer has seen the estimate.
+- **Instant labor-only approval** — the customer is asked to approve before the parts are added, and the parts arrive later.
+- **Cart padding / duplicate lines** — the same part added again and again, or dozens of lines, to inflate the total.
+- **Off-category parts** — parts that don't belong to the service being repaired.
+- **Cross-technician job access** — a technician reads or edits another technician's job or cart.
+
+**Defense (implemented):**
+- The cart is built while the technician is diagnosing (ARRIVED) and **frozen when the diagnosis is submitted**. Any later add/remove → 409 `The cart is locked — the diagnosis has been submitted`, checked again inside the transaction, so a racing add can't get in.
+- The diagnose transition writes **per-line audit evidence** (`lines: [{sku, name, qty, ceilingPricePaise}]` + `partCount` + `partsTotalPaise`) in the same transaction. Every add/remove audit carries `lineId`, `qty` and `ceilingPricePaise`. Approve and decline both record `partCount` + `partsTotalPaise`. The cart the customer saw can be rebuilt from the audit log alone.
+- The customer can **approve only at DIAGNOSED**, which is always a final, frozen cart.
+- **One line per part** (a second add of the same part → 409; qty ≤ 99 per line) and **at most 20 lines** per estimate (→ 422).
+- **Category check:** a part whose category isn't the booking's service category → 422 (generic parts are allowed everywhere).
+- **Ownership:** a missing job → 404; another technician → 403 `This job is not assigned to you`, on every job route including the cart and the single-job GET.
+- Catalog prices only — the technician never sends a price (Rule 4).
+
+**Remaining gaps:**
+- Approve is not bound to a cart version or an expected total. This is latent: it only becomes a hole if something ever writes parts after ARRIVED.
+- No estimate revision: a wrong estimate can only be declined, and the visit fee stays.
+- No rule yet watches visit-fee farming through deliberately bad estimates (see #1).
+
+---
+
 ## Fraud Detection Rules Engine (V1)
 
 These rules run continuously in background workers:

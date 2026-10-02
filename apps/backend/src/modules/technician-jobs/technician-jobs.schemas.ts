@@ -6,7 +6,12 @@ export const arriveBody = z.object({
 }).strict();
 export type ArriveBody = z.infer<typeof arriveBody>;
 
-export const diagnoseBody = z.object({ diagnosedIssueId: z.string().min(1) }).strict();
+// expectedPartLineIds: the cart lines the technician confirmed in the "send estimate" dialog. When present the
+// diagnose binds to exactly that set (any drift → 409 ESTIMATE_CHANGED). Optional so older app builds keep working.
+export const diagnoseBody = z.object({
+  diagnosedIssueId: z.string().min(1),
+  expectedPartLineIds: z.array(z.string().min(1)).max(20).optional(),
+}).strict();
 export type DiagnoseBody = z.infer<typeof diagnoseBody>;
 
 // qty capped at 99 — the unit price is catalog-fixed (Golden Rule 4), so an unbounded qty would be the
@@ -55,3 +60,5 @@ export type ConfirmCompletionBody = z.infer<typeof confirmCompletionBody>;
 
 export const confirmCashBody = z.object({ code: z.string().length(6) }).strict();
 export type ConfirmCashBody = z.infer<typeof confirmCashBody>;
+
+export const jobIdParams = z.object({ id: z.string().min(1).max(64) }).strict();

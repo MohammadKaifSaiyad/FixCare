@@ -110,7 +110,9 @@ export async function upsertServicePrice(actorId: string, serviceId: string, zon
 
 export async function listParts(categoryId?: string): Promise<PartDto[]> {
   const parts = await prisma.partsCatalog.findMany({
-    where: { deletedAt: null, status: 'ACTIVE', ...(categoryId ? { categoryId } : {}) },
+    // A category filter returns that category's parts PLUS generic ones (categoryId null): a generic part
+    // applies to any job — the same rule the technician addPart category check enforces.
+    where: { deletedAt: null, status: 'ACTIVE', ...(categoryId ? { OR: [{ categoryId }, { categoryId: null }] } : {}) },
     orderBy: { name: 'asc' },
   });
   return parts.map(toPartDto);

@@ -38,15 +38,29 @@ describe('parts catalog', () => {
     expect(ids).toEqual([active.id]);
   });
 
-  it('filters by categoryId', async () => {
+  it('filters by categoryId: that category + generic (null-category) parts; other categories excluded', async () => {
     const mgr = await makeAdminToken('MANAGER');
     const cat = (await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'AC' } })).json();
+    const other = (await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'Fan' } })).json();
     await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'IN-CAT', name: 'In cat', categoryId: cat.id, ceilingPricePaise: 100 } });
     await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'NO-CAT', name: 'No cat', ceilingPricePaise: 200 } });
+    await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'OTHER-CAT', name: 'Other cat', categoryId: other.id, ceilingPricePaise: 300 } });
     const cust = await makeCustomerToken();
     const list = (await app.inject({ method: 'GET', url: `/catalog/parts?categoryId=${cat.id}`, headers: auth(cust) })).json();
-    expect(list).toHaveLength(1);
-    expect(list[0].sku).toBe('IN-CAT');
+    expect(list.map((p: { sku: string }) => p.sku).sort()).toEqual(['IN-CAT', 'NO-CAT']);
+  });
+
+  it('with ?categoryId= an INACTIVE or soft-deleted GENERIC part is still excluded', async () => {
+    const mgr = await makeAdminToken('MANAGER');
+    const cat = (await app.inject({ method: 'POST', url: '/catalog/categories', headers: auth(mgr), payload: { name: 'AC' } })).json();
+    await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'GEN-OK', name: 'Generic ok', ceilingPricePaise: 100 } });
+    const inactive = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'GEN-INACTIVE', name: 'Generic inactive', ceilingPricePaise: 200 } })).json();
+    const deleted = (await app.inject({ method: 'POST', url: '/catalog/parts', headers: auth(mgr), payload: { sku: 'GEN-DELETED', name: 'Generic deleted', ceilingPricePaise: 300 } })).json();
+    await prisma.partsCatalog.update({ where: { id: inactive.id }, data: { status: 'INACTIVE' } });
+    await prisma.partsCatalog.update({ where: { id: deleted.id }, data: { deletedAt: new Date() } });
+    const cust = await makeCustomerToken();
+    const list = (await app.inject({ method: 'GET', url: `/catalog/parts?categoryId=${cat.id}`, headers: auth(cust) })).json();
+    expect(list.map((p: { sku: string }) => p.sku)).toEqual(['GEN-OK']);
   });
 
   it('SUPPORT cannot create a part → 403', async () => {

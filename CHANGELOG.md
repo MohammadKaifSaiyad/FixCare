@@ -8,6 +8,87 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-02 — Job estimate integrity: /code-review fix round (on branch)
+
+- **`/code-review` found 10 items; 9 fixed here, 1 deferred** (DB unique index). Backend 400/400, technician app 320,
+  customer app +179 ~5; `tsc` / `flutter analyze` clean.
+- **Backend:** `POST /technician/jobs/:id/diagnose` takes an optional `expectedPartLineIds` (≤ 20, body still
+  `.strict()`); inside the diagnose transaction, after the row lock, a cart whose line-id set differs → 409
+  `ESTIMATE_CHANGED` "The estimate changed — check the parts and send again" (booking stays ARRIVED, nothing
+  written); absent → unchanged behaviour. `NotFoundError` / `ForbiddenError` / `ConflictError` take an optional
+  `code`; the technician job errors now answer `JOB_NOT_FOUND` / `JOB_NOT_ASSIGNED` (messages unchanged).
+  `GET /technician/jobs/:id` adds `customerQuote` = `computeEstimate` as if quoted (visit-fee credit applied,
+  floored at 0).
+- **Technician app:** `Failure.code` from the `{code, message}` envelope in every repository (and kept through the
+  auth controller's re-wrap). The job-detail vanish is exactly `JOB_NOT_FOUND` / `JOB_NOT_ASSIGNED`; a code-less 404
+  (an older backend's route-not-found) is transient on poll and a generic error on first load. Diagnose sends the
+  line ids snapshotted when the confirm dialog opened (the dialog renders that snapshot); `ESTIMATE_CHANGED` refetches
+  and shows the message inline. "Customer will see", the dialog total and the sent card's total show the server's
+  `customerQuote` (`estimatePaise` deleted; no quote → hidden). `refetch()` is true when superseded by a newer
+  success; the unconfirmed-cart notice clears when a fetch with a later sequence succeeds (`jobFetchOkSeq`, replacing
+  the widget-diff clear) — an unchanged poll clears it, an older in-flight one doesn't. A part already in the
+  estimate shows "In estimate" (stepper disabled). `lineTotalPaise` + one `PartLineText`. Unexpected throws in the
+  poll, cart edits and diagnose go to `FlutterError.reportError` (exception + stack only). The cart is re-checked
+  after the dialog closes.
+- **Customer app:** `PartDto.lineTotalPaise`; the approve card uses it.
+- **Deploy order:** still backend first — this technician build's diagnose body is rejected (400) by an older backend.
+- **Deferred:** DB unique index on `(bookingId, partsCatalogId)`; the cosmetic qty reset on a reappearing row.
+
+## 2026-10-02 — Job estimate integrity: final-review fix wave (on branch)
+
+- **Four final reviews (whole-branch, Golden Rules, fraud-vector, Flutter) found no Critical issues; this wave fixes
+  their Important/Medium items** — all about "the customer approves exactly the cart they saw". Backend 392/392,
+  technician app 290, customer app +178 ~5; `tsc` / `flutter analyze` clean.
+- **Backend:** one line per part (a second add of the same part → 409 `This part is already in the estimate — remove
+  it to change the quantity`) and at most 20 lines (→ 422), both checked inside the add transaction. The diagnose
+  evidence now lists every line (`lines: [{sku, name, qty, ceilingPricePaise}]`); add/remove audits carry `lineId`,
+  `qty`, `ceilingPricePaise`; a remove that deleted nothing writes no audit; decline evidence gains `partsTotalPaise`.
+  New tests: foreign-technician 403 / missing-job 404 on add + remove, an add racing the diagnose, the three 403
+  messages on the single-job GET, inactive/soft-deleted generic parts under `?categoryId=`. Stale comments fixed.
+- **Technician app:** `refetch()` returns whether the job came back; if the refetch after a cart edit fails, the form
+  shows `Couldn't confirm the latest parts.` + Retry and blocks Submit until a fetch succeeds (closes the old
+  duplicate-line risk). The poll survives an unexpected throw. The cart is locked while the confirm dialog is open
+  and while diagnose is in flight; the dialog lists each line and "Customer will see: ₹…"; a double tap opens one
+  dialog; a diagnose Failure still refetches. Parts list: 8 rows + "Type to find more parts (N more)", per-row qty
+  state, empty states, tooltips; full-width issue picker. A 403 other than "not assigned" (e.g. `Verified technician
+  required`) is shown verbatim instead of "no longer assigned". The first load no longer overwrites a newer refetch.
+- **Customer app:** the approve card shows each part's line total (not the unit price) and a Labor / Parts / Visit
+  fee credit breakdown above "Total payable".
+- **Docs:** estimate-integrity vectors in `docs/02-product/fraud-defenses.md` (#16).
+- **Deploy order:** requires the matching backend — deploy the backend first. Slice-2 technician builds can only
+  send labor-only estimates (part adds 409); a new technician build on an old backend shows "no longer assigned" on
+  every job.
+- **Deferred** (STATUS → Deferred follow-ups): min-app-version gate, approve bound to a cart version, estimate
+  revision + a visit-fee-farming rule, address after cancel in `getMyJob`, two-session diagnose binding, a real-screen
+  poll-tick test, `mine()` trimmed to active jobs.
+
+## 2026-10-01 — Job estimate integrity: parts during diagnosis, cart frozen at diagnose (on branch)
+
+- **The cart is built during diagnosis and frozen when the estimate is sent** — closes the three Slice 2 pilot
+  blockers (cart lost on restart → duplicate lines; no estimate version on approve; instant labor-only approval).
+  On `feature/job-estimate-integrity` (cut from `main` after Slice 2 merged, #37), ready for PR. Backend 383/383,
+  technician app 268, `tsc` / `flutter analyze` clean. Design `docs/designs/2026-10-01-job-estimate-integrity-design.md`,
+  plan `docs/plans/2026-10-01-job-estimate-integrity.md`.
+- **Backend: part add/remove are ARRIVED-only; `POST /technician/jobs/:id/diagnose` freezes the cart** — any later
+  add/remove is a 409 (`The cart is locked — the diagnosis has been submitted`). The diagnose transition evidence
+  snapshots `partCount` + `partsTotalPaise`, so DIAGNOSED always shows the customer a final cart. Supersedes the
+  DIAGNOSED-only rule in the B4a design (note added there).
+- **Backend: `GET /catalog/parts?categoryId=` now returns the category's parts plus generic (uncategorised) parts.**
+- **Backend: new `GET /technician/jobs/:id`** (job + `parts[]` + active photos, assigned-technician only) and
+  `service.categoryId` on all technician job DTOs.
+- **Technician app: polls one job, renders the server cart.** `FailureKind.forbidden/notFound`; `job(id)`; job-detail
+  polls the single-job GET (403/404 → "This job is no longer assigned to you.", recovers if the job comes back).
+- **Technician app: the diagnosis form sends the complete estimate** — 2 photos + category-filtered issue picker +
+  server-backed parts cart + "Customer will see: ₹…" total, with a **confirm dialog before sending**; Submit is
+  blocked while a cart edit is in flight. DIAGNOSED is now a read-only "Estimate sent — waiting for the customer to
+  approve or decline" card with the frozen lines + total. The session-only cart provider was removed.
+- **Customer app unchanged.**
+- **Recorded, not fixed:** `mine()` still returns the technician's full job history, not yet trimmed to active jobs (so the jobs-home payload grows with history); revising an estimate
+  after sending is unsupported (customer declines); a rare duplicate-line risk if an add's response and the follow-up
+  refetch both fail and the technician re-taps Add before the next 5s poll. Two auth bugs found in a dev run
+  (technician login with a customer's number silently logs into the customer account; "Verification pending" never
+  re-checks status) are logged in STATUS → Deferred follow-ups.
+
 ## 2026-09-27 — Technician app Slice 2: drive a job end-to-end (on branch)
 
 - **The technician can now drive a job from accept to cash** on a state-driven job-detail screen (`/job/:id`):

@@ -2,6 +2,12 @@
 
 _Date: 2026-06-14 · Status: approved (pending spec review) · Scope: the structured diagnosis record, the snapshotted parts cart, and the customer approve/decline transitions, in `apps/backend`_
 
+> **Superseded in part (2026-10-01, job estimate integrity):** part add/remove is now **ARRIVED-only** — the
+> technician builds the cart during diagnosis and `POST /diagnose` freezes it (`The cart is locked — the
+> diagnosis has been submitted`, 409) and snapshots `partCount` + `partsTotalPaise` in the transition
+> evidence. DIAGNOSED therefore always shows the customer a final cart. See
+> `docs/designs/2026-10-01-job-estimate-integrity-design.md`.
+
 ## Context
 
 Fourth booking slice (after B1 creation, B2a dispatch, B3 arrival handshake). Per `core-flow.md`

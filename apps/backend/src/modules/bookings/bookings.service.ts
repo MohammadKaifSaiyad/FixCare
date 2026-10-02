@@ -213,13 +213,14 @@ export async function confirmArrival(userId: string, id: string, body: ConfirmAr
   return toBookingDto(updated);
 }
 
-/** Customer approves the diagnosis → DIAGNOSED → CUSTOMER_APPROVED. Freezes the parts cart (further
- *  add/remove is rejected once the booking leaves DIAGNOSED). No money moves here — B6 handles charge. */
+/** Customer approves the diagnosis → DIAGNOSED → CUSTOMER_APPROVED. The parts cart was already frozen
+ *  when the technician submitted the diagnosis (add/remove is ARRIVED-only), so the customer approves
+ *  exactly the cart they were shown. No money moves here — B6 handles charge. */
 export async function approveDiagnosis(userId: string, id: string): Promise<BookingDto> {
   const booking = await ownDiagnosedBookingOrThrow(userId, id);
   const { updated, parts } = await prisma.$transaction(async (tx) => {
     // Read the cart inside the tx so the audit evidence reflects EXACTLY the cart frozen at approval
-    // (the transition makes DIAGNOSED-only add/remove illegal, so the cart cannot change after this).
+    // (the cart was frozen when the technician submitted the diagnosis — part edits are ARRIVED-only).
     const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
     const row = await transitionBooking(
       tx, booking, 'CUSTOMER_APPROVED', { type: 'USER', kind: 'CUSTOMER', id: userId },
@@ -238,7 +239,7 @@ export async function declineDiagnosis(userId: string, id: string): Promise<Book
     const cart = await tx.bookingPart.findMany({ where: { bookingId: id } });
     await transitionBooking(
       tx, booking, 'DECLINED_BY_CUSTOMER', { type: 'USER', kind: 'CUSTOMER', id: userId },
-      { source: 'customer_decline', partCount: cart.length },
+      { source: 'customer_decline', partCount: cart.length, partsTotalPaise: sumParts(cart) },
     );
     const row = await tx.booking.update({ where: { id }, data: { declinedAt: new Date() } });
     return { updated: row, parts: cart };

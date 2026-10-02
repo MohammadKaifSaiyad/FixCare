@@ -155,4 +155,101 @@ void main() {
         data: {'kind': 'REPAIR_OLD_PART', 'key': 'jobs/b1/REPAIR_OLD_PART-y.jpg', 'capturedAt': '2026-09-20T10:00:00.000Z'});
     expect(await repo.confirmPhoto('b1', kind: 'REPAIR_OLD_PART', key: 'jobs/b1/REPAIR_OLD_PART-y.jpg', capturedAt: '2026-09-20T10:00:00.000Z'), isA<Ok<PhotoConfirmDto>>());
   });
+
+  test('job(id) is a bodyless GET and parses the job + parts + categoryId', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, {
+      ..._job(),
+      'state': 'ARRIVED',
+      'service': {'name': 'Ceiling fan repair', 'requiredSkill': 'FAN', 'categoryId': 'cat-fan'},
+      'parts': [
+        {'id': 'l1', 'partsCatalogId': 'p1', 'sku': 'CAP', 'name': 'Capacitor', 'qty': 2, 'ceilingPricePaise': 15000},
+      ],
+    }));
+    final v = (await repo.job('b1') as Ok<TechnicianJobDetailDto>).value;
+    expect(v.job.state, 'ARRIVED');
+    expect(v.job.service.categoryId, 'cat-fan');
+    expect(v.parts, const [
+      JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000),
+    ]);
+  });
+
+  test('job(id) with no parts key → empty parts; no categoryId → null', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, _job()));
+    final v = (await repo.job('b1') as Ok<TechnicianJobDetailDto>).value;
+    expect(v.parts, isEmpty);
+    expect(v.job.service.categoryId, isNull);
+  });
+
+  test('job(id) 404 → Failure(notFound, message, code); 403 → Failure(forbidden, message, code)', () async {
+    adapter.onGet('/technician/jobs/gone', (s) => s.reply(404, {'code': 'JOB_NOT_FOUND', 'message': 'Job not found'}));
+    final gone = await repo.job('gone') as Failure<TechnicianJobDetailDto>;
+    expect(gone.kind, FailureKind.notFound);
+    expect(gone.message, 'Job not found');
+    expect(gone.code, 'JOB_NOT_FOUND');
+    adapter.onGet('/technician/jobs/theirs', (s) => s.reply(403, {'code': 'JOB_NOT_ASSIGNED', 'message': 'This job is not assigned to you'}));
+    final theirs = await repo.job('theirs') as Failure<TechnicianJobDetailDto>;
+    expect(theirs.kind, FailureKind.forbidden);
+    expect(theirs.message, 'This job is not assigned to you');
+    expect(theirs.code, 'JOB_NOT_ASSIGNED');
+  });
+
+  test("a 404 without a code (Fastify's route-not-found) → Failure(notFound) with code null", () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(404, {'message': 'Route GET:/technician/jobs/b1 not found', 'error': 'Not Found', 'statusCode': 404}));
+    final f = await repo.job('b1') as Failure<TechnicianJobDetailDto>;
+    expect(f.kind, FailureKind.notFound);
+    expect(f.code, isNull);
+  });
+
+  test('action Failures carry the envelope code (409 ESTIMATE_CHANGED on diagnose)', () async {
+    adapter.onPost('/technician/jobs/b1/diagnose',
+        (s) => s.reply(409, {'code': 'ESTIMATE_CHANGED', 'message': 'The estimate changed — check the parts and send again'}),
+        data: {'diagnosedIssueId': 'i1', 'expectedPartLineIds': ['l1']});
+    final f = await repo.diagnose('b1', 'i1', expectedPartLineIds: const ['l1']) as Failure;
+    expect(f.code, 'ESTIMATE_CHANGED');
+    expect(f.message, 'The estimate changed — check the parts and send again');
+  });
+
+  test('diagnose sends the confirmed cart line ids (exact body); an empty cart sends []', () async {
+    adapter.onPost('/technician/jobs/b1/diagnose', (s) => s.reply(200, {'id': 'b1', 'state': 'DIAGNOSED'}),
+        data: {'diagnosedIssueId': 'i1', 'expectedPartLineIds': ['l1', 'l2']});
+    expect(await repo.diagnose('b1', 'i1', expectedPartLineIds: const ['l1', 'l2']), isA<Ok<void>>());
+    adapter.onPost('/technician/jobs/b2/diagnose', (s) => s.reply(200, {'id': 'b2', 'state': 'DIAGNOSED'}),
+        data: {'diagnosedIssueId': 'i1', 'expectedPartLineIds': <String>[]});
+    expect(await repo.diagnose('b2', 'i1', expectedPartLineIds: const []), isA<Ok<void>>());
+  });
+
+  test('job(id) parses the server-computed customerQuote; a missing key → null (never client math)', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, {
+      ..._job(),
+      'customerQuote': {'laborPaise': 20000, 'partsPaise': 30000, 'visitFeeCreditPaise': 9900, 'totalPayablePaise': 40100},
+    }));
+    final v = (await repo.job('b1') as Ok<TechnicianJobDetailDto>).value;
+    expect(v.customerQuote, const JobQuoteDto(laborPaise: 20000, partsPaise: 30000, visitFeeCreditPaise: 9900, totalPayablePaise: 40100));
+    adapter.onGet('/technician/jobs/b2', (s) => s.reply(200, {..._job(), 'id': 'b2'}));
+    final legacy = (await repo.job('b2') as Ok<TechnicianJobDetailDto>).value;
+    expect(legacy.customerQuote, isNull);
+  });
+
+  test('job(id) with a malformed customerQuote → Failure(server)', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, {..._job(), 'customerQuote': {'totalPayablePaise': 'lots'}}));
+    expect((await repo.job('b1') as Failure).kind, FailureKind.server);
+  });
+
+  test('JobPartLineDto.lineTotalPaise is ceiling price × qty', () {
+    const line = JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 3, ceilingPricePaise: 15000);
+    expect(line.lineTotalPaise, 45000);
+  });
+
+  test('job(id) non-object body → Failure(server)', () async {
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, ['not', 'a', 'map']));
+    expect((await repo.job('b1') as Failure).kind, FailureKind.server);
+  });
+
+  test('job(id) 200 with a malformed body (non-object parts entry) → Failure(server), never a thrown TypeError', () async {
+    // job(id) is the job-detail screen's 5s poll target: an escaping parse error would silently stop polling.
+    adapter.onGet('/technician/jobs/b1', (s) => s.reply(200, {..._job(), 'parts': ['oops']}));
+    final f = await repo.job('b1') as Failure<TechnicianJobDetailDto>;
+    expect(f.kind, FailureKind.server);
+    expect(f.message, 'Unexpected response from the server.');
+  });
 }

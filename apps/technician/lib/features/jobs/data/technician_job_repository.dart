@@ -10,22 +10,23 @@ class TechnicianJobRepository {
   TechnicianJobRepository(this._dio);
   final Dio _dio;
 
-  // Backend error envelope is { code, message } (errorHandler.ts). Surfaced
-  // verbatim — the UI branches on this exact text (403 "Verified technician
-  // required", 409 "This job is no longer available", 422 cash-debt).
+  // Backend error envelope is { code, message } (errorHandler.ts). The message is
+  // surfaced verbatim (403 "Verified technician required", 409 "This job is no
+  // longer available", 422 cash-debt); anything that BRANCHES uses the stable
+  // `code` (Failure.code, e.g. JOB_NOT_FOUND / ESTIMATE_CHANGED), never the text.
   String _msg(dynamic data) =>
       (data is Map && data['message'] is String) ? data['message'] as String : 'Something went wrong.';
 
   Result<T> _ok<T>(Response res, T Function(dynamic data) parse) {
     final status = res.statusCode ?? 0;
     if (status >= 200 && status < 300) return Ok(parse(res.data));
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
   Result<void> _okVoid(Response res) {
     final status = res.statusCode ?? 0;
     if (status >= 200 && status < 300) return const Ok(null);
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
   Future<Result<T>> _guard<T>(Future<Result<T>> Function() run) async {
@@ -33,7 +34,7 @@ class TechnicianJobRepository {
       return await run();
     } on DioException catch (e) {
       if (e.response != null) {
-        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data));
+        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));
       }
       return const Failure(FailureKind.network, 'Network error. Check your connection.');
     }
@@ -46,7 +47,7 @@ class TechnicianJobRepository {
       if (data is! List) return const Failure(FailureKind.server, 'Unexpected response from the server.');
       return Ok(data.map((e) => TechnicianJobDto.fromJson((e as Map).cast<String, dynamic>())).toList());
     }
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
   Future<Result<List<TechnicianJobDto>>> available() => _guard(() async {
@@ -57,6 +58,34 @@ class TechnicianJobRepository {
   Future<Result<List<TechnicianJobDto>>> mine() => _guard(() async {
     final res = await _dio.get('/technician/jobs/mine');
     return _parseList(res);
+  });
+
+  /// The job-detail screen's poll target: one job + its parts cart. 403 = not yours, 404 = gone.
+  /// Being polled every 5s, a malformed 200 body must come back as a Failure, never an escaping
+  /// TypeError/FormatException (which `_guard` doesn't catch and would silently stop the poll chain).
+  Future<Result<TechnicianJobDetailDto>> job(String id) => _guard(() async {
+    final res = await _dio.get('/technician/jobs/$id');
+    final status = res.statusCode ?? 0;
+    if (status < 200 || status >= 300) return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
+    final data = res.data;
+    if (data is! Map) return const Failure(FailureKind.server, 'Unexpected response from the server.');
+    try {
+      final map = data.cast<String, dynamic>();
+      final rawParts = map['parts'];
+      final rawQuote = map['customerQuote'];
+      return Ok(TechnicianJobDetailDto(
+        job: TechnicianJobDto.fromJson(map),
+        parts: rawParts is List
+            ? rawParts.map((e) => JobPartLineDto.fromJson((e as Map).cast<String, dynamic>())).toList()
+            : const <JobPartLineDto>[],
+        // Absent (an older backend) → null: the amount is hidden, never recomputed on the device.
+        customerQuote: rawQuote == null ? null : JobQuoteDto.fromJson((rawQuote as Map).cast<String, dynamic>()),
+      ));
+    } on TypeError {
+      return const Failure(FailureKind.server, 'Unexpected response from the server.');
+    } on FormatException {
+      return const Failure(FailureKind.server, 'Unexpected response from the server.');
+    }
   });
 
   Future<Result<TechnicianJobDto>> accept(String id) => _guard(() async {
@@ -74,8 +103,14 @@ class TechnicianJobRepository {
     return _ok<ArriveResultDto>(res, (data) => ArriveResultDto.fromJson((data as Map).cast<String, dynamic>()));
   });
 
-  Future<Result<void>> diagnose(String id, String diagnosedIssueId) => _guard(() async {
-    final res = await _dio.post('/technician/jobs/$id/diagnose', data: {'diagnosedIssueId': diagnosedIssueId});
+  /// [expectedPartLineIds]: the cart lines the technician confirmed in the "Send estimate?" dialog. The
+  /// backend binds the diagnose to exactly that set (any drift → 409 `ESTIMATE_CHANGED`). Omitted from the
+  /// body when null.
+  Future<Result<void>> diagnose(String id, String diagnosedIssueId, {List<String>? expectedPartLineIds}) =>
+      _guard(() async {
+    final body = <String, dynamic>{'diagnosedIssueId': diagnosedIssueId};
+    if (expectedPartLineIds != null) body['expectedPartLineIds'] = expectedPartLineIds;
+    final res = await _dio.post('/technician/jobs/$id/diagnose', data: body);
     return _okVoid(res);
   });
 

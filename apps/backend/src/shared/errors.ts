@@ -16,17 +16,19 @@ export class ValidationError extends AppError {
 export class UnauthorizedError extends AppError {
   constructor(message = 'Unauthorized') { super(message, 401, 'UNAUTHORIZED'); }
 }
+// Forbidden / NotFound / Conflict take an optional machine `code` so a client can branch on a stable
+// identifier (e.g. JOB_NOT_FOUND, ESTIMATE_CHANGED) instead of matching the human message.
 export class ForbiddenError extends AppError {
-  constructor(message = 'Forbidden') { super(message, 403, 'FORBIDDEN'); }
+  constructor(message = 'Forbidden', code = 'FORBIDDEN') { super(message, 403, code); }
 }
 export class NotFoundError extends AppError {
-  constructor(message = 'Not found') { super(message, 404, 'NOT_FOUND'); }
+  constructor(message = 'Not found', code = 'NOT_FOUND') { super(message, 404, code); }
 }
 export class TooManyRequestsError extends AppError {
   constructor(message = 'Too many requests') { super(message, 429, 'TOO_MANY_REQUESTS'); }
 }
 export class ConflictError extends AppError {
-  constructor(message = 'Conflict') { super(message, 409, 'CONFLICT'); }
+  constructor(message = 'Conflict', code = 'CONFLICT') { super(message, 409, code); }
 }
 export class UnprocessableError extends AppError {
   constructor(message = 'Unprocessable') { super(message, 422, 'UNPROCESSABLE'); }

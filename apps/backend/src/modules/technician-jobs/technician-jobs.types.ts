@@ -1,13 +1,14 @@
-import type { Booking, Address, ServiceSkill } from '@prisma/client';
+import type { Booking, Address, ServiceSkill, BookingPart } from '@prisma/client';
 import { maskPhone } from '../../shared/utils/mask.js';
 import type { PhotoSummary } from '../bookings/bookings.types.js';
+import { computeEstimate, type Estimate } from '../bookings/estimate.js';
 
 export interface TechnicianJobDto {
   id: string;
   bookingNumber: string;
   state: Booking['state'];
   scheduledSlot: string;
-  service: { name: string; requiredSkill: ServiceSkill };
+  service: { name: string; requiredSkill: ServiceSkill; categoryId: string };
   zone: { name: string };
   visitFeePaise: number;
   laborPaise: number;
@@ -17,12 +18,12 @@ export interface TechnicianJobDto {
 }
 
 /** Masked technician-facing view of a booking. `booking` carries the snapshot fields; `address` is
- *  the booking's address row; `requiredSkill` comes from the joined Service; `customerPhone` is the
+ *  the booking's address row; `service` is the joined Service row (requiredSkill + categoryId); `customerPhone` is the
  *  customer User.phone — masked here, NEVER returned raw (Golden Rule 7). No customer name. */
 export function toTechnicianJobDto(
   booking: Booking,
   address: Address,
-  requiredSkill: ServiceSkill,
+  service: { requiredSkill: ServiceSkill; categoryId: string },
   customerPhone: string,
   photos: PhotoSummary[] = [],
 ): TechnicianJobDto {
@@ -31,12 +32,47 @@ export function toTechnicianJobDto(
     bookingNumber: booking.bookingNumber,
     state: booking.state,
     scheduledSlot: booking.scheduledSlot.toISOString(),
-    service: { name: booking.serviceName, requiredSkill },
+    service: { name: booking.serviceName, requiredSkill: service.requiredSkill, categoryId: service.categoryId },
     zone: { name: booking.zoneName },
     visitFeePaise: booking.visitFeePaise,
     laborPaise: booking.laborPaise,
     address: { line1: address.line1, line2: address.line2, landmark: address.landmark, pincode: address.pincode },
     customer: { maskedPhone: maskPhone(customerPhone) },
     photos,
+  };
+}
+
+/** One cart line as the technician sees it — the snapshot price, never a live catalog read. */
+export interface TechnicianJobPartLine {
+  id: string;
+  partsCatalogId: string;
+  sku: string;
+  name: string;
+  qty: number;
+  ceilingPricePaise: number;
+}
+
+/** GET /technician/jobs/:id — the list DTO plus the job's parts cart (open while ARRIVED, frozen after) and
+ *  `customerQuote`: the quote the customer approves at DIAGNOSED (visit-fee credit applied, floored at 0),
+ *  computed by the backend's own estimate math so the app never re-derives a money figure. */
+export interface TechnicianJobDetailDto extends TechnicianJobDto {
+  parts: TechnicianJobPartLine[];
+  customerQuote: Estimate;
+}
+
+export function toTechnicianJobDetailDto(
+  booking: Booking,
+  address: Address,
+  service: { requiredSkill: ServiceSkill; categoryId: string },
+  customerPhone: string,
+  photos: PhotoSummary[],
+  parts: BookingPart[],
+): TechnicianJobDetailDto {
+  return {
+    ...toTechnicianJobDto(booking, address, service, customerPhone, photos),
+    parts: parts.map((p) => ({ id: p.id, partsCatalogId: p.partsCatalogId, sku: p.sku, name: p.name, qty: p.qty, ceilingPricePaise: p.ceilingPricePaise })),
+    // "As if quoted": the same math the customer's approve screen runs at DIAGNOSED, over this cart — so the
+    // ARRIVED preview ("Customer will see") is exactly the number the customer is later asked to approve.
+    customerQuote: computeEstimate({ ...booking, state: 'DIAGNOSED', declinedAt: null }, parts),
   };
 }

@@ -274,6 +274,46 @@ void main() {
     expect(repo.approveCalls, ['b1']);
   });
 
+  testWidgets('DIAGNOSED — each part shows its LINE total, and labor / parts / visit-fee credit add up to the total', (tester) async {
+    final json = _booking('DIAGNOSED', withTech: true, withDiagnosis: true)
+      ..['parts'] = [
+        {'id': 'p1', 'sku': 'CAP-1', 'name': 'Capacitor', 'ceilingPricePaise': 15000, 'qty': 2},
+      ]
+      ..['estimate'] = {
+        'laborPaise': 45000,
+        'partsPaise': 30000,
+        'visitFeeCreditPaise': 14900,
+        'totalPayablePaise': 60100, // 450 + 300 − 149
+      };
+    await tester.pumpWidget(_harness(_FakeBookingRepo(json)));
+    await _settle(tester);
+
+    expect(find.text('Capacitor × 2'), findsOneWidget);
+    expect(find.text('₹300'), findsWidgets); // the line total (2 × ₹150), not the unit price
+    expect(find.text('₹150'), findsNothing);
+    Finder inRow(String key, String text) => find.descendant(of: find.byKey(Key(key)), matching: find.text(text));
+    expect(inRow('estimateLaborRow', 'Labor'), findsOneWidget);
+    expect(inRow('estimateLaborRow', '₹450'), findsOneWidget);
+    expect(inRow('estimatePartsRow', 'Parts'), findsOneWidget);
+    expect(inRow('estimatePartsRow', '₹300'), findsOneWidget);
+    expect(inRow('estimateVisitCreditRow', 'Visit fee credit'), findsOneWidget);
+    expect(inRow('estimateVisitCreditRow', '−₹149'), findsOneWidget);
+    expect(find.text('₹601'), findsOneWidget); // Total payable
+  });
+
+  testWidgets('DIAGNOSED labor-only — no Parts row; labor and visit-fee credit still shown', (tester) async {
+    final json = _booking('DIAGNOSED', withTech: true, withDiagnosis: true)
+      ..['parts'] = <Map<String, dynamic>>[]
+      ..['estimate'] = {'laborPaise': 45000, 'partsPaise': 0, 'visitFeeCreditPaise': 14900, 'totalPayablePaise': 30100};
+    await tester.pumpWidget(_harness(_FakeBookingRepo(json)));
+    await _settle(tester);
+
+    expect(find.byKey(const Key('estimateLaborRow')), findsOneWidget);
+    expect(find.byKey(const Key('estimatePartsRow')), findsNothing);
+    expect(find.byKey(const Key('estimateVisitCreditRow')), findsOneWidget);
+    expect(find.text('₹301'), findsOneWidget);
+  });
+
   testWidgets('REPAIR_COMPLETE — Confirm mints the OTP; dev echo chip shows the code', (tester) async {
     final repo = _FakeBookingRepo(
       _booking('REPAIR_COMPLETE', withTech: true),

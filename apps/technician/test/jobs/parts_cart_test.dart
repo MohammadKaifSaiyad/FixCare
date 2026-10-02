@@ -8,338 +8,526 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
+import 'package:fixcare_technician/features/jobs/presentation/job_detail_controller.dart';
 import 'package:fixcare_technician/features/jobs/presentation/parts_cart.dart';
 
-Map<String, dynamic> _jobJson({String id = 'b1'}) => {
-  'id': id, 'bookingNumber': 'FC-1', 'state': 'DIAGNOSED', 'scheduledSlot': '2026-09-20T09:00:00.000Z',
-  'service': {'name': 'Ceiling fan repair', 'requiredSkill': 'FAN'},
-  'zone': {'name': 'Padra'}, 'visitFeePaise': 9900, 'laborPaise': 20000,
-  'address': {'line1': 'A/27 Umiya Nagar', 'line2': null, 'landmark': 'HP Gas', 'pincode': '391440'},
-  'customer': {'maskedPhone': '••••••8384'}, 'photos': <Map<String, dynamic>>[],
-};
+TechnicianJobDto _job({String state = 'ARRIVED', int labor = 20000, int visit = 9900, String? categoryId = 'cat-fan'}) =>
+    TechnicianJobDto.fromJson({
+      'id': 'b1', 'bookingNumber': 'FC-1', 'state': state, 'scheduledSlot': '2026-10-01T09:00:00.000Z',
+      'service': {'name': 'Ceiling fan repair', 'requiredSkill': 'FAN', 'categoryId': categoryId},
+      'zone': {'name': 'Padra'}, 'visitFeePaise': visit, 'laborPaise': labor,
+      'address': {'line1': 'A/27 Umiya Nagar', 'pincode': '391440'},
+      'customer': {'maskedPhone': '••••••8384'}, 'photos': <Map<String, dynamic>>[],
+    });
 
-TechnicianJobDto _dto({String id = 'b1'}) => TechnicianJobDto.fromJson(_jobJson(id: id));
+const _capacitor = PartCatalogDto(id: 'p1', sku: 'CAP', name: 'Capacitor', categoryId: 'cat-fan', ceilingPricePaise: 15000, status: 'ACTIVE');
 
-class _FakeCatalogRepo extends CatalogRepository {
-  _FakeCatalogRepo() : super(Dio());
+/// What the fake BACKEND sends as `customerQuote` (its computeEstimate as if quoted). Test fixture only — the
+/// app itself never computes this.
+JobQuoteDto _serverQuote(TechnicianJobDto job, List<JobPartLineDto> parts) {
+  final partsPaise = parts.fold<int>(0, (sum, p) => sum + p.ceilingPricePaise * p.qty);
+  final total = job.laborPaise + partsPaise - job.visitFeePaise;
+  return JobQuoteDto(
+      laborPaise: job.laborPaise, partsPaise: partsPaise, visitFeeCreditPaise: job.visitFeePaise, totalPayablePaise: total < 0 ? 0 : total);
+}
 
-  Result<List<PartCatalogDto>> partsResult = const Ok([
-    PartCatalogDto(id: 'p1', sku: 'FAN-CAP', name: 'Fan capacitor 2.5 MFD', categoryId: 'c1', ceilingPricePaise: 15000, status: 'ACTIVE'),
-    PartCatalogDto(id: 'p2', sku: 'FAN-BRG', name: 'Bearing set', categoryId: 'c1', ceilingPricePaise: 8000, status: 'ACTIVE'),
-  ]);
-
-  int partsCalls = 0;
-
-  /// When true, parts() throws (a non-Dio failure -> the provider's AsyncError).
-  bool partsThrows = false;
+/// Server-side cart: addPart/removePart mutate it; job() returns it — like the real backend.
+class _FakeJobRepo extends TechnicianJobRepository {
+  _FakeJobRepo({this.categoryId = 'cat-fan'}) : super(Dio());
+  final String? categoryId;
+  final List<JobPartLineDto> serverParts = [];
+  int jobCalls = 0;
+  int addCalls = 0;
+  ({String partsCatalogId, int qty})? lastAdd;
+  String? lastRemoved;
+  Result<String>? addResultOverride;
+  bool applyAddDespiteFailure = false;
+  Completer<void>? addGate;
+  bool addThrows = false;
+  bool removeThrows = false;
+  /// Sticky: while set, job() returns this instead of the server cart (e.g. the refetch after an add fails).
+  Result<TechnicianJobDetailDto>? jobResultOverride;
+  /// One-shot: the NEXT job() call computes its answer now (the server state at issue time) but stays in
+  /// flight until this completes — an older poll that lands late.
+  Completer<void>? nextJobGate;
+  /// false → the backend sends no customerQuote (an older build).
+  bool sendQuote = true;
 
   @override
-  Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) async {
-    partsCalls++;
-    if (partsThrows) throw StateError('boom');
-    return partsResult;
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    jobCalls++;
+    final job = _job(categoryId: categoryId);
+    final parts = List.of(serverParts);
+    final Result<TechnicianJobDetailDto> answer = jobResultOverride ??
+        Ok(TechnicianJobDetailDto(job: job, parts: parts, customerQuote: sendQuote ? _serverQuote(job, parts) : null));
+    final gate = nextJobGate;
+    nextJobGate = null;
+    if (gate != null) await gate.future;
+    return answer;
   }
 
   @override
-  Future<Result<List<DiagnosedIssueDto>>> issues({String? categoryId}) async => const Ok([]);
-}
-
-class _FakeJobRepo extends TechnicianJobRepository {
-  _FakeJobRepo() : super(Dio());
-
-  int addPartCalls = 0;
-  ({String id, String partsCatalogId, int qty})? lastAddPart;
-  Result<String> addPartResult = const Ok('line-1');
-  /// When set, addPart stays in flight until the test completes it.
-  Completer<Result<String>>? addPartGate;
-
-  int removePartCalls = 0;
-  ({String id, String partId})? lastRemovePart;
-  Result<void> removePartResult = const Ok(null);
-  /// When set, removePart stays in flight until the test completes it.
-  Completer<Result<void>>? removePartGate;
-
-  @override
   Future<Result<String>> addPart(String id, {required String partsCatalogId, required int qty}) async {
-    addPartCalls++;
-    lastAddPart = (id: id, partsCatalogId: partsCatalogId, qty: qty);
-    final gate = addPartGate;
-    if (gate != null) return gate.future;
-    return addPartResult;
+    addCalls++;
+    lastAdd = (partsCatalogId: partsCatalogId, qty: qty);
+    if (addThrows) throw StateError('add boom');
+    if (addGate != null) await addGate!.future;
+    final override = addResultOverride;
+    if (override == null || applyAddDespiteFailure) {
+      serverParts.add(JobPartLineDto(id: 'l${serverParts.length + 1}', partsCatalogId: partsCatalogId, sku: 'CAP', name: 'Capacitor', qty: qty, ceilingPricePaise: 15000));
+    }
+    return override ?? Ok('l${serverParts.length}');
   }
 
   @override
   Future<Result<void>> removePart(String id, String partId) async {
-    removePartCalls++;
-    lastRemovePart = (id: id, partId: partId);
-    final gate = removePartGate;
-    if (gate != null) return gate.future;
-    return removePartResult;
+    lastRemoved = partId;
+    if (removeThrows) throw StateError('remove boom');
+    serverParts.removeWhere((p) => p.id == partId);
+    return const Ok(null);
   }
 }
 
-Future<void> _pump(WidgetTester tester, ProviderContainer container, TechnicianJobDto job) {
-  return tester.pumpWidget(
-    UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: Scaffold(body: PartsCartCard(job: job))),
+class _FakeCatalog extends CatalogRepository {
+  _FakeCatalog({this.catalogParts = const [_capacitor]}) : super(Dio());
+  final List<PartCatalogDto> catalogParts;
+  final List<String?> partsCategoryArgs = [];
+  @override
+  Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) async {
+    partsCategoryArgs.add(categoryId);
+    return Ok(catalogParts);
+  }
+}
+
+List<PartCatalogDto> _manyParts(int n, {String name = 'Part'}) => [
+      for (var i = 1; i <= n; i++)
+        PartCatalogDto(id: 'p$i', sku: 'SKU$i', name: '$name $i', categoryId: 'cat-fan', ceilingPricePaise: 1000 * i, status: 'ACTIVE'),
+    ];
+
+/// A job-detail notifier whose refetch() throws — the parts section must still reset its busy state.
+class _RefetchThrows extends JobDetail {
+  @override
+  Future<TechnicianJobDetailDto> build(String bookingId) async => TechnicianJobDetailDto(job: _job());
+  @override
+  Future<bool> refetch() async => throw StateError('boom');
+}
+
+FilledButton _addBtn(WidgetTester tester, String partId) => tester.widget<FilledButton>(find.byKey(Key('addPartBtn_$partId')));
+
+/// Renders PartsSection the way the diagnosis form does: from the live jobDetailProvider.
+Future<void> _pump(WidgetTester tester, _FakeJobRepo repo, _FakeCatalog catalog,
+    {ValueChanged<bool>? onBusy, bool enabled = true, JobDetail Function()? jobDetail}) async {
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      technicianJobRepositoryProvider.overrideWithValue(repo),
+      catalogRepositoryProvider.overrideWithValue(catalog),
+      if (jobDetail != null) jobDetailProvider.overrideWith2((_) => jobDetail()),
+    ],
+    child: MaterialApp(
+      home: Scaffold(
+        body: Consumer(builder: (context, ref, _) {
+          final async = ref.watch(jobDetailProvider('b1'));
+          return switch (async) {
+            AsyncData(value: final d) =>
+              SingleChildScrollView(child: PartsSection(detail: d, enabled: enabled, onBusyChanged: onBusy ?? (_) {})),
+            _ => const SizedBox(),
+          };
+        }),
+      ),
     ),
-  );
+  ));
+  await tester.pumpAndSettle();
 }
 
 void main() {
-  group('indicativeEstimatePaise', () {
-    test('labor 20000 + 2x15000 - visitFee 9900 = 40100', () {
-      final job = _dto();
-      const part = PartCatalogDto(
-        id: 'p1', sku: 'FAN-CAP', name: 'Fan capacitor', categoryId: 'c1', ceilingPricePaise: 15000, status: 'ACTIVE',
-      );
-      final lines = [const CartLine(lineId: 'l1', part: part, qty: 2)];
-      expect(indicativeEstimatePaise(job, lines), 40100);
-    });
-
-    test('floors at 0 when visit fee exceeds labor + parts', () {
-      final job = TechnicianJobDto.fromJson(_jobJson()..addAll({'laborPaise': 500, 'visitFeePaise': 9900}));
-      expect(indicativeEstimatePaise(job, const []), 0);
+  group('PartLineText (one line widget for cart line, sent card and confirm dialog)', () {
+    testWidgets("renders '<name> × <qty> · <line total>' from the DTO's lineTotalPaise", (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: PartLineText(
+          JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000)))));
+      expect(find.text('Capacitor × 2 · ₹300'), findsOneWidget);
     });
   });
 
-  testWidgets('parts render from parts()', (tester) async {
-    final jobRepo = _FakeJobRepo();
-    final catalogRepo = _FakeCatalogRepo();
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
+  group('PartsSection — server quote, part already in the estimate, no silent catches', () {
+    testWidgets('"Customer will see" is the SERVER quote verbatim (never client math)', (tester) async {
+      final repo = _FakeJobRepo()..jobResultOverride = Ok(TechnicianJobDetailDto(
+          job: _job(),
+          customerQuote: const JobQuoteDto(laborPaise: 20000, partsPaise: 0, visitFeeCreditPaise: 9900, totalPayablePaise: 12345)));
+      await _pump(tester, repo, _FakeCatalog());
+      expect(find.text('Customer will see: ₹123.45'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
+    testWidgets('no customerQuote from the backend → the amount is hidden (no fallback to client math)', (tester) async {
+      final repo = _FakeJobRepo()..sendQuote = false;
+      await _pump(tester, repo, _FakeCatalog());
+      expect(find.byKey(const Key('customerWillSee')), findsNothing);
+      expect(find.textContaining('Customer will see'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    expect(find.text('Fan capacitor 2.5 MFD'), findsOneWidget);
-    expect(find.text('Bearing set'), findsOneWidget);
+    testWidgets('a catalog part already in the estimate shows "In estimate" instead of Add; its qty stepper is disabled', (tester) async {
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'SKU1', name: 'Part 1', qty: 1, ceilingPricePaise: 1000));
+      await _pump(tester, repo, _FakeCatalog(catalogParts: _manyParts(2)));
+      expect(find.byKey(const Key('inEstimate_p1')), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const Key('inEstimate_p1'))).data, 'In estimate');
+      expect(find.byKey(const Key('addPartBtn_p1')), findsNothing);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p1'))).onPressed, isNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyMinus_p1'))).onPressed, isNull);
+      // A part not in the estimate is unaffected.
+      expect(find.byKey(const Key('inEstimate_p2')), findsNothing);
+      expect(_addBtn(tester, 'p2').onPressed, isNotNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p2'))).onPressed, isNotNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('after an add lands, that row flips to "In estimate"; removing the line brings Add back', (tester) async {
+      final repo = _FakeJobRepo();
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inEstimate_p1')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('removePartBtn_l1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inEstimate_p1')), findsNothing);
+      expect(find.byKey(const Key('addPartBtn_p1')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an add that THROWS is reported (FlutterError) and shows the generic snack', (tester) async {
+      final repo = _FakeJobRepo()..addThrows = true;
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('Something went wrong.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a remove that THROWS is reported (FlutterError) and shows the generic snack', (tester) async {
+      final repo = _FakeJobRepo()
+        ..removeThrows = true
+        ..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('removePartBtn_l9')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('Something went wrong.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
-  testWidgets('add with qty 2 calls addPart(qty:2), cartLine appears, estimate updates', (tester) async {
-    final jobRepo = _FakeJobRepo()..addPartResult = const Ok('line-1');
-    final catalogRepo = _FakeCatalogRepo();
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
+  group('PartsSection — unconfirmed cleared by fetch sequence', () {
+    testWidgets('after a failed post-add refetch, an UNCHANGED successful poll clears the notice (no state change needed)', (tester) async {
+      final repo = _FakeJobRepo()
+        // The add itself is rejected (nothing changes server-side) AND the refetch after it fails.
+        ..addResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      expect(busy.last, isTrue);
 
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
+      repo.jobResultOverride = null; // the next poll succeeds with exactly the job already on screen
+      await tester.pump(jobPollInterval);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsNothing);
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    await tester.tap(find.byKey(const Key('qtyPlus_p1')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
-    await tester.pumpAndSettle();
+    testWidgets('an OLDER in-flight poll landing after the failed refetch does NOT clear the notice', (tester) async {
+      final repo = _FakeJobRepo()..addResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      final olderPoll = repo.nextJobGate = Completer<void>();
+      await tester.pump(jobPollInterval); // a poll goes out (issued BEFORE the add) and stays in flight
+      final callsWithPoll = repo.jobCalls;
 
-    expect(jobRepo.addPartCalls, 1);
-    expect(jobRepo.lastAddPart, (id: 'b1', partsCatalogId: 'p1', qty: 2));
-    expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
-    expect(find.textContaining('Fan capacitor 2.5 MFD × 2'), findsOneWidget);
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(repo.jobCalls, callsWithPoll + 1, reason: 'the refetch after the add went out (and failed)');
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
 
-    // Estimate: labor 20000 + 2*15000 - visitFee 9900 = 40100 = ₹401
-    expect(
-      tester.widget<Text>(find.byKey(const Key('indicativeEstimate'))).data,
-      'Indicative estimate: ₹401',
-    );
+      repo.jobResultOverride = null;
+      olderPoll.complete(); // the older poll lands Ok — but it predates the add
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      expect(busy.last, isTrue);
+
+      await tester.pump(jobPollInterval); // a poll issued AFTER the add succeeds → cleared
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsNothing);
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
-  testWidgets('remove calls removePart, line disappears, estimate reverts', (tester) async {
-    final jobRepo = _FakeJobRepo();
-    final catalogRepo = _FakeCatalogRepo();
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
+  group('PartsSection', () {
+    testWidgets('the cart shown is the server cart; the parts list is fetched for the job category', (tester) async {
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      final catalog = _FakeCatalog();
+      await _pump(tester, repo, catalog);
+      expect(find.byKey(const Key('cartLine_l9')), findsOneWidget);
+      expect(catalog.partsCategoryArgs, ['cat-fan']);
+      expect(find.text('Customer will see: ₹251'), findsOneWidget); // 20000 + 15000 − 9900 = 25100 paise
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
+    testWidgets('no categoryId (older backend) → the parts list is unfiltered', (tester) async {
+      final catalog = _FakeCatalog();
+      await _pump(tester, _FakeJobRepo(categoryId: null), catalog);
+      expect(catalog.partsCategoryArgs, [null]);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
+    testWidgets('add with qty 2 → addPart(qty: 2) then a refetch renders the server line + new estimate', (tester) async {
+      final repo = _FakeJobRepo();
+      await _pump(tester, repo, _FakeCatalog());
+      final callsBefore = repo.jobCalls;
+      await tester.tap(find.byKey(const Key('qtyPlus_p1')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(repo.lastAdd, (partsCatalogId: 'p1', qty: 2));
+      expect(repo.jobCalls, greaterThan(callsBefore));
+      expect(find.byKey(const Key('cartLine_l1')), findsOneWidget);
+      expect(find.text('Customer will see: ₹401'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    await tester.tap(find.byKey(const Key('removePartBtn_line-1')));
-    await tester.pumpAndSettle();
+    testWidgets('remove → removePart(lineId) then the line disappears', (tester) async {
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('removePartBtn_l9')));
+      await tester.pumpAndSettle();
+      expect(repo.lastRemoved, 'l9');
+      expect(find.byKey(const Key('cartLine_l9')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    expect(jobRepo.removePartCalls, 1);
-    expect(jobRepo.lastRemovePart, (id: 'b1', partId: 'line-1'));
-    expect(find.byKey(const Key('cartLine_line-1')), findsNothing);
-    // Back to labor 20000 - visitFee 9900 = 10100 = ₹101
-    expect(
-      tester.widget<Text>(find.byKey(const Key('indicativeEstimate'))).data,
-      'Indicative estimate: ₹101',
-    );
+    testWidgets('a lost add response the backend applied still converges to the server cart (no ghost, no dupe)', (tester) async {
+      final repo = _FakeJobRepo()
+        ..addResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.')
+        ..applyAddDespiteFailure = true;
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Network error. Check your connection.'), findsOneWidget); // surfaced
+      expect(find.byKey(const Key('cartLine_l1')), findsOneWidget); // server truth shown after refetch
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a locked-cart 409 / not-assigned 403 is shown verbatim and refetches', (tester) async {
+      final repo = _FakeJobRepo()..addResultOverride = const Failure(FailureKind.unknown, 'The cart is locked — the diagnosis has been submitted');
+      await _pump(tester, repo, _FakeCatalog());
+      final callsBefore = repo.jobCalls;
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.text('The cart is locked — the diagnosis has been submitted'), findsOneWidget);
+      expect(repo.jobCalls, greaterThan(callsBefore));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('reports busy while an add is in flight (and a double tap is ignored)', (tester) async {
+      final repo = _FakeJobRepo()..addGate = Completer<void>();
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')), warnIfMissed: false);
+      await tester.pump();
+      expect(busy.last, isTrue);
+      expect(repo.addCalls, 1);
+      repo.addGate!.complete();
+      await tester.pumpAndSettle();
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
-  testWidgets('addPart Failure (frozen cart) shows a SnackBar with the message verbatim', (tester) async {
-    final jobRepo = _FakeJobRepo()
-      ..addPartResult = const Failure(FailureKind.unknown, 'The cart is frozen — the booking is no longer in DIAGNOSED');
-    final catalogRepo = _FakeCatalogRepo();
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
+  group('PartsSection — unconfirmed cart, locked while sending, lighter list', () {
+    testWidgets('the refetch after an add fails → "Couldn\'t confirm the latest parts." + busy stays true; Retry success clears it', (tester) async {
+      final repo = _FakeJobRepo();
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      expect(find.text("Couldn't confirm the latest parts."), findsOneWidget);
+      expect(busy.last, isTrue, reason: 'Submit stays blocked while the cart on screen is unconfirmed');
+      expect(_addBtn(tester, 'p1').onPressed, isNotNull, reason: 'the per-part busy state was reset');
 
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
+      repo.jobResultOverride = null;
+      await tester.tap(find.byKey(const Key('cartUnconfirmedRetry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsNothing);
+      expect(find.byKey(const Key('cartLine_l1')), findsOneWidget);
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
-    await tester.pumpAndSettle();
+    testWidgets('a Retry that fails again keeps the notice and the block', (tester) async {
+      final repo = _FakeJobRepo();
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('cartUnconfirmedRetry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      expect(busy.last, isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
 
-    expect(find.text('The cart is frozen — the booking is no longer in DIAGNOSED'), findsOneWidget);
-    expect(find.byKey(const Key('cartLine_line-1')), findsNothing);
+    testWidgets('a later poll that delivers an updated job clears the unconfirmed notice', (tester) async {
+      final repo = _FakeJobRepo();
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+
+      repo.jobResultOverride = null; // the next poll succeeds and carries the line the add created
+      await tester.pump(jobPollInterval);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartLine_l1')), findsOneWidget);
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsNothing);
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a refetch that THROWS still resets busy (and marks the cart unconfirmed)', (tester) async {
+      final repo = _FakeJobRepo();
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add, jobDetail: _RefetchThrows.new);
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>(), reason: 'the throw is reported, never swallowed');
+      expect(repo.addCalls, 1);
+      expect(_addBtn(tester, 'p1').onPressed, isNotNull, reason: 'busy reset despite the throw');
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('enabled: false (the estimate is being sent) disables filter, qty, add and remove', (tester) async {
+      // The cart line is a DIFFERENT part (p9) so p1's row still shows Add (an in-estimate row has none).
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p9', sku: 'FUSE', name: 'Fuse', qty: 1, ceilingPricePaise: 2000));
+      await _pump(tester, repo, _FakeCatalog(), enabled: false);
+      expect(_addBtn(tester, 'p1').onPressed, isNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p1'))).onPressed, isNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyMinus_p1'))).onPressed, isNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('removePartBtn_l9'))).onPressed, isNull);
+      expect(tester.widget<TextField>(find.byKey(const Key('partsFilter'))).enabled, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an empty filter shows at most 8 parts + "Type to find more parts (N more)"; a filter shows every match', (tester) async {
+      await _pump(tester, _FakeJobRepo(), _FakeCatalog(catalogParts: _manyParts(12, name: 'Capacitor')));
+      expect(find.byKey(const Key('addPartBtn_p8')), findsOneWidget);
+      expect(find.byKey(const Key('addPartBtn_p9')), findsNothing);
+      expect(find.byKey(const Key('partsMoreHint')), findsOneWidget);
+      expect(find.text('Type to find more parts (4 more)'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('partsFilter')), 'capacitor');
+      await tester.pumpAndSettle();
+      for (var i = 1; i <= 12; i++) {
+        expect(find.byKey(Key('addPartBtn_p$i')), findsOneWidget);
+      }
+      expect(find.byKey(const Key('partsMoreHint')), findsNothing);
+
+      await tester.enterText(find.byKey(const Key('partsFilter')), 'capacitor 1');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('addPartBtn_p1')), findsOneWidget);
+      expect(find.byKey(const Key('addPartBtn_p10')), findsOneWidget);
+      expect(find.byKey(const Key('addPartBtn_p2')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('8 or fewer parts → no "more" hint', (tester) async {
+      await _pump(tester, _FakeJobRepo(), _FakeCatalog(catalogParts: _manyParts(8)));
+      expect(find.byKey(const Key('addPartBtn_p8')), findsOneWidget);
+      expect(find.byKey(const Key('partsMoreHint')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('empty states: an empty catalog and a filter with no match both show "No matching parts"', (tester) async {
+      await _pump(tester, _FakeJobRepo(), _FakeCatalog(catalogParts: const []));
+      expect(find.byKey(const Key('partsEmpty')), findsOneWidget);
+      expect(find.text('No matching parts'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+
+      await _pump(tester, _FakeJobRepo(), _FakeCatalog());
+      expect(find.byKey(const Key('partsEmpty')), findsNothing);
+      await tester.enterText(find.byKey(const Key('partsFilter')), 'zzz');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('partsEmpty')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('qty and remove icon buttons carry tooltips (TalkBack)', (tester) async {
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      await _pump(tester, repo, _FakeCatalog());
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyMinus_p1'))).tooltip, 'Fewer');
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p1'))).tooltip, 'More');
+      expect(tester.widget<IconButton>(find.byKey(const Key('removePartBtn_l9'))).tooltip, 'Remove part');
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('qty is per part row and survives a rebuild from the poll', (tester) async {
+      final repo = _FakeJobRepo();
+      await _pump(tester, repo, _FakeCatalog(catalogParts: _manyParts(2)));
+      await tester.tap(find.byKey(const Key('qtyPlus_p2')));
+      await tester.tap(find.byKey(const Key('qtyPlus_p2')));
+      await tester.pump();
+      repo.serverParts.add(const JobPartLineDto(id: 'l7', partsCatalogId: 'p1', sku: 'SKU1', name: 'Part 1', qty: 1, ceilingPricePaise: 1000));
+      await tester.pump(jobPollInterval); // a poll delivers a changed job → the section rebuilds
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartLine_l7')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('addPartBtn_p2')));
+      await tester.pumpAndSettle();
+      expect(repo.lastAdd, (partsCatalogId: 'p2', qty: 3));
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
-  testWidgets('parts filter narrows the list by name', (tester) async {
-    final jobRepo = _FakeJobRepo();
-    final catalogRepo = _FakeCatalogRepo();
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
+  group('EstimateSentCard (DIAGNOSED, read-only)', () {
+    testWidgets('shows the frozen lines and the server total; no edit controls', (tester) async {
+      final job = _job(state: 'DIAGNOSED');
+      const parts = [JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000)];
+      final detail = TechnicianJobDetailDto(job: job, parts: parts, customerQuote: _serverQuote(job, parts));
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: detail))));
+      expect(find.byKey(const Key('waitingApprovalCard')), findsOneWidget);
+      expect(find.text('Estimate sent — waiting for the customer to approve or decline'), findsOneWidget);
+      expect(find.byKey(const Key('estimateLine_l1')), findsOneWidget);
+      expect(find.text('Capacitor × 2 · ₹300'), findsOneWidget);
+      expect(find.text('Total: ₹401'), findsOneWidget);
+      expect(find.byType(IconButton), findsNothing);
+    });
 
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
+    testWidgets('labor-only estimate and a server total floored at ₹0', (tester) async {
+      final job = _job(state: 'DIAGNOSED', labor: 5000, visit: 9900);
+      final detail = TechnicianJobDetailDto(job: job, customerQuote: _serverQuote(job, const []));
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: detail))));
+      expect(find.byKey(const Key('estimateLaborOnly')), findsOneWidget);
+      expect(find.text('Total: ₹0'), findsOneWidget);
+    });
 
-    await tester.enterText(find.byKey(const Key('partsFilter')), 'bearing');
-    await tester.pumpAndSettle();
-
-    expect(find.text('Bearing set'), findsOneWidget);
-    expect(find.text('Fan capacitor 2.5 MFD'), findsNothing);
-  });
-
-  testWidgets('cart survives disposing and re-pumping the card in the same container (keepAlive)', (tester) async {
-    final jobRepo = _FakeJobRepo();
-    final catalogRepo = _FakeCatalogRepo();
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
-
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
-
-    // Dispose the widget tree entirely, then re-pump the card in the SAME
-    // container — the cart line must still be there (keepAlive provider).
-    await tester.pumpWidget(const SizedBox());
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
-  });
-
-  testWidgets('parts() Failure shows the message + partsRetry; retry re-fetches and the list recovers',
-      (tester) async {
-    final jobRepo = _FakeJobRepo();
-    final catalogRepo = _FakeCatalogRepo()
-      ..partsResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
-
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-
-    expect(find.text('Network error. Check your connection.'), findsOneWidget);
-    expect(find.byKey(const Key('partsRetry')), findsOneWidget);
-
-    // The blip clears; retry must recover without leaving the screen.
-    catalogRepo.partsResult = const Ok([
-      PartCatalogDto(id: 'p1', sku: 'FAN-CAP', name: 'Fan capacitor 2.5 MFD', categoryId: 'c1', ceilingPricePaise: 15000, status: 'ACTIVE'),
-    ]);
-    final callsBefore = catalogRepo.partsCalls;
-    await tester.tap(find.byKey(const Key('partsRetry')));
-    await tester.pumpAndSettle();
-
-    expect(catalogRepo.partsCalls, greaterThan(callsBefore));
-    expect(find.text('Fan capacitor 2.5 MFD'), findsOneWidget);
-    expect(find.byKey(const Key('partsRetry')), findsNothing);
-  });
-
-  testWidgets('parts() throwing shows "Something went wrong." + partsRetry', (tester) async {
-    final jobRepo = _FakeJobRepo();
-    final catalogRepo = _FakeCatalogRepo()..partsThrows = true;
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(catalogRepo),
-    ]);
-    addTearDown(container.dispose);
-
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-
-    expect(find.text('Something went wrong.'), findsOneWidget);
-    expect(find.byKey(const Key('partsRetry')), findsOneWidget);
-  });
-
-  testWidgets('a part added while the card unmounts still lands in the cart (backend already has it)',
-      (tester) async {
-    final gate = Completer<Result<String>>();
-    final jobRepo = _FakeJobRepo()..addPartGate = gate;
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(_FakeCatalogRepo()),
-    ]);
-    addTearDown(container.dispose);
-
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
-    await tester.pump();
-    expect(jobRepo.addPartCalls, 1);
-
-    // The technician leaves the job (card unmounts) while addPart is in flight.
-    await tester.pumpWidget(const SizedBox());
-    gate.complete(const Ok('line-9'));
-    await tester.pump();
-
-    expect(container.read(jobCartProvider('b1')).map((l) => l.lineId), ['line-9']);
-
-    // Coming back to the job shows the line.
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('cartLine_line-9')), findsOneWidget);
-  });
-
-  testWidgets('a line removed while the card unmounts is still removed from the cart', (tester) async {
-    final jobRepo = _FakeJobRepo()..addPartResult = const Ok('line-1');
-    final container = ProviderContainer(overrides: [
-      technicianJobRepositoryProvider.overrideWithValue(jobRepo),
-      catalogRepositoryProvider.overrideWithValue(_FakeCatalogRepo()),
-    ]);
-    addTearDown(container.dispose);
-
-    await _pump(tester, container, _dto());
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('addPartBtn_p1')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('cartLine_line-1')), findsOneWidget);
-
-    final gate = Completer<Result<void>>();
-    jobRepo.removePartGate = gate;
-    await tester.tap(find.byKey(const Key('removePartBtn_line-1')));
-    await tester.pump();
-
-    await tester.pumpWidget(const SizedBox());
-    gate.complete(const Ok(null));
-    await tester.pump();
-
-    expect(container.read(jobCartProvider('b1')), isEmpty);
+    testWidgets('the total is the server quote verbatim; no quote → the total is hidden', (tester) async {
+      final quoted = TechnicianJobDetailDto(
+          job: _job(state: 'DIAGNOSED'),
+          customerQuote: const JobQuoteDto(laborPaise: 20000, partsPaise: 0, visitFeeCreditPaise: 9900, totalPayablePaise: 77700));
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: quoted))));
+      expect(find.text('Total: ₹777'), findsOneWidget);
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: TechnicianJobDetailDto(job: _job(state: 'DIAGNOSED'))))));
+      expect(find.byKey(const Key('estimateTotal')), findsNothing);
+    });
   });
 }

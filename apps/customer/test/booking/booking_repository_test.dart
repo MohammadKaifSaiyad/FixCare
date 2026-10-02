@@ -291,4 +291,9 @@ void main() {
     expect(f.kind, FailureKind.rateLimited);
     expect(f.message, 'Too many code requests. Try again later.');
   });
+
+  test('PartDto.lineTotalPaise is the one line-total formula (ceiling price × qty)', () {
+    const line = PartDto(id: 'l1', sku: 'SKU-1', name: 'Capacitor', ceilingPricePaise: 15000, qty: 2);
+    expect(line.lineTotalPaise, 30000);
+  });
 }

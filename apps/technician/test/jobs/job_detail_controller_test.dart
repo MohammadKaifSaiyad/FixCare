@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fixcare_technician/core/result.dart';
@@ -16,58 +17,125 @@ TechnicianJobDto _j(String state, {String id = 'b1'}) => TechnicianJobDto.fromJs
   'customer': {'maskedPhone': '••••••8384'}, 'photos': <Map<String, dynamic>>[],
 });
 
-/// A scripted repo: mine() returns results[callIndex], clamping at the last entry.
+Result<TechnicianJobDetailDto> _d(String state, {String id = 'b1', List<JobPartLineDto> parts = const []}) =>
+    Ok(TechnicianJobDetailDto(job: _j(state, id: id), parts: parts));
+
+const _mineForbidden = 'the job-detail controller must not call mine()';
+
+// The backend's job-scoped 404/403 (technician-jobs.service.ts) — a vanish keys on the CODE, never the message.
+const _jobNotFound = Failure<TechnicianJobDetailDto>(FailureKind.notFound, 'Job not found', code: 'JOB_NOT_FOUND');
+const _jobNotAssigned =
+    Failure<TechnicianJobDetailDto>(FailureKind.forbidden, 'This job is not assigned to you', code: 'JOB_NOT_ASSIGNED');
+
+/// Captures FlutterError.reportError calls for the duration of a test (and restores the handler).
+List<FlutterErrorDetails> _captureReportedErrors() {
+  final reported = <FlutterErrorDetails>[];
+  final previous = FlutterError.onError;
+  FlutterError.onError = reported.add;
+  addTearDown(() => FlutterError.onError = previous);
+  return reported;
+}
+
+/// A scripted repo: job(id) returns results[callIndex], clamping at the last entry.
 class _ScriptedRepo extends TechnicianJobRepository {
   _ScriptedRepo(this.results) : super(Dio());
-  final List<Result<List<TechnicianJobDto>>> results;
+  final List<Result<TechnicianJobDetailDto>> results;
   int calls = 0;
+  final List<String> ids = [];
   @override
-  Future<Result<List<TechnicianJobDto>>> mine() async {
+  Future<Result<List<TechnicianJobDto>>> mine() async => throw StateError(_mineForbidden);
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    ids.add(id);
     final r = results[calls < results.length ? calls : results.length - 1];
     calls++;
     return r;
   }
 }
 
-/// A repo whose every mine() call stays in flight until the test completes it
+/// A repo whose every job(id) call stays in flight until the test completes it
 /// (pending[i] is the i-th call) — for overlap / ordering tests.
 class _GatedRepo extends TechnicianJobRepository {
   _GatedRepo() : super(Dio());
-  final List<Completer<Result<List<TechnicianJobDto>>>> pending = [];
+  final List<Completer<Result<TechnicianJobDetailDto>>> pending = [];
   int get calls => pending.length;
   @override
-  Future<Result<List<TechnicianJobDto>>> mine() {
-    final c = Completer<Result<List<TechnicianJobDto>>>();
+  Future<Result<List<TechnicianJobDto>>> mine() async => throw StateError(_mineForbidden);
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) {
+    final c = Completer<Result<TechnicianJobDetailDto>>();
     pending.add(c);
     return c.future;
   }
 }
 
+/// A mutable repo: serves `current` + `parts` from job(id); a test can set a one-shot `nextJobResult`
+/// (cleared after use) to script a single failure.
+class _FakeRepo extends TechnicianJobRepository {
+  _FakeRepo() : super(Dio());
+  TechnicianJobDto current = _j('EN_ROUTE');
+  final List<JobPartLineDto> parts = [];
+  Result<TechnicianJobDetailDto>? nextJobResult;
+  int jobCalls = 0;
+
+  @override
+  Future<Result<List<TechnicianJobDto>>> mine() async => throw StateError(_mineForbidden);
+
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    jobCalls++;
+    final scripted = nextJobResult;
+    nextJobResult = null;
+    // List.of: a snapshot, so a later parts.add() is a genuine change between polls.
+    return scripted ?? Ok(TechnicianJobDetailDto(job: current, parts: List.of(parts)));
+  }
+}
+
+/// job(id) throws (a non-Failure error escaping the repository) while `throwing` is set; otherwise Ok.
+class _ThrowingRepo extends TechnicianJobRepository {
+  _ThrowingRepo() : super(Dio());
+  bool throwing = false;
+  int jobCalls = 0;
+  String state = 'EN_ROUTE';
+  @override
+  Future<Result<List<TechnicianJobDto>>> mine() async => throw StateError(_mineForbidden);
+  @override
+  Future<Result<TechnicianJobDetailDto>> job(String id) async {
+    jobCalls++;
+    if (throwing) throw StateError('boom');
+    return _d(state);
+  }
+}
+
+ProviderContainer _container(TechnicianJobRepository repo) {
+  final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
+  addTearDown(c.dispose);
+  return c;
+}
+
 void main() {
-  test('first load finds the job by id in mine()', () {
+  test('first load fetches the single job by id via job(id) (never mine())', () {
     fakeAsync((async) {
-      final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE'), _j('ACCEPTED', id: 'other')]),
-      ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final repo = _ScriptedRepo([_d('EN_ROUTE')]);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
       expect(repo.calls, 1);
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'EN_ROUTE');
+      expect(repo.ids, ['b1']);
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'EN_ROUTE');
+      expect(c.read(jobDetailProvider('b1')).value?.parts, isEmpty);
     });
   });
 
   test('polls every 5s while active; stops once terminal', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE')]),
-        Ok([_j('ARRIVED')]),
-        Ok([_j('PAYMENT_RECEIVED')]),
-        Ok([_j('PAYMENT_RECEIVED')]),
+        _d('EN_ROUTE'),
+        _d('ARRIVED'),
+        _d('PAYMENT_RECEIVED'),
+        _d('PAYMENT_RECEIVED'),
       ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks(); // first load
       expect(repo.calls, 1);
@@ -83,100 +151,67 @@ void main() {
   test('a poll Failure keeps the last good job (keep-last-good)', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE')]),
+        _d('EN_ROUTE'),
         const Failure(FailureKind.network, 'blip'),
-        Ok([_j('ARRIVED')]),
+        _d('ARRIVED'),
       ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
       async.elapse(const Duration(seconds: 5)); // tick -> Failure
       final afterBlip = c.read(jobDetailProvider('b1'));
-      expect(afterBlip.value?.state, 'EN_ROUTE', reason: 'last-good retained on a poll failure');
+      expect(afterBlip.value?.job.state, 'EN_ROUTE', reason: 'last-good retained on a poll failure');
       expect(afterBlip.hasError, isFalse);
       async.elapse(const Duration(seconds: 5)); // tick -> ARRIVED
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
-    });
-  });
-
-  test('a poll where the job disappears from mine() keeps the last good job', () {
-    fakeAsync((async) {
-      final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE')]),
-        Ok([_j('ACCEPTED', id: 'other')]), // b1 no longer present
-        Ok([_j('ARRIVED')]),
-      ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
-      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
-      async.flushMicrotasks();
-      async.elapse(const Duration(seconds: 5)); // tick -> not found
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'EN_ROUTE');
-      async.elapse(const Duration(seconds: 5)); // tick -> ARRIVED
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
     });
   });
 
   test('first-load Failure surfaces as AsyncError', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([const Failure(FailureKind.network, 'offline')]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
       expect(c.read(jobDetailProvider('b1')).hasError, isTrue);
-    });
-  });
-
-  test('first-load not-found (job absent from mine()) surfaces as AsyncError', () {
-    fakeAsync((async) {
-      final repo = _ScriptedRepo([
-        Ok([_j('ACCEPTED', id: 'other')]),
-      ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
-      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
-      async.flushMicrotasks();
-      expect(c.read(jobDetailProvider('b1')).hasError, isTrue);
+      expect(c.read(jobDetailProvider('b1')).error, isNot(isA<JobVanishedException>()),
+          reason: 'a network failure is retryable, not "no longer assigned"');
     });
   });
 
   test('refetch() reloads immediately without flashing AsyncLoading and re-arms polling', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([
-        Ok([_j('ARRIVED')]),
-        Ok([_j('DIAGNOSED')]), // simulated result of a diagnose action, pulled by refetch()
-        Ok([_j('CUSTOMER_APPROVED')]),
+        _d('ARRIVED'),
+        _d('DIAGNOSED'), // simulated result of a diagnose action, pulled by refetch()
+        _d('CUSTOMER_APPROVED'),
       ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
 
       final states = <bool>[];
       c.listen(jobDetailProvider('b1'), (_, next) => states.add(next.isLoading), fireImmediately: false);
       c.read(jobDetailProvider('b1').notifier).refetch();
       async.flushMicrotasks();
       expect(states, isNot(contains(true)), reason: 'refetch must never flash AsyncLoading');
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
 
       // polling continues after refetch's re-arm
       async.elapse(const Duration(seconds: 5));
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'CUSTOMER_APPROVED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'CUSTOMER_APPROVED');
     });
   });
 
   test('no second fetch starts while a poll is in flight; the next tick is armed only after it completes', () {
     fakeAsync((async) {
       final repo = _GatedRepo();
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
       expect(repo.calls, 1);
-      repo.pending[0].complete(Ok([_j('EN_ROUTE')]));
+      repo.pending[0].complete(_d('EN_ROUTE'));
       async.flushMicrotasks();
 
       async.elapse(const Duration(seconds: 5)); // tick -> poll #2 starts, stays in flight
@@ -184,13 +219,13 @@ void main() {
       async.elapse(const Duration(seconds: 30)); // slow network: no overlapping ticks
       expect(repo.calls, 2);
 
-      repo.pending[1].complete(Ok([_j('ARRIVED')]));
+      repo.pending[1].complete(_d('ARRIVED'));
       async.flushMicrotasks();
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
       expect(repo.calls, 2, reason: 're-armed, not fired immediately');
       async.elapse(const Duration(seconds: 5));
       expect(repo.calls, 3);
-      repo.pending[2].complete(Ok([_j('ARRIVED')]));
+      repo.pending[2].complete(_d('ARRIVED'));
       async.flushMicrotasks();
     });
   });
@@ -198,11 +233,10 @@ void main() {
   test('a stale response landing after a newer one is dropped (poll vs refetch)', () {
     fakeAsync((async) {
       final repo = _GatedRepo();
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
-      repo.pending[0].complete(Ok([_j('ARRIVED')]));
+      repo.pending[0].complete(_d('ARRIVED'));
       async.flushMicrotasks();
 
       async.elapse(const Duration(seconds: 5)); // poll #2 in flight (will carry the OLD state)
@@ -211,18 +245,18 @@ void main() {
       async.flushMicrotasks();
       expect(repo.calls, 3);
 
-      repo.pending[2].complete(Ok([_j('DIAGNOSED')])); // newer lands first
+      repo.pending[2].complete(_d('DIAGNOSED')); // newer lands first
       async.flushMicrotasks();
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
 
-      repo.pending[1].complete(Ok([_j('ARRIVED')])); // older lands late
+      repo.pending[1].complete(_d('ARRIVED')); // older lands late
       async.flushMicrotasks();
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED', reason: 'the stale poll must not regress the card');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED', reason: 'the stale poll must not regress the card');
 
       // Exactly one timer chain survives.
       async.elapse(const Duration(seconds: 5));
       expect(repo.calls, 4);
-      repo.pending[3].complete(Ok([_j('DIAGNOSED')]));
+      repo.pending[3].complete(_d('DIAGNOSED'));
       async.flushMicrotasks();
     });
   });
@@ -230,12 +264,11 @@ void main() {
   test('pause() stops polling; resume() fetches once immediately and re-arms', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE')]),
-        Ok([_j('ARRIVED')]),
-        Ok([_j('DIAGNOSED')]),
+        _d('EN_ROUTE'),
+        _d('ARRIVED'),
+        _d('DIAGNOSED'),
       ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
       expect(repo.calls, 1);
@@ -247,28 +280,27 @@ void main() {
       c.read(jobDetailProvider('b1').notifier).resume();
       async.flushMicrotasks();
       expect(repo.calls, 2);
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
 
       async.elapse(const Duration(seconds: 5));
       expect(repo.calls, 3, reason: 'polling re-armed after resume');
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'DIAGNOSED');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
     });
   });
 
   test('pause() while a poll is in flight: the completing poll does not re-arm', () {
     fakeAsync((async) {
       final repo = _GatedRepo();
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
-      repo.pending[0].complete(Ok([_j('EN_ROUTE')]));
+      repo.pending[0].complete(_d('EN_ROUTE'));
       async.flushMicrotasks();
       async.elapse(const Duration(seconds: 5));
       expect(repo.calls, 2);
 
       c.read(jobDetailProvider('b1').notifier).pause();
-      repo.pending[1].complete(Ok([_j('EN_ROUTE')]));
+      repo.pending[1].complete(_d('EN_ROUTE'));
       async.flushMicrotasks();
       async.elapse(const Duration(minutes: 1));
 
@@ -290,11 +322,10 @@ void main() {
             ],
           });
       final repo = _ScriptedRepo([
-        Ok([withPhotoUrl('https://r2.example.com/a?sig=1')]),
-        Ok([withPhotoUrl('https://r2.example.com/a?sig=2')]), // a fresh signed url, nothing else changed
+        Ok(TechnicianJobDetailDto(job: withPhotoUrl('https://r2.example.com/a?sig=1'))),
+        Ok(TechnicianJobDetailDto(job: withPhotoUrl('https://r2.example.com/a?sig=2'))), // fresh signed url, nothing else changed
       ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       var notifications = 0;
       c.listen(jobDetailProvider('b1'), (_, next) => notifications++, fireImmediately: true);
       async.flushMicrotasks();
@@ -306,77 +337,185 @@ void main() {
     });
   });
 
-  test('vanished job: 3 consecutive misses set the not-assigned error and stop polling', () {
+  test('404 on first load → AsyncError(JobVanishedException) and nothing is polled', () {
     fakeAsync((async) {
-      final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE')]),
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 1
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 2
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 3 -> vanished
-        Ok([_j('ACCEPTED', id: 'other')]), // would be miss 4 if polling didn't stop
-      ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
-      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      final repo = _FakeRepo()..nextJobResult = _jobNotFound;
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
       async.flushMicrotasks();
-      expect(repo.calls, 1);
-
-      async.elapse(const Duration(seconds: 5)); // miss 1: keep-last-good, no error
-      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'EN_ROUTE');
-
-      async.elapse(const Duration(seconds: 5)); // miss 2: still keep-last-good
-      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
-
-      async.elapse(const Duration(seconds: 5)); // miss 3: vanished
-      final errored = c.read(jobDetailProvider('b1'));
-      expect(errored.hasError, isTrue);
-      expect(errored.error, isA<JobVanishedException>());
-      expect(errored.error.toString(), 'This job is no longer assigned to you.');
-      expect(repo.calls, 4);
-
-      async.elapse(const Duration(minutes: 5)); // no more polling once vanished
-      expect(repo.calls, 4);
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+      expect(container.read(jobDetailProvider('b1')).error.toString(), 'This job is no longer assigned to you.');
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, 1);
     });
   });
 
-  test('vanished job: 2 misses then a find resets the counter (stays on last-good, keeps polling)', () {
+  test('403 on first load → AsyncError(JobVanishedException) and nothing is polled', () {
     fakeAsync((async) {
-      final repo = _ScriptedRepo([
-        Ok([_j('EN_ROUTE')]),
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 1
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 2
-        Ok([_j('ARRIVED')]), // found -> counter resets
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 1 again (NOT the 3rd overall)
-        Ok([_j('ACCEPTED', id: 'other')]), // miss 2 again
-      ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
-      c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
+      final repo = _FakeRepo()
+        ..nextJobResult = _jobNotAssigned;
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
       async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, 1);
+    });
+  });
 
-      async.elapse(const Duration(seconds: 5)); // miss 1
-      async.elapse(const Duration(seconds: 5)); // miss 2
-      async.elapse(const Duration(seconds: 5)); // found -> ARRIVED, counter reset
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED');
-      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
+  test('403 during polling → AsyncError(JobVanishedException) and polling stops', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = _jobNotAssigned;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+      final calls = repo.jobCalls;
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, calls);
+    });
+  });
 
-      async.elapse(const Duration(seconds: 5)); // miss 1 again (post-reset)
-      async.elapse(const Duration(seconds: 5)); // miss 2 again (post-reset)
-      expect(c.read(jobDetailProvider('b1')).hasError, isFalse,
-          reason: 'the earlier find reset the counter; this is not yet 3 in a row');
-      expect(c.read(jobDetailProvider('b1')).value?.state, 'ARRIVED', reason: 'keep-last-good on a miss');
-      expect(repo.calls, 6);
+  test('404 during polling → AsyncError(JobVanishedException) and polling stops', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = _jobNotFound;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+      final calls = repo.jobCalls;
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, calls);
+    });
+  });
+
+  test('a transient failure (network) during polling keeps the last good data and keeps polling', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).value?.job.id, 'b1');
+      expect(container.read(jobDetailProvider('b1')).hasError, isFalse);
+      final calls = repo.jobCalls;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(repo.jobCalls, calls + 1);
+    });
+  });
+
+  test('a 5xx (server) failure during polling is transient too: keeps the last good data, keeps polling', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.server, 'Unexpected response from the server.');
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).value?.job.id, 'b1');
+      final calls = repo.jobCalls;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(repo.jobCalls, calls + 1);
+    });
+  });
+
+  test('a parts change between polls DOES notify (unlike a photo-url-only change)', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      var notifications = 0;
+      container.listen(jobDetailProvider('b1'), (_, _) => notifications++);
+      async.flushMicrotasks();
+      final before = notifications;
+      repo.parts.add(const JobPartLineDto(
+          id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(notifications, before + 1);
+      expect(container.read(jobDetailProvider('b1')).value!.parts.single.id, 'l1');
+    });
+  });
+
+  test('an unchanged poll (same job, same parts) does not notify listeners', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      var notifications = 0;
+      container.listen(jobDetailProvider('b1'), (_, _) => notifications++);
+      async.flushMicrotasks();
+      final before = notifications;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(repo.jobCalls, 2, reason: 'the poll still happens');
+      expect(notifications, before);
+    });
+  });
+
+  test('after a vanish, a successful refetch() of an UNCHANGED job clears the error (AsyncData) and re-arms polling', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      final seen = <AsyncValue<TechnicianJobDetailDto>>[];
+      container.listen(jobDetailProvider('b1'), (_, next) => seen.add(next));
+      async.flushMicrotasks();
+      repo.nextJobResult = _jobNotFound;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+      final notificationsAfterVanish = seen.length;
+
+      container.read(jobDetailProvider('b1').notifier).refetch(); // same job content as before the vanish
+      async.flushMicrotasks();
+      final recovered = container.read(jobDetailProvider('b1'));
+      expect(recovered, isA<AsyncData<TechnicianJobDetailDto>>(), reason: 'a stale AsyncError must not linger');
+      expect(recovered.hasError, isFalse);
+      expect(recovered.value?.job.id, 'b1');
+      expect(seen.length, notificationsAfterVanish + 1, reason: 'listeners (the screen) are told it recovered');
+      expect(seen.last, isA<AsyncData<TechnicianJobDetailDto>>());
+
+      final calls = repo.jobCalls;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(repo.jobCalls, calls + 1, reason: 'polling resumed');
+    });
+  });
+
+  test('a transient 403 blip then resume() (job unchanged) recovers to AsyncData', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final container = _container(repo);
+      container.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = _jobNotAssigned;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')).error, isA<JobVanishedException>());
+
+      container.read(jobDetailProvider('b1').notifier).pause();
+      container.read(jobDetailProvider('b1').notifier).resume();
+      async.flushMicrotasks();
+      expect(container.read(jobDetailProvider('b1')), isA<AsyncData<TechnicianJobDetailDto>>());
+      expect(container.read(jobDetailProvider('b1')).hasError, isFalse);
     });
   });
 
   test('resume() on a terminal job fetches once and does not re-arm', () {
     fakeAsync((async) {
       final repo = _ScriptedRepo([
-        Ok([_j('PAYMENT_RECEIVED')]),
+        _d('PAYMENT_RECEIVED'),
       ]);
-      final c = ProviderContainer(overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)]);
-      addTearDown(c.dispose);
+      final c = _container(repo);
       c.listen(jobDetailProvider('b1'), (_, next) {}, fireImmediately: true);
       async.flushMicrotasks();
       c.read(jobDetailProvider('b1').notifier).pause();
@@ -385,6 +524,283 @@ void main() {
       expect(repo.calls, 2);
       async.elapse(const Duration(minutes: 1));
       expect(repo.calls, 2);
+    });
+  });
+
+  test('refetch() reports the outcome: true on Ok (changed or unchanged), false on a Failure', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      final results = <bool>[];
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // unchanged job → still confirmed
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add);
+      async.flushMicrotasks();
+      repo.current = _j('ARRIVED');
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // changed → applied
+      async.flushMicrotasks();
+      expect(results, [true, false, true]);
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
+    });
+  });
+
+  test('refetch() whose response is dropped because a NEWER success was already applied reports true (superseded, not failed)', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED'));
+      async.flushMicrotasks();
+      final results = <bool>[];
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // #2 (older)
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add); // #3 (newer)
+      async.flushMicrotasks();
+      repo.pending[2].complete(_d('DIAGNOSED'));
+      async.flushMicrotasks();
+      repo.pending[1].complete(_d('ARRIVED')); // lands late → dropped, but a newer success is on screen
+      async.flushMicrotasks();
+      expect(results, [true, true]);
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
+      c.read(jobDetailProvider('b1').notifier).pause();
+    });
+  });
+
+  test('a refetch issued, a newer poll lands first (Ok), the refetch response dropped → refetch() returns true', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED'));
+      async.flushMicrotasks();
+      final results = <bool>[];
+      final notifier = c.read(jobDetailProvider('b1').notifier);
+      notifier.refetch().then(results.add); // #2 — the refetch after a cart edit
+      async.flushMicrotasks();
+      // The poll timer was re-armed by the first load; a poll (#3) goes out while the refetch is in flight.
+      async.elapse(jobPollInterval);
+      expect(repo.calls, 3);
+      repo.pending[2].complete(_d('ARRIVED')); // the newer poll lands first (Ok)
+      async.flushMicrotasks();
+      repo.pending[1].complete(_d('ARRIVED')); // the refetch's response lands late → dropped
+      async.flushMicrotasks();
+      expect(results, [true]);
+      notifier.pause();
+    });
+  });
+
+  test('a refetch that fails AFTER a newer success was applied still reports true; with no newer success it reports false', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED'));
+      async.flushMicrotasks();
+      final results = <bool>[];
+      final notifier = c.read(jobDetailProvider('b1').notifier);
+      notifier.refetch().then(results.add); // #2
+      notifier.refetch().then(results.add); // #3
+      async.flushMicrotasks();
+      repo.pending[2].complete(_d('ARRIVED')); // #3 Ok
+      async.flushMicrotasks();
+      repo.pending[1].complete(const Failure(FailureKind.network, 'blip')); // #2 fails, but #3 (newer) succeeded
+      async.flushMicrotasks();
+      expect(results, [true, true]);
+
+      notifier.refetch().then(results.add); // #4 fails with nothing newer
+      async.flushMicrotasks();
+      repo.pending[3].complete(const Failure(FailureKind.network, 'blip'));
+      async.flushMicrotasks();
+      expect(results, [true, true, false]);
+      notifier.pause();
+    });
+  });
+
+  test('a job() that THROWS keeps the last good state, keeps polling, and refetch() reports false', () {
+    fakeAsync((async) {
+      final repo = _ThrowingRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'EN_ROUTE');
+
+      final reported = _captureReportedErrors();
+      repo.throwing = true;
+      async.elapse(jobPollInterval); // a poll whose fetch throws
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'EN_ROUTE', reason: 'keep last good');
+      // Never swallowed silently: the throw (exception + stack only) reaches FlutterError.reportError.
+      expect(reported, hasLength(1));
+      expect(reported.single.exception, isA<StateError>());
+      expect(reported.single.library, 'fixcare jobs');
+      expect(reported.single.stack, isNotNull);
+      expect(c.read(jobDetailProvider('b1')).hasError, isFalse);
+      final results = <bool>[];
+      c.read(jobDetailProvider('b1').notifier).refetch().then(results.add);
+      async.flushMicrotasks();
+      expect(results, [false]);
+
+      repo.throwing = false;
+      repo.state = 'ARRIVED';
+      final calls = repo.jobCalls;
+      async.elapse(jobPollInterval);
+      expect(repo.jobCalls, calls + 1, reason: 'the poll chain survived the throw');
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'ARRIVED');
+    });
+  });
+
+  test('a vanish keys on the code only: a 403 with the old "not assigned" MESSAGE but no job code is an access error, not a vanish', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo()
+        ..nextJobResult = const Failure(FailureKind.forbidden, 'This job is not assigned to you', code: 'FORBIDDEN');
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).error, isA<JobAccessException>());
+      expect(c.read(jobDetailProvider('b1')).error, isNot(isA<JobVanishedException>()));
+    });
+  });
+
+  test('a 404 WITHOUT a job code (route-not-found on an older backend) during polling is transient: keep last good, keep polling', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.notFound, 'Route GET:/technician/jobs/b1 not found');
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      final s = c.read(jobDetailProvider('b1'));
+      expect(s.hasError, isFalse);
+      expect(s.value?.job.id, 'b1');
+      final calls = repo.jobCalls;
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      expect(repo.jobCalls, calls + 1, reason: 'still polling');
+    });
+  });
+
+  test('a 404 WITHOUT a job code on first load → a plain Exception (generic error + Retry), not a vanish', () {
+    fakeAsync((async) {
+      final repo = _ScriptedRepo([const Failure(FailureKind.notFound, 'Route GET:/technician/jobs/b1 not found')]);
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {}, fireImmediately: true);
+      async.flushMicrotasks();
+      final s = c.read(jobDetailProvider('b1'));
+      expect(s.hasError, isTrue);
+      expect(s.error, isA<Exception>());
+      expect(s.error, isNot(isA<JobVanishedException>()));
+      expect(s.error, isNot(isA<JobAccessException>()));
+      c.read(jobDetailProvider('b1').notifier).pause();
+    });
+  });
+
+  test('jobFetchOkSeq is set to the request seq of every successful fetch — applied OR unchanged', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      final okSeqs = <int>[];
+      c.listen<int>(jobFetchOkSeqProvider('b1'), (_, next) => okSeqs.add(next));
+      async.flushMicrotasks();
+      final notifier = c.read(jobDetailProvider('b1').notifier);
+
+      notifier.refetch(); // unchanged job → skipped, but still a success
+      final unchangedSeq = notifier.lastIssuedSeq;
+      async.flushMicrotasks();
+      expect(c.read(jobFetchOkSeqProvider('b1')), unchangedSeq);
+
+      repo.current = _j('ARRIVED');
+      notifier.refetch(); // changed → applied
+      final appliedSeq = notifier.lastIssuedSeq;
+      async.flushMicrotasks();
+      expect(appliedSeq, greaterThan(unchangedSeq));
+      expect(c.read(jobFetchOkSeqProvider('b1')), appliedSeq);
+
+      repo.nextJobResult = const Failure(FailureKind.network, 'blip');
+      notifier.refetch(); // a failure does not move it
+      async.flushMicrotasks();
+      expect(c.read(jobFetchOkSeqProvider('b1')), appliedSeq);
+      expect(okSeqs, containsAllInOrder([unchangedSeq, appliedSeq]));
+      notifier.pause();
+    });
+  });
+
+  test('lastIssuedSeq is the seq the latest refetch() went out with (fixed at issue time)', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED'));
+      async.flushMicrotasks();
+      final notifier = c.read(jobDetailProvider('b1').notifier);
+      notifier.refetch();
+      final first = notifier.lastIssuedSeq;
+      async.elapse(jobPollInterval); // a poll goes out — it does not move lastIssuedSeq
+      expect(notifier.lastIssuedSeq, first);
+      notifier.refetch();
+      expect(notifier.lastIssuedSeq, greaterThan(first));
+      for (final p in repo.pending.skip(1)) {
+        p.complete(_d('ARRIVED'));
+      }
+      async.flushMicrotasks();
+      notifier.pause();
+    });
+  });
+
+  test('403 other than "not assigned" (e.g. suspended) → AsyncError(JobAccessException) with the backend message; polling stops', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      repo.nextJobResult = const Failure(FailureKind.forbidden, 'Verified technician required');
+      async.elapse(jobPollInterval);
+      async.flushMicrotasks();
+      final s = c.read(jobDetailProvider('b1'));
+      expect(s.error, isA<JobAccessException>());
+      expect(s.error, isNot(isA<JobVanishedException>()));
+      expect(s.error.toString(), 'Verified technician required');
+      final calls = repo.jobCalls;
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, calls, reason: 'polling stopped');
+    });
+  });
+
+  test('403 "Verified technician required" on first load → AsyncError(JobAccessException), not retried', () {
+    fakeAsync((async) {
+      final repo = _FakeRepo()..nextJobResult = const Failure(FailureKind.forbidden, 'Verified technician required');
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).error, isA<JobAccessException>());
+      expect(c.read(jobDetailProvider('b1')).error.toString(), 'Verified technician required');
+      async.elapse(const Duration(seconds: 30));
+      expect(repo.jobCalls, 1);
+    });
+  });
+
+  test('a refetch that lands before the first load keeps the newer response (first load never regresses it)', () {
+    fakeAsync((async) {
+      final repo = _GatedRepo();
+      final c = _container(repo);
+      c.listen(jobDetailProvider('b1'), (_, _) {});
+      async.flushMicrotasks();
+      expect(repo.calls, 1); // first load in flight
+      c.read(jobDetailProvider('b1').notifier).resume(); // e.g. foregrounded mid-load
+      async.flushMicrotasks();
+      expect(repo.calls, 2);
+      repo.pending[1].complete(_d('DIAGNOSED')); // the newer one lands first
+      async.flushMicrotasks();
+      repo.pending[0].complete(_d('ARRIVED')); // the first load lands late
+      async.flushMicrotasks();
+      expect(c.read(jobDetailProvider('b1')).value?.job.state, 'DIAGNOSED');
+      c.read(jobDetailProvider('b1').notifier).pause();
     });
   });
 }

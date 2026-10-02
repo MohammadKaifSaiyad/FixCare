@@ -22,13 +22,14 @@ async function approvedBooking(withPart = true) {
   await app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/confirm-arrival`, headers: auth(c.token), payload: { code } });
   await seedDiagnosisPhotos(booking.id); // diagnose requires both slots (B4b)
   const issue = await seedIssue(f.cat.id);
-  await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
   if (withPart) {
     // Seed the cart line directly (snapshot fields) — the parts ENDPOINT has its own tests in
-    // diagnosis.test.ts. partsCatalogId is a required FK, so create the catalog row first.
+    // diagnosis.test.ts. partsCatalogId is a required FK, so create the catalog row first. Seeded
+    // BEFORE diagnose, as the API requires (the cart freezes when the diagnosis is submitted).
     const cat = await prisma.partsCatalog.create({ data: { sku: `SEED-${Math.random().toString(36).slice(2, 8)}`, name: 'Seed part', ceilingPricePaise: 10000 } });
     await prisma.bookingPart.create({ data: { bookingId: booking.id, partsCatalogId: cat.id, sku: cat.sku, name: cat.name, ceilingPricePaise: cat.ceilingPricePaise, qty: 1 } });
   }
+  await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
   await app.inject({ method: 'POST', url: `/me/bookings/${booking.id}/approve`, headers: auth(c.token) });
   return { c, t, bookingId: booking.id as string };
 }

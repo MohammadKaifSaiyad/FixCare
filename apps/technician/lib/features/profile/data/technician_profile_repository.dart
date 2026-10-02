@@ -21,7 +21,7 @@ class TechnicianProfileRepository {
       if (data is! Map) return const Failure(FailureKind.server, 'Unexpected response from the server.');
       return Ok(TechnicianProfileDto.fromJson(data.cast<String, dynamic>()));
     }
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
   Future<Result<TechnicianProfileDto>> getProfile() async {
@@ -29,7 +29,7 @@ class TechnicianProfileRepository {
       return _parse(await _dio.get('/me/profile'));
     } on DioException catch (e) {
       if (e.response != null) {
-        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data));
+        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));
       }
       return const Failure(FailureKind.network, 'Network error. Check your connection.');
     }

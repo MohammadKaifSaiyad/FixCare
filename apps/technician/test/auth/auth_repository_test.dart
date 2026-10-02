@@ -39,6 +39,7 @@ void main() {
     final r = await repo.sendOtp('9990001111');
     final f = r as Failure;
     expect(f.kind, FailureKind.rateLimited);
+    expect(f.code, 'TOO_MANY_REQUESTS');
     expect(f.message, 'Too many OTP requests. Try again later.');
   });
 

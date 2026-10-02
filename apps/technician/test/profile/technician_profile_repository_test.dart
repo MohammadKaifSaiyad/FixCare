@@ -31,6 +31,8 @@ void main() {
 
   test('getProfile 401 -> Failure(unauthorized)', () async {
     adapter.onGet('/me/profile', (s) => s.reply(401, {'code': 'UNAUTHORIZED', 'message': 'nope'}));
-    expect((await repo.getProfile() as Failure).kind, FailureKind.unauthorized);
+    final f = await repo.getProfile() as Failure;
+    expect(f.kind, FailureKind.unauthorized);
+    expect(f.code, 'UNAUTHORIZED');
   });
 }

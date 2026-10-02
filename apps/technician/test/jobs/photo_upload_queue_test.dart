@@ -461,7 +461,7 @@ void main() {
       });
     });
 
-    for (final kind in const [FailureKind.unauthorized, FailureKind.validation, FailureKind.unknown]) {
+    for (final kind in const [FailureKind.unauthorized, FailureKind.forbidden, FailureKind.notFound, FailureKind.validation, FailureKind.unknown]) {
       test('sign Failure($kind) -> failed with the message, PUT never attempted', () {
         fakeAsync((async) {
           final repo = _FakeRepo()..signFailure = Failure(kind, 'sign said no ($kind)');

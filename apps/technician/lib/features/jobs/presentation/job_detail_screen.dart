@@ -181,11 +181,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
 
     return Scaffold(
       key: const Key('jobDetailScreen'),
-      appBar: AppBar(title: Text(async.value?.bookingNumber ?? 'Job')),
+      appBar: AppBar(title: Text(async.value?.job.bookingNumber ?? 'Job')),
       body: SafeArea(
         child: switch (async) {
-          AsyncData(value: final job) => _buildBody(job),
-          AsyncError(:final error) => _buildError(error is JobVanishedException ? error.toString() : null),
+          AsyncData(value: final detail) => _buildBody(detail),
+          AsyncError(:final error) =>
+            _buildError(error is JobVanishedException || error is JobAccessException ? error.toString() : null),
           _ => const Center(child: CircularProgressIndicator()),
         },
       ),
@@ -193,7 +194,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   }
 
   /// [specificMessage] is shown verbatim when the error is one the screen
-  /// knows how to explain (e.g. the vanished-job case); otherwise the generic
+  /// knows how to explain (the vanished-job copy, or the backend's own 403
+  /// message such as "Verified technician required"); otherwise the generic
   /// copy is kept so an ordinary fetch failure isn't over-explained.
   Widget _buildError(String? specificMessage) {
     return Center(
@@ -212,18 +214,20 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     );
   }
 
-  Widget _buildBody(TechnicianJobDto job) {
+  Widget _buildBody(TechnicianJobDetailDto detail) {
+    final job = detail.job;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _JobInfoCard(job: job),
         const SizedBox(height: 16),
-        _buildActionCard(job),
+        _buildActionCard(detail),
       ],
     );
   }
 
-  Widget _buildActionCard(TechnicianJobDto job) {
+  Widget _buildActionCard(TechnicianJobDetailDto detail) {
+    final job = detail.job;
     switch (jobActionFor(job)) {
       case JobAction.enRoute:
         return _OneTapCard(
@@ -242,9 +246,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           onPressed: _onArrive,
         );
       case JobAction.diagnose:
-        return DiagnosisForm(job: job);
+        return DiagnosisForm(detail: detail);
       case JobAction.waitingApproval:
-        return PartsCartCard(job: job);
+        return EstimateSentCard(detail: detail);
       case JobAction.startRepair:
         return _StartRepairCard(
           busy: _busy,
