@@ -11,50 +11,39 @@ _Last updated: 2026-10-02_
 ## Phase
 **Technician app (Flutter).** Backend booking module COMPLETE (B1→B7, PR #21); **customer app Slices 1-5 all
 merged** (#22-#33). Build order (ADR-0004) is on the **technician app** (`apps/technician`, Android + iOS per
-ADR-0005): **Slice 1 scaffold+auth+jobs merged (#35)**, customer interceptor retried-401 back-port merged (#36),
-**Slice 2 "drive a job" merged (#37)**, and the **job estimate integrity** follow-up (the Slice 2 pilot blockers) is
-complete on branch, ready for PR. Money still on Razorpay test keys until KYC (UPI method blocked on Razorpay account
-activation — see Blocked on).
+ADR-0005): Slice 1 (#35), customer interceptor back-port (#36), Slice 2 "drive a job" (#37) and **job estimate
+integrity (#38)** are merged; **Slice 3 "onboarding + verification"** is complete on branch, ready for PR. Money
+still on Razorpay test keys until KYC (UPI blocked on Razorpay account activation — see Blocked on).
 
 ## Active task
-**Job estimate integrity** COMPLETE on `feature/job-estimate-integrity` (cut from `main` @ `9737679`, after
-Slice 2 merged), **ready for PR → `main`** (not pushed). Resolves the three Slice 2 pilot blockers: the customer can
-no longer approve an estimate the technician is still editing, and the technician app reads the cart from the server.
-- **Backend:** parts add/remove are **ARRIVED-only**; "Submit diagnosis" (`POST /technician/jobs/:id/diagnose`)
-  **freezes the cart** (409 `The cart is locked — the diagnosis has been submitted`) and snapshots `partCount` +
-  `partsTotalPaise` in the transition evidence, so DIAGNOSED always shows the customer a final cart.
-  `GET /catalog/parts?categoryId=` returns the category's parts + generic parts. New `GET /technician/jobs/:id`
-  (job + `parts[]` + active photos); `service.categoryId` on all technician job DTOs.
-- **Technician app:** `FailureKind.forbidden/notFound`; `job(id)`; job-detail polls the single job (403/404 → "This
-  job is no longer assigned to you.", recovers if it comes back). The ARRIVED diagnosis form carries the **complete
-  estimate** (2 photos + category-filtered issue picker + server-backed parts cart + "Customer will see: ₹…" + a
-  confirm dialog before sending; Submit blocked while a cart edit is in flight). DIAGNOSED is a read-only "Estimate
-  sent — waiting for the customer to approve or decline" card with the frozen lines + total. Session-only cart removed.
-- **Final-review fix wave (4 commits):** backend — one line per part (409) + 20-line cap (422), per-line audit
-  evidence on diagnose/add/remove (remove audits only a real delete), decline evidence parity, ownership + race tests;
-  technician — `refetch()` reports success and an unconfirmed cart blocks Submit (`Couldn't confirm the latest parts.`
-  + Retry), throw-safe poll, cart locked while sending, the confirm dialog lists the lines + total, 8-row parts list,
-  a non-"not assigned" 403 (e.g. `Verified technician required`) shown verbatim; customer — the approve card shows
-  line totals + a Labor / Parts / Visit fee credit breakdown. Estimate-integrity vectors added to
-  `docs/02-product/fraud-defenses.md` (#16).
-- **`/code-review` fix round (4 commits):** diagnose is **bound to the confirmed cart** — the app sends the confirm
-  dialog's `expectedPartLineIds` and any drift → 409 `ESTIMATE_CHANGED` (`The estimate changed — check the parts and
-  send again`; booking stays ARRIVED, nothing written; field optional for older builds); stable **`JOB_NOT_FOUND` /
-  `JOB_NOT_ASSIGNED`** codes on the technician job errors, and `Failure.code` in the app — a vanish keys on the code
-  only (a code-less 404 is transient on poll / a generic error on first load); `GET /technician/jobs/:id` carries a
-  **server-computed `customerQuote`** that "Customer will see", the confirm dialog and the sent card display (client
-  `estimatePaise` deleted; no quote → amount hidden); "unconfirmed cart" is cleared by **fetch sequence**
-  (`jobFetchOkSeq`), and a superseded refetch counts as success; a catalog part already in the estimate shows "In
-  estimate"; one line formula (`lineTotalPaise`, both apps) + one `PartLineText` widget; **no silent catches**
-  (`FlutterError.reportError`, exception + stack only).
-- **Deploy order:** requires the matching backend — **deploy the backend first**. Slice-2 technician builds can only
-  send labor-only estimates (part adds 409). This technician build on an older backend: diagnose 400s (strict body
-  rejects `expectedPartLineIds`), the quote is hidden, and a job-detail 404/403 without a job code is not treated as
-  "no longer assigned".
-- **Gates:** backend **400/400 (67 files), tsc clean**; technician app **320 tests, analyze clean**; customer app
-  **+179 ~5, analyze clean**.
-  Design/plan: `docs/designs/2026-10-01-job-estimate-integrity-design.md`, `docs/plans/2026-10-01-job-estimate-integrity.md`.
-**Next: PR → `main` (founder pushes); on-device smoke (physical Android 12+ phone + iPhone); then the follow-ups below.**
+**Technician app Slice 3 — onboarding + verification** COMPLETE on `feature/technician-app-slice3-onboarding` (cut
+from `main` @ `e370a9c`), **ready for PR → `main`** (not pushed). A new technician can now sign up, fill a profile,
+submit, be reviewed by ops, and start taking jobs — no more hand-edited DB rows.
+- **Backend:** one additive migration `20261002135906_technician_onboarding` (`TechnicianZone`, `submittedAt` /
+  `reviewedAt` / `reviewNote`, audit action `TECHNICIAN_STATUS_CHANGED`). Technician `GET/PATCH /me/profile`
+  (name/skills/zoneIds, editable only while PENDING else 409 `PROFILE_LOCKED`) and `POST /technician/me/submit`.
+  Ops (MANAGER) `GET /admin/technicians?status=`, `POST …/:id/verify|send-back|suspend|reinstate`, `PATCH …/:id
+  {skills?, zoneIds?}`; invalid moves 409 `INVALID_TECHNICIAN_TRANSITION`; suspend refused with an active job (409
+  `TECHNICIAN_HAS_ACTIVE_JOB`). **Dispatch is in-zone** (403 `JOB_OUT_OF_ZONE`); unverified → 403
+  `TECHNICIAN_NOT_VERIFIED`. `verifyOtp` rejects a number registered under the other role (409 `ROLE_MISMATCH`).
+- **Technician app:** onboarding form (name/skills/zones) → "Under review" (polls, refreshes the session on
+  verify/send-back) → jobs; a **Suspended** screen; `HomeGate` routes by status; the interceptor refreshes the profile
+  on `TECHNICIAN_NOT_VERIFIED`. Both apps show a clear ROLE_MISMATCH message.
+- **Ops runbook:** `docs/06-operations/technician-review-runbook.md` (curl against `/admin/auth/login` token).
+- **Rollout / deploy order:** deploy the **backend first**. After deploy every already-VERIFIED technician has **no
+  zones and sees no jobs** until ops runs `PATCH /admin/technicians/:id {zoneIds}` — do that before announcing. Older
+  app builds on the new backend: a ROLE_MISMATCH login shows the old "That code isn't right."; an older technician
+  build's pending screen still never re-checks. `scripts/dev-drive-booking.sh` links its technician to the booking's zone.
+- **Known, accepted gaps:** a technician accepting in the instant ops suspends them can end up suspended with one
+  active job (ops reinstates; money still needs the customer's OTP); zone/skill edits are audited by field NAME
+  only (who/when, not before/after); suspend is refused while the technician has an active job (ACCEPTED…
+  CUSTOMER_CONFIRMED or DECLINED_BY_CUSTOMER).
+- **Gates:** backend **426/426 (71 files), `pnpm build` clean**; technician app **361 tests, analyze clean**; customer
+  app **181 passed, 5 skipped (pre-existing), analyze clean**.
+  Design/plan: `docs/designs/2026-10-02-technician-app-slice3-onboarding-design.md`, `docs/plans/2026-10-02-technician-app-slice3-onboarding.md`.
+- **Environment (founder):** the Mac's Xcode license is unaccepted after an Xcode update — run `sudo xcodebuild
+  -license accept` before any iOS build or plain `git`.
+**Next: PR → `main` (founder pushes); on-device smoke of onboarding → verify → first job; then the follow-ups below.**
 
 ## PRIOR active task (customer app Slice 5 — payment, MERGED #31; kept below for history)
 **Customer app Slice 5 — payment** COMPLETE on `feature/customer-app-slice5-payment` (commits `5c337a3..ebe211b`),
@@ -74,6 +63,10 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 **Next: PR → `main` (founder pushes/merges). Then Razorpay TEST keys to exercise UPI end-to-end, or the next slice.**
 
 ## Last shipped
+- **Job estimate integrity** (**merged PR #38**) — parts add/remove ARRIVED-only; diagnose freezes the cart and is
+  bound to the confirmed cart (`expectedPartLineIds` → 409 `ESTIMATE_CHANGED`); `GET /technician/jobs/:id` with
+  server-computed `customerQuote`; stable `JOB_NOT_FOUND`/`JOB_NOT_ASSIGNED` codes; technician diagnosis form carries
+  the full estimate. Backend 400, technician 320 tests. Deploy backend first.
 - **Technician app Slice 2 — drive a job end-to-end** (**merged PR #37**) — state-driven job-detail screen: en-route →
   arrive (mints the arrival code) → diagnose (2 evidence photos + issue) → parts → repair (3 photos) → confirm
   completion/cash by entering the customer's codes. Camera-evidence pipeline (ADR-0007: camera-only, capture-time
@@ -253,16 +246,15 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR job estimate integrity** → `main` (founder pushes/merges `feature/job-estimate-integrity`). Then a clean
-   `flutter build ios` on the Mac to wire the Slice 2 pods (image_picker / flutter_image_compress / geolocator).
-2. **On-device smoke** of the full job flow against the local backend (dev photo hook): a **physical Android 12+
-   phone** (ideally 2-3GB RAM) and an **iPhone** — the iOS simulator has no camera. Include deny-then-allow for
-   camera + location, the new diagnosis-form confirm dialog / cart-lock path, and an airplane-mode toggle during a
-   part add at ARRIVED (should show "Couldn't confirm the latest parts." + Retry). Record anything found (e.g.
-   image_picker activity-kill → `retrieveLostData`).
-3. **Auth follow-ups found in the dev run** (see Deferred follow-ups → "Technician auth"): reject a technician login
-   with a customer's number, and re-check status on the "Verification pending" screen. Then the remaining Slice 2
-   follow-ups; provision Cloudflare R2 (`R2_*`) — and fix the presign settings first.
+1. **PR Slice 3 onboarding** → `main` (founder pushes/merges `feature/technician-app-slice3-onboarding`). Deploy
+   backend first, then add zones to existing VERIFIED technicians (runbook) before announcing. Then a clean
+   `flutter build ios` on the Mac (after accepting the Xcode license) to wire the Slice 2 pods.
+2. **On-device smoke** on a **physical Android 12+ phone** and an **iPhone**: onboarding → submit → ops verify
+   (runbook) → first job, plus the full job flow against the local backend (dev photo hook): deny-then-allow for camera +
+   location, the diagnosis-form confirm dialog / cart-lock path, airplane-mode during a part add at ARRIVED. Record
+   anything found (e.g. image_picker activity-kill → `retrieveLostData`).
+3. **Remaining Slice 2 follow-ups** and provision Cloudflare R2 (`R2_*`) — fix the presign settings first; then the
+   Slice 3 out-of-scope items below as product needs them.
 
 ## Deferred follow-ups (carry forward)
 - **Job estimate integrity — deferred from the final review (the pilot blockers and the review's Important/Medium
@@ -276,12 +268,10 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
   on `(bookingId, partsCatalogId)`** as defense in depth for one-line-per-part (needs a migration that first
   de-duplicates any existing duplicate dev lines; review with `prisma-migration-reviewer`); (i) cosmetic: a catalog
   row's qty resets to 1 when a filtered-out row reappears.
-- **Technician auth (found in a dev run; fix together):** (a) **technician-app login with a number already registered
-  as a CUSTOMER silently logs into the customer account** — backend `verifyOtp`
-  (`apps/backend/src/modules/auth/auth.service.ts`) ignores the requested role for an existing phone; it should
-  reject with a clear "this number is registered as a customer" error, and the technician app should show it
-  instead of "Verification pending"; (b) the technician **"Verification pending" screen never re-checks status** — a
-  newly verified technician must log out and back in.
+- **Technician Slice 3 — out of scope (tracked):** KYC vendors (Setu / Karza), bank account, security deposit, skill
+  video, document capture; push / SMS "you're verified" notifications (the app learns by polling); the admin
+  dashboard UI; ops reassigning a suspended technician's active job; technicians self-editing zones after
+  verification; before/after values in zone/skill audit rows.
 - **Technician Slice 2 — other follow-ups (non-blocking):** `Position.isMocked` arrival signal (needs backend
   `arriveBody` field + a block-vs-flag product decision); **R2 presign before provisioning** — set
   `requestChecksumCalculation: 'WHEN_REQUIRED'` on the S3Client (recent SDKs add checksum params R2 rejects) and note

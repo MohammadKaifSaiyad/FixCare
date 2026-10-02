@@ -8,6 +8,24 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-02 — Technician app Slice 3: onboarding + verification (on branch)
+
+- **Backend:** technician lifecycle PENDING → KYC_SUBMITTED → VERIFIED ⇄ SUSPENDED, each transition in one
+  transaction with a `TECHNICIAN_STATUS_CHANGED` audit row. One additive migration `20261002135906_technician_onboarding`
+  (`TechnicianZone`, `submittedAt` / `reviewedAt` / `reviewNote`). Technician `GET/PATCH /me/profile` (name, skills,
+  zones; locked once submitted → 409 `PROFILE_LOCKED`) and `POST /technician/me/submit`.
+- **Ops review endpoints** (MANAGER): `GET /admin/technicians?status=`, `POST /admin/technicians/:id/verify|send-back|
+  suspend|reinstate`, `PATCH /admin/technicians/:id {skills?, zoneIds?}`; 409 `INVALID_TECHNICIAN_TRANSITION` /
+  `TECHNICIAN_HAS_ACTIVE_JOB`. Runbook: `docs/06-operations/technician-review-runbook.md`.
+- **In-zone dispatch:** technicians see and accept only jobs in their zones (403 `JOB_OUT_OF_ZONE`); unverified →
+  403 `TECHNICIAN_NOT_VERIFIED`. Already-VERIFIED technicians have no zones until ops adds them — deploy backend first.
+- **`ROLE_MISMATCH`:** `verifyOtp` rejects (409) a number registered under the other role; both apps show a clear message.
+- **Technician app:** onboarding form, "Under review" screen with live status, Suspended screen, `HomeGate`
+  routing, profile refresh on `TECHNICIAN_NOT_VERIFIED`.
+- Gates: backend 426/426, technician app 361, customer app 181 ~5; `pnpm build` / `flutter analyze` clean.
+
+---
+
 ## 2026-10-02 — Job estimate integrity: /code-review fix round (on branch)
 
 - **`/code-review` found 10 items; 9 fixed here, 1 deferred** (DB unique index). Backend 400/400, technician app 320,
