@@ -15,6 +15,14 @@ import { config } from '../../shared/config.js';
 import { recordCashCollected } from '../settlements/settlements.service.js';
 import { computeEstimate, sumParts } from '../bookings/estimate.js';
 
+/** Stable machine codes for "this job is gone / not yours" — the technician app's job-detail screen keys its
+ *  "no longer available" exit on these (never on the human message). */
+const JOB_NOT_FOUND = 'JOB_NOT_FOUND';
+const JOB_NOT_ASSIGNED = 'JOB_NOT_ASSIGNED';
+/** The cart moved under the technician's confirm dialog (a line added/removed elsewhere) — re-review and resend. */
+const ESTIMATE_CHANGED = 'ESTIMATE_CHANGED';
+const ESTIMATE_CHANGED_MESSAGE = 'The estimate changed — check the parts and send again';
+
 async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
   if (!t || t.status !== 'VERIFIED') throw new ForbiddenError('Verified technician required');
@@ -63,15 +71,15 @@ export async function getMyJob(userId: string, bookingId: string): Promise<Techn
       bookingParts: { orderBy: { createdAt: 'asc' } },
     },
   });
-  if (!b) throw new NotFoundError('Job not found');
-  if (b.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you');
+  if (!b) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
+  if (b.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you', JOB_NOT_ASSIGNED);
   return toTechnicianJobDetailDto(b, b.address, b.service, b.customer.user.phone, await toPhotoSummaries(b.photos), b.bookingParts);
 }
 
 export async function acceptJob(userId: string, bookingId: string): Promise<TechnicianJobDto> {
   const tech = await requireTechnician(userId);
   const booking = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { service: true } });
-  if (!booking) throw new NotFoundError('Job not found');
+  if (!booking) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
   if (booking.state !== 'DISPATCHED' || booking.technicianId) throw new ConflictError('This job is no longer available');
   if (!tech.skills.includes(booking.service.requiredSkill)) throw new ForbiddenError('You are not skilled for this job');
   // B6c accept-gate (core-flow: "technician at cash debt limit → cannot accept"). Deferred from
@@ -106,7 +114,7 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
 export async function skipJob(userId: string, bookingId: string): Promise<void> {
   const tech = await requireTechnician(userId);
   const booking = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null } });
-  if (!booking) throw new NotFoundError('Job not found');
+  if (!booking) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
   await prisma.jobSkip.upsert({
     where: { technicianId_bookingId: { technicianId: tech.id, bookingId } },
     create: { technicianId: tech.id, bookingId },
@@ -124,8 +132,8 @@ async function ownAssignedBookingOrThrow(
 ) {
   const states = Array.isArray(expectedState) ? expectedState : [expectedState];
   const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
-  if (!b) throw new NotFoundError('Job not found');
-  if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
+  if (!b) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
+  if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you', JOB_NOT_ASSIGNED);
   if (!states.includes(b.state)) throw new ConflictError(`Job is not in ${states.join(' or ')}`);
   return b;
 }
@@ -142,8 +150,8 @@ const MAX_CART_LINES = 20;
  *  before arrival it is the usual wrong-state 409. */
 async function ownOpenCartBookingOrThrow(techId: string, bookingId: string) {
   const b = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { address: true, service: true } });
-  if (!b) throw new NotFoundError('Job not found');
-  if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you');
+  if (!b) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
+  if (b.technicianId !== techId) throw new ForbiddenError('This job is not assigned to you', JOB_NOT_ASSIGNED);
   if (b.state !== 'ARRIVED') throw new ConflictError(b.diagnosedAt ? CART_LOCKED_MESSAGE : 'Job is not in ARRIVED');
   return b;
 }
@@ -179,8 +187,8 @@ export async function arriveJob(userId: string, bookingId: string, body: ArriveB
 export async function diagnoseJob(userId: string, bookingId: string, body: DiagnoseBody): Promise<{ id: string; state: 'DIAGNOSED' }> {
   const tech = await requireTechnician(userId);
   const booking = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, include: { service: true } });
-  if (!booking) throw new NotFoundError('Job not found');
-  if (booking.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you');
+  if (!booking) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
+  if (booking.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you', JOB_NOT_ASSIGNED);
   if (booking.state !== 'ARRIVED') throw new ConflictError('Job is not in ARRIVED');
   const issue = await prisma.diagnosedIssue.findFirst({ where: { id: body.diagnosedIssueId, deletedAt: null, status: 'ACTIVE' } });
   if (!issue) throw new NotFoundError('Diagnosed issue not found');
@@ -207,12 +215,26 @@ export async function diagnoseJob(userId: string, bookingId: string, body: Diagn
     // by assertCartStillOpen once the state leaves ARRIVED.
     // Per-line evidence (not just count + total): the exact cart the customer will see can be
     // reconstructed from the audit log alone, even though removed lines are hard-deleted.
-    const cart = await tx.bookingPart.findMany({ where: { bookingId }, orderBy: { createdAt: 'asc' }, select: { sku: true, name: true, qty: true, ceilingPricePaise: true } });
+    const cartRows = await tx.bookingPart.findMany({ where: { bookingId }, orderBy: { createdAt: 'asc' }, select: { id: true, sku: true, name: true, qty: true, ceilingPricePaise: true } });
+    // Bind to the cart the technician confirmed: the dialog's snapshot must be EXACTLY the frozen set (read
+    // after the row lock), otherwise the customer would be sent an estimate the technician never reviewed.
+    // Throwing rolls the whole tx back — the booking stays ARRIVED and nothing is written.
+    if (body.expectedPartLineIds !== undefined && !sameIdSet(body.expectedPartLineIds, cartRows.map((l) => l.id))) {
+      throw new ConflictError(ESTIMATE_CHANGED_MESSAGE, ESTIMATE_CHANGED);
+    }
+    const cart = cartRows.map(({ sku, name, qty, ceilingPricePaise }) => ({ sku, name, qty, ceilingPricePaise }));
     // transitionBooking checks the from-state (still ARRIVED in this tx) via its optimistic lock.
     await transitionBooking(tx, booking, 'DIAGNOSED', { type: 'USER', kind: 'TECHNICIAN', id: userId }, { diagnosedIssueId: issue.id, photoIds: activePhotos.map((p) => p.id), partCount: cart.length, partsTotalPaise: sumParts(cart), lines: cart });
     await tx.auditLog.create({ data: { action: 'DIAGNOSIS_UPDATED', actorType: 'USER', actorId: userId, metadata: { bookingId, action: 'diagnosed', diagnosedIssueId: issue.id } } });
   });
   return { id: bookingId, state: 'DIAGNOSED' };
+}
+
+/** Set equality of two id lists (order-insensitive; a duplicate in `expected` can never match a cart of unique ids). */
+function sameIdSet(expected: readonly string[], actual: readonly string[]): boolean {
+  if (expected.length !== actual.length) return false;
+  const want = new Set(expected);
+  return want.size === expected.length && actual.every((id) => want.has(id));
 }
 
 export async function addPart(userId: string, bookingId: string, body: AddPartBody): Promise<{ id: string }> {
@@ -358,8 +380,8 @@ export async function assertTechnicianOwnsPhotoKey(userId: string, key: string):
   const bookingId = match[1]!;
   const tech = await requireTechnician(userId);
   const booking = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null }, select: { technicianId: true } });
-  if (!booking) throw new NotFoundError('Job not found');
-  if (booking.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you');
+  if (!booking) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
+  if (booking.technicianId !== tech.id) throw new ForbiddenError('This job is not assigned to you', JOB_NOT_ASSIGNED);
 }
 
 /** Presign a photo upload slot. Window is determined by kind (DIAGNOSIS_* in ARRIVED, REPAIR_* in REPAIR_IN_PROGRESS). */

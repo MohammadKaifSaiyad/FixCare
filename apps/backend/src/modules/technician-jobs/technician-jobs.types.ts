@@ -1,6 +1,7 @@
 import type { Booking, Address, ServiceSkill, BookingPart } from '@prisma/client';
 import { maskPhone } from '../../shared/utils/mask.js';
 import type { PhotoSummary } from '../bookings/bookings.types.js';
+import { computeEstimate, type Estimate } from '../bookings/estimate.js';
 
 export interface TechnicianJobDto {
   id: string;
@@ -51,9 +52,12 @@ export interface TechnicianJobPartLine {
   ceilingPricePaise: number;
 }
 
-/** GET /technician/jobs/:id — the list DTO plus the job's parts cart (open while ARRIVED, frozen after). */
+/** GET /technician/jobs/:id — the list DTO plus the job's parts cart (open while ARRIVED, frozen after) and
+ *  `customerQuote`: the quote the customer approves at DIAGNOSED (visit-fee credit applied, floored at 0),
+ *  computed by the backend's own estimate math so the app never re-derives a money figure. */
 export interface TechnicianJobDetailDto extends TechnicianJobDto {
   parts: TechnicianJobPartLine[];
+  customerQuote: Estimate;
 }
 
 export function toTechnicianJobDetailDto(
@@ -67,5 +71,8 @@ export function toTechnicianJobDetailDto(
   return {
     ...toTechnicianJobDto(booking, address, service, customerPhone, photos),
     parts: parts.map((p) => ({ id: p.id, partsCatalogId: p.partsCatalogId, sku: p.sku, name: p.name, qty: p.qty, ceilingPricePaise: p.ceilingPricePaise })),
+    // "As if quoted": the same math the customer's approve screen runs at DIAGNOSED, over this cart — so the
+    // ARRIVED preview ("Customer will see") is exactly the number the customer is later asked to approve.
+    customerQuote: computeEstimate({ ...booking, state: 'DIAGNOSED', declinedAt: null }, parts),
   };
 }

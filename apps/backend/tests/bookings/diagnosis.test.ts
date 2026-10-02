@@ -217,9 +217,11 @@ describe('estimate integrity: one line per part, line cap, per-line evidence, ow
     const add = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(other.token), payload: { partsCatalogId: part.id, qty: 1 } });
     expect(add.statusCode).toBe(403);
     expect(add.json().message).toBe('This job is not assigned to you');
+    expect(add.json().code).toBe('JOB_NOT_ASSIGNED');
     const del = await app.inject({ method: 'DELETE', url: `/technician/jobs/${bookingId}/parts/${line.id}`, headers: auth(other.token) });
     expect(del.statusCode).toBe(403);
     expect(del.json().message).toBe('This job is not assigned to you');
+    expect(del.json().code).toBe('JOB_NOT_ASSIGNED');
     const asCustomer = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(c.token), payload: { partsCatalogId: part.id, qty: 1 } });
     expect(asCustomer.statusCode).toBe(403);
     const lines = await prisma.bookingPart.findMany({ where: { bookingId } });
@@ -232,9 +234,11 @@ describe('estimate integrity: one line per part, line cap, per-line evidence, ow
     const add = await app.inject({ method: 'POST', url: `/technician/jobs/${missing}/parts`, headers: auth(t.token), payload: { partsCatalogId: part.id, qty: 1 } });
     expect(add.statusCode).toBe(404);
     expect(add.json().message).toBe('Job not found');
+    expect(add.json().code).toBe('JOB_NOT_FOUND');
     const del = await app.inject({ method: 'DELETE', url: `/technician/jobs/${missing}/parts/${missing}`, headers: auth(t.token) });
     expect(del.statusCode).toBe(404);
     expect(del.json().message).toBe('Job not found');
+    expect(del.json().code).toBe('JOB_NOT_FOUND');
   });
 
   it('an add racing the diagnose is consistent: 201 ⇒ partCount 1, 409 locked ⇒ partCount 0 (never 201 with 0)', async () => {
@@ -253,6 +257,80 @@ describe('estimate integrity: one line per part, line cap, per-line evidence, ow
       expect(evidence).toMatchObject({ partCount: 0 });
     }
     expect(evidence!.partCount).toBe(await prisma.bookingPart.count({ where: { bookingId } }));
+  });
+});
+
+describe('diagnose binds to the confirmed cart (expectedPartLineIds)', () => {
+  const ESTIMATE_CHANGED_MESSAGE = 'The estimate changed — check the parts and send again';
+  async function addLine(t: { token: string }, bookingId: string, partsCatalogId: string, qty = 1): Promise<string> {
+    return (await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/parts`, headers: auth(t.token), payload: { partsCatalogId, qty } })).json().id;
+  }
+  async function stateOf(bookingId: string) {
+    return (await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } })).state;
+  }
+
+  it('the confirmed snapshot matches the cart (any order) → 200 DIAGNOSED', async () => {
+    const { t, f, bookingId, issue, part } = await arrivedBooking();
+    const fan = await prisma.partsCatalog.create({ data: { sku: `FAN-${Math.random().toString(36).slice(2, 8)}`, name: 'Fan motor', ceilingPricePaise: 120000, categoryId: f.cat.id } });
+    const a = await addLine(t, bookingId, part.id, 2);
+    const b = await addLine(t, bookingId, fan.id);
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id, expectedPartLineIds: [b, a] } });
+    expect(res.statusCode).toBe(200);
+    expect(await stateOf(bookingId)).toBe('DIAGNOSED');
+  });
+
+  it('an empty confirmed snapshot matches an empty cart → 200', async () => {
+    const { t, bookingId, issue } = await arrivedBooking();
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id, expectedPartLineIds: [] } });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('a line the snapshot did not include → 409 ESTIMATE_CHANGED; booking stays ARRIVED and nothing is written', async () => {
+    const { t, f, bookingId, issue, part } = await arrivedBooking();
+    const confirmed = await addLine(t, bookingId, part.id);
+    // A second line lands after the technician opened the confirm dialog (another device, a stale tab).
+    const fan = await prisma.partsCatalog.create({ data: { sku: `FAN-${Math.random().toString(36).slice(2, 8)}`, name: 'Fan motor', ceilingPricePaise: 120000, categoryId: f.cat.id } });
+    await addLine(t, bookingId, fan.id);
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id, expectedPartLineIds: [confirmed] } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ code: 'ESTIMATE_CHANGED', message: ESTIMATE_CHANGED_MESSAGE });
+    const row = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    expect(row.state).toBe('ARRIVED');
+    expect(row.diagnosedAt).toBeNull();
+    expect(row.diagnosedIssueId).toBeNull();
+    const audits = await prisma.auditLog.findMany({ where: { action: { in: ['DIAGNOSIS_UPDATED', 'BOOKING_STATE_CHANGED'] } } });
+    const metas = audits.map((r) => r.metadata as Record<string, unknown>).filter((m) => m.bookingId === bookingId);
+    expect(metas.filter((m) => m.action === 'diagnosed' || m.to === 'DIAGNOSED')).toHaveLength(0);
+    // The cart is still open — the technician can review and send again.
+    expect(await prisma.bookingPart.count({ where: { bookingId } })).toBe(2);
+  });
+
+  it('a snapshot listing a line that was removed → 409 ESTIMATE_CHANGED; booking stays ARRIVED', async () => {
+    const { t, bookingId, issue, part } = await arrivedBooking();
+    const line = await addLine(t, bookingId, part.id);
+    expect((await app.inject({ method: 'DELETE', url: `/technician/jobs/${bookingId}/parts/${line}`, headers: auth(t.token) })).statusCode).toBe(204);
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id, expectedPartLineIds: [line] } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('ESTIMATE_CHANGED');
+    expect(res.json().message).toBe(ESTIMATE_CHANGED_MESSAGE);
+    expect(await stateOf(bookingId)).toBe('ARRIVED');
+  });
+
+  it('field absent → 200 (older app builds keep working)', async () => {
+    const { t, bookingId, issue, part } = await arrivedBooking();
+    await addLine(t, bookingId, part.id);
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id } });
+    expect(res.statusCode).toBe(200);
+    expect(await stateOf(bookingId)).toBe('DIAGNOSED');
+  });
+
+  it('an unknown extra body field → 400; more than 20 ids → 400', async () => {
+    const { t, bookingId, issue } = await arrivedBooking();
+    const extra = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id, expectedPartLineIds: [], totalPaise: 1 } });
+    expect(extra.statusCode).toBe(400);
+    const tooMany = await app.inject({ method: 'POST', url: `/technician/jobs/${bookingId}/diagnose`, headers: auth(t.token), payload: { diagnosedIssueId: issue.id, expectedPartLineIds: Array.from({ length: 21 }, (_, i) => `l${i}`) } });
+    expect(tooMany.statusCode).toBe(400);
+    expect(await stateOf(bookingId)).toBe('ARRIVED');
   });
 });
 
