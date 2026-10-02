@@ -22,7 +22,7 @@ describe('arrival handshake — en-route + arrive', () => {
   it('technician goes en-route (ACCEPTED→EN_ROUTE) then arrives (GPS recorded, code minted, state unchanged)', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId); // address has no lat/lng by default
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
 
     const er = await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(t.token) });
@@ -42,7 +42,7 @@ describe('arrival handshake — en-route + arrive', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     await prisma.address.update({ where: { id: f.address.id }, data: { lat: 22.3072, lng: 73.1812 } });
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
     await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(t.token) });
 
@@ -59,7 +59,7 @@ describe('arrival handshake — en-route + arrive', () => {
   it('confirm-arrival is BLOCKED (422) when the recorded GPS is outside the geofence (coords added after a no-coords arrive)', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId); // no address coords → geofence skipped at arrive
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
     await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(t.token) });
     const code = (await app.inject({ method: 'POST', url: `/technician/jobs/${id}/arrive`, headers: auth(t.token), payload: { lat: 22.40, lng: 73.30 } })).json().arrivalCode as string;
@@ -75,7 +75,7 @@ describe('arrival handshake — en-route + arrive', () => {
   it('en-route from non-ACCEPTED → 409; arrive from non-EN_ROUTE → 409', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
     // arrive before en-route (still ACCEPTED) → 409
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${id}/arrive`, headers: auth(t.token), payload: { lat: 22.31, lng: 73.18 } })).statusCode).toBe(409);
@@ -87,7 +87,7 @@ describe('arrival handshake — en-route + arrive', () => {
   it("a different technician cannot drive en-route/arrive on someone else's accepted job → 403", async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
     const other = await makeTechnician(['AC']);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(other.token) })).statusCode).toBe(403);
@@ -96,7 +96,7 @@ describe('arrival handshake — en-route + arrive', () => {
   it('a CUSTOMER calling /arrive → 403; lat without lng → 400', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${id}/arrive`, headers: auth(c.token), payload: { lat: 22.31, lng: 73.18 } })).statusCode).toBe(403);
     await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(t.token) });
@@ -115,7 +115,7 @@ describe('arrival handshake — customer confirm (the two-sided gate)', () => {
   it('correct code → ARRIVED, arrivedAt + visitFeeLockedAt set, audit has no raw coords', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const { id, code } = await enRouteAndArrive(c, t, f);
     const res = await app.inject({ method: 'POST', url: `/me/bookings/${id}/confirm-arrival`, headers: auth(c.token), payload: { code } });
     expect(res.statusCode).toBe(200);
@@ -131,7 +131,7 @@ describe('arrival handshake — customer confirm (the two-sided gate)', () => {
   it('confirm before the technician tapped Arrived (no code) → 409', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const id = await bookedAndAccepted(c, t, { addressId: f.address.id, serviceId: f.service.id });
     await app.inject({ method: 'POST', url: `/technician/jobs/${id}/en-route`, headers: auth(t.token) });
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${id}/confirm-arrival`, headers: auth(c.token), payload: { code: '123456' } })).statusCode).toBe(409);
@@ -140,7 +140,7 @@ describe('arrival handshake — customer confirm (the two-sided gate)', () => {
   it('wrong code → 401; 5 wrong attempts invalidate the code (the right code then also 401)', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const { id, code } = await enRouteAndArrive(c, t, f);
     for (let i = 0; i < 5; i++) expect((await app.inject({ method: 'POST', url: `/me/bookings/${id}/confirm-arrival`, headers: auth(c.token), payload: { code: '000000' } })).statusCode).toBe(401);
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${id}/confirm-arrival`, headers: auth(c.token), payload: { code } })).statusCode).toBe(401);
@@ -151,7 +151,7 @@ describe('arrival handshake — customer confirm (the two-sided gate)', () => {
   it("another customer's confirm-arrival → 404 (no IDOR); a TECHNICIAN calling it → 403", async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const { id, code } = await enRouteAndArrive(c, t, f);
     const other = await makeCustomer();
     expect((await app.inject({ method: 'POST', url: `/me/bookings/${id}/confirm-arrival`, headers: auth(other.token), payload: { code } })).statusCode).toBe(404);
@@ -161,7 +161,7 @@ describe('arrival handshake — customer confirm (the two-sided gate)', () => {
   it('single-party: technician arrives but customer never confirms → booking stays EN_ROUTE', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const { id } = await enRouteAndArrive(c, t, f);
     const row = await prisma.booking.findUnique({ where: { id } });
     expect(row!.state).toBe('EN_ROUTE');

@@ -14,6 +14,7 @@ import { verifyCashReceiptCode, cashCollectedLast24hPaise } from '../bookings/ca
 import { config } from '../../shared/config.js';
 import { recordCashCollected } from '../settlements/settlements.service.js';
 import { computeEstimate, sumParts } from '../bookings/estimate.js';
+import { technicianZoneIds } from '../technicians/technicians.service.js';
 
 /** Stable machine codes for "this job is gone / not yours" — the technician app's job-detail screen keys its
  *  "no longer available" exit on these (never on the human message). */
@@ -23,10 +24,14 @@ const JOB_NOT_ASSIGNED = 'JOB_NOT_ASSIGNED';
 const ESTIMATE_CHANGED = 'ESTIMATE_CHANGED';
 const ESTIMATE_CHANGED_MESSAGE = 'The estimate changed — check the parts and send again';
 
-async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
+const TECHNICIAN_NOT_VERIFIED = 'TECHNICIAN_NOT_VERIFIED';
+const JOB_OUT_OF_ZONE = 'JOB_OUT_OF_ZONE';
+
+async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[]; zoneIds: string[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
-  if (!t || t.status !== 'VERIFIED') throw new ForbiddenError('Verified technician required');
-  return { id: t.id, skills: t.skills };
+  // Stable code: the technician app re-checks the profile on it (suspended mid-session → Suspended screen).
+  if (!t || t.status !== 'VERIFIED') throw new ForbiddenError('Verified technician required', TECHNICIAN_NOT_VERIFIED);
+  return { id: t.id, skills: t.skills, zoneIds: await technicianZoneIds(t.id) };
 }
 
 export async function listAvailableJobs(userId: string): Promise<TechnicianJobDto[]> {
@@ -40,6 +45,7 @@ export async function listAvailableJobs(userId: string): Promise<TechnicianJobDt
       deletedAt: null,
       id: { notIn: skippedIds.length ? skippedIds : undefined },
       service: { requiredSkill: { in: tech.skills } },
+      zoneId: { in: tech.zoneIds }, // the booking's SNAPSHOTTED zone — never re-resolved from the address
     },
     include: { address: true, service: true, customer: { include: { user: true } } },
     orderBy: { createdAt: 'desc' },
@@ -82,6 +88,7 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   if (!booking) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
   if (booking.state !== 'DISPATCHED' || booking.technicianId) throw new ConflictError('This job is no longer available');
   if (!tech.skills.includes(booking.service.requiredSkill)) throw new ForbiddenError('You are not skilled for this job');
+  if (!tech.zoneIds.includes(booking.zoneId)) throw new ForbiddenError('This job is outside your service zones', JOB_OUT_OF_ZONE);
   // B6c accept-gate (core-flow: "technician at cash debt limit → cannot accept"). Deferred from
   // B6b until settlement existed — auto-offset now gives a self-healing path out of the lockout.
   // Note: requireTechnician returns only {id, skills}, so cashDebtPaise is fetched separately here.

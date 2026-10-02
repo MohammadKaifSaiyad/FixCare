@@ -108,6 +108,8 @@ ensure_tech() {
   token=$(login "$phone" TECHNICIAN)
   techid=$($PG -c "select t.id from \"Technician\" t join \"User\" u on u.id=t.\"userId\" where u.phone='$phone';")
   $PG -c "update \"Technician\" set status='VERIFIED', skills='{$REQ_SKILL}' where id='$techid';" >/dev/null
+  # Slice 3: dispatch only offers in-zone jobs — link this technician to the booking's (snapshotted) zone.
+  $PG -c "insert into \"TechnicianZone\" (\"technicianId\",\"zoneId\") select '$techid', \"zoneId\" from \"Booking\" where id='$BID' on conflict do nothing;" >/dev/null
   echo "$token"
 }
 

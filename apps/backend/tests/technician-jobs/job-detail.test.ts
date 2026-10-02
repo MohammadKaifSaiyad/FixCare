@@ -14,7 +14,7 @@ function future() { return new Date(Date.now() + 86_400_000).toISOString(); }
 async function arrivedJob(opts?: { visitFeePaise?: number; laborPaise?: number }) {
   const c = await makeCustomer();
   const f = await seedBookable(c.customerId, opts);
-  const t = await makeTechnician(['AC']);
+  const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
   const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
   await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) });
   await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/en-route`, headers: auth(t.token) });
@@ -56,7 +56,7 @@ describe('GET /technician/jobs/:id', () => {
     expect(unverified.statusCode).toBe(403);
     // The app shows this one verbatim (a suspended/unverified technician is not "no longer assigned").
     expect(unverified.json().message).toBe('Verified technician required');
-    expect(unverified.json().code).toBe('FORBIDDEN'); // NOT a job code — the app must not treat it as a vanish
+    expect(unverified.json().code).toBe('TECHNICIAN_NOT_VERIFIED'); // NOT a job code — the app must not treat it as a vanish
     const t2 = await makeTechnician(['AC']);
     const missing = await app.inject({ method: 'GET', url: '/technician/jobs/00000000-0000-0000-0000-000000000000', headers: auth(t2.token) });
     expect(missing.statusCode).toBe(404);
@@ -95,7 +95,7 @@ describe('GET /technician/jobs/:id', () => {
   it('available and mine carry service.categoryId', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
     const available = (await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(t.token) })).json();
     expect(available.find((j: { id: string }) => j.id === booking.id).service.categoryId).toBe(f.cat.id);

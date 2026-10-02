@@ -20,7 +20,7 @@ describe('technician dispatch — available + accept + skip', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     await book(c.token, f.address.id, f.service.id);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const res = await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(t.token) });
     expect(res.statusCode).toBe(200);
     const jobs = res.json();
@@ -44,8 +44,8 @@ describe('technician dispatch — available + accept + skip', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const booking = await book(c.token, f.address.id, f.service.id);
-    const t1 = await makeTechnician(['AC']);
-    const t2 = await makeTechnician(['AC']);
+    const t1 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
+    const t2 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const [r1, r2] = await Promise.all([
       app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t1.token) }),
       app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t2.token) }),
@@ -64,9 +64,9 @@ describe('technician dispatch — available + accept + skip', () => {
     const booking = await book(c.token, f.address.id, f.service.id);
     const fan = await makeTechnician(['FAN']);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(fan.token) })).statusCode).toBe(403);
-    const ac1 = await makeTechnician(['AC']);
+    const ac1 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(ac1.token) });
-    const ac2 = await makeTechnician(['AC']);
+    const ac2 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(ac2.token) })).statusCode).toBe(409);
   });
 
@@ -74,11 +74,11 @@ describe('technician dispatch — available + accept + skip', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const booking = await book(c.token, f.address.id, f.service.id);
-    const t1 = await makeTechnician(['AC']);
+    const t1 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/skip`, headers: auth(t1.token) })).statusCode).toBe(204);
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/skip`, headers: auth(t1.token) })).statusCode).toBe(204); // idempotent
     expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(t1.token) })).json()).toHaveLength(0);
-    const t2 = await makeTechnician(['AC']);
+    const t2 = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(t2.token) })).json()).toHaveLength(1);
   });
 
@@ -86,9 +86,35 @@ describe('technician dispatch — available + accept + skip', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const booking = await book(c.token, f.address.id, f.service.id);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) });
     expect((await app.inject({ method: 'GET', url: '/technician/jobs/mine', headers: auth(t.token) })).json()).toHaveLength(1);
     expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(c.token) })).statusCode).toBe(403); // customer
+  });
+
+  it('available lists only jobs in the technician\'s zones; accepting an out-of-zone job → 403 JOB_OUT_OF_ZONE', async () => {
+    const c = await makeCustomer();
+    const f = await seedBookable(c.customerId);
+    const booking = await book(c.token, f.address.id, f.service.id);
+    const elsewhere = await prisma.zone.create({ data: { name: 'Elsewhere', visitFeePaise: 9900 } });
+    const outside = await makeTechnician(['AC'], 'VERIFIED', [elsewhere.id]);
+    expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(outside.token) })).json()).toHaveLength(0);
+    const res = await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(outside.token) });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ code: 'JOB_OUT_OF_ZONE', message: 'This job is outside your service zones' });
+    const noZones = await makeTechnician(['AC']);
+    expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(noZones.token) })).json()).toHaveLength(0);
+    const inside = await makeTechnician(['AC'], 'VERIFIED', [elsewhere.id, f.zone.id]);
+    expect((await app.inject({ method: 'GET', url: '/technician/jobs/available', headers: auth(inside.token) })).json()).toHaveLength(1);
+    expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(inside.token) })).statusCode).toBe(200);
+  });
+
+  it('the VERIFIED gate answers 403 with code TECHNICIAN_NOT_VERIFIED', async () => {
+    for (const status of ['PENDING', 'KYC_SUBMITTED', 'SUSPENDED'] as const) {
+      const t = await makeTechnician(['AC'], status);
+      const res = await app.inject({ method: 'GET', url: '/technician/jobs/mine', headers: auth(t.token) });
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ code: 'TECHNICIAN_NOT_VERIFIED', message: 'Verified technician required' });
+    }
   });
 });
