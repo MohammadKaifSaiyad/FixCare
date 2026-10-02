@@ -8,8 +8,7 @@ import '../../features/auth/presentation/otp_entry_screen.dart';
 import '../../features/auth/presentation/phone_entry_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/jobs/presentation/job_detail_screen.dart';
-import '../../features/jobs/presentation/jobs_home_screen.dart';
-import '../../features/jobs/presentation/verification_pending_screen.dart';
+import '../../features/onboarding/presentation/home_gate.dart';
 
 /// Bridges the Riverpod auth state to a [Listenable] so GoRouter re-runs its
 /// redirect whenever the session changes (login, logout, session-lost).
@@ -59,9 +58,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         case SessionUnauthenticated():
           return onAuthScreen ? null : '/phone';
         case SessionAuthenticated():
-          // Authenticated (verified or not — /home itself decides what to
-          // render): keep them out of splash/auth screens.
+          // Keep them out of splash/auth screens; /home itself (HomeGate) decides what to render.
           if (loc == '/splash' || onAuthScreen) return '/home';
+          // Not VERIFIED (e.g. suspended mid-session): job screens are off-limits — the gate shows why.
+          if (!session.isVerified && loc.startsWith('/job/')) return '/home';
           return null;
       }
     },
@@ -78,15 +78,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           return OtpEntryScreen(args: args);
         },
       ),
-      GoRoute(
-        path: '/home',
-        builder: (context, state) {
-          final s = ref.read(authControllerProvider).value;
-          return (s is SessionAuthenticated && s.isVerified)
-              ? const JobsHomeScreen()
-              : const VerificationPendingScreen();
-        },
-      ),
+      GoRoute(path: '/home', builder: (_, _) => const HomeGate()),
       GoRoute(
         path: '/job/:id',
         builder: (_, state) => JobDetailScreen(bookingId: state.pathParameters['id']!),
