@@ -34,11 +34,15 @@ abstract class DiagnosisDto with _$DiagnosisDto {
 
 @freezed
 abstract class PartDto with _$PartDto {
+  const PartDto._();
   const factory PartDto({
     required String id, required String sku, required String name,
     required int ceilingPricePaise, required int qty,
   }) = _PartDto;
   factory PartDto.fromJson(Map<String, dynamic> j) => _$PartDtoFromJson(j);
+
+  /// The one line-total formula (integer paise) — the approve card reads this, never its own multiply.
+  int get lineTotalPaise => ceilingPricePaise * qty;
 }
 
 @freezed

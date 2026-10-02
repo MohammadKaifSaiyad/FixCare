@@ -360,7 +360,7 @@ class _DiagnosisCardState extends ConsumerState<_DiagnosisCard> {
                         style: const TextStyle(fontSize: 13.5, color: FixCareColors.textSecondary)),
                   ),
                   // The LINE total (price × qty) — matches what the technician's app shows for the line.
-                  Text(rupees(p.ceilingPricePaise * p.qty),
+                  Text(rupees(p.lineTotalPaise),
                       style: const TextStyle(fontSize: 13.5, color: FixCareColors.textSecondary)),
                 ],
               ),

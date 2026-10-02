@@ -1577,8 +1577,8 @@ return $default(_that.id,_that.sku,_that.name,_that.ceilingPricePaise,_that.qty)
 /// @nodoc
 @JsonSerializable()
 
-class _PartDto implements PartDto {
-  const _PartDto({required this.id, required this.sku, required this.name, required this.ceilingPricePaise, required this.qty});
+class _PartDto extends PartDto {
+  const _PartDto({required this.id, required this.sku, required this.name, required this.ceilingPricePaise, required this.qty}): super._();
   factory _PartDto.fromJson(Map<String, dynamic> json) => _$PartDtoFromJson(json);
 
 @override final  String id;
