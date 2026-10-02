@@ -1,7 +1,7 @@
 import { config } from '../../shared/config.js';
 import { mintOtp, verifyOtp as verifyOtpStore } from '../../shared/auth/otp-store.js';
 import { verifyPassword } from '../../shared/auth/argon2.js';
-import { TooManyRequestsError, UnauthorizedError, ForbiddenError } from '../../shared/errors.js';
+import { TooManyRequestsError, UnauthorizedError, ForbiddenError, ConflictError } from '../../shared/errors.js';
 import { makeOtpSender } from '../../shared/third-party/otp-sender.js';
 import { prisma } from '../../shared/database/prisma.js';
 import type { Prisma, UserRole } from '@prisma/client';
@@ -43,6 +43,16 @@ export async function createUserWithProfile(tx: Prisma.TransactionClient, phone:
   return user;
 }
 
+const ROLE_MISMATCH = 'ROLE_MISMATCH';
+
+/** Shown when a number already belongs to another kind of account. Only reached AFTER the OTP proved the
+ *  caller owns the number, so it never tells a stranger which numbers are registered. */
+function roleMismatchMessage(existing: UserRole): string {
+  if (existing === 'CUSTOMER') return 'This number is registered as a customer. Please use the FixCare customer app.';
+  if (existing === 'TECHNICIAN') return 'This number is registered as a FixCare technician. Please use the FixCare Pro app.';
+  return "This number can't be used to sign in here.";
+}
+
 export async function verifyOtp({ phone, otp }: VerifyOtpBody): Promise<AuthTokens> {
   const r = await verifyOtpStore<{ role: UserRole }>(otpKey(phone), otp, {
     maxAttempts: config.OTP_MAX_VERIFY_ATTEMPTS,
@@ -60,6 +70,9 @@ export async function verifyOtp({ phone, otp }: VerifyOtpBody): Promise<AuthToke
     if (!existing) {
       user = await createUserWithProfile(tx, phone, role);
       isNew = true;
+    } else if (existing.role !== role) {
+      // The OTP was sent for another app's role. Refuse — never log into (or create) a different account.
+      throw new ConflictError(roleMismatchMessage(existing.role), ROLE_MISMATCH);
     } else if (existing.status !== 'ACTIVE' || existing.deletedAt) {
       throw new ForbiddenError('Account is not active');
     }
