@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
+import 'package:fixcare_technician/features/profile/data/technician_profile_dto.dart';
 
 void main() {
   late Dio dio; late DioAdapter adapter; late CatalogRepository repo;
@@ -40,5 +41,19 @@ void main() {
     final f = await repo.parts() as Failure;
     expect(f.message, 'Verified technician required');
     expect(f.code, 'FORBIDDEN');
+  });
+
+  test('zones is a bodyless GET and parses id + name (extra fields ignored)', () async {
+    adapter.onGet('/catalog/zones', (s) => s.reply(200, [
+          {'id': 'z1', 'name': 'Padra', 'visitFeePaise': 9900, 'status': 'ACTIVE'},
+          {'id': 'z2', 'name': 'Vadodara', 'visitFeePaise': 14900, 'status': 'ACTIVE'},
+        ]));
+    final v = (await repo.zones() as Ok<List<ZoneRefDto>>).value;
+    expect(v.map((z) => z.name), ['Padra', 'Vadodara']);
+  });
+
+  test('zones 500 -> Failure with the server message', () async {
+    adapter.onGet('/catalog/zones', (s) => s.reply(500, {'code': 'X', 'message': 'boom'}));
+    expect((await repo.zones() as Failure).message, 'boom');
   });
 }
