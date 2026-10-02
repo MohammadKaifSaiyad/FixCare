@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError, UnprocessableError } from '../../shared/e
 import { findActiveZones, zoneRefs } from '../catalog/catalog.service.js';
 import { toTechnicianProfileDto, type TechnicianProfileDto } from './technicians.types.js';
 import type { TechnicianPatchBody } from './technicians.schemas.js';
+import { applyTechnicianTransition, INVALID_TECHNICIAN_TRANSITION } from './technicians.lifecycle.js';
 
 /** The technician's own edits are allowed only while PENDING (new, or sent back by ops). */
 export const PROFILE_LOCKED = 'PROFILE_LOCKED';
@@ -58,4 +59,19 @@ export async function updateOwnTechnicianProfile(userId: string, patch: Technici
     return tx.technician.findUniqueOrThrow({ where: { id: existing.id } });
   });
   return toProfileDto(updated);
+}
+
+export async function submitForReview(userId: string): Promise<TechnicianProfileDto> {
+  const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
+  if (!t) throw new NotFoundError('Profile not found');
+  if (t.status !== 'PENDING') throw new ConflictError('Your profile has already been submitted', INVALID_TECHNICIAN_TRANSITION);
+  if (!t.name.trim()) throw new UnprocessableError('Add your name before submitting');
+  if (t.skills.length === 0) throw new UnprocessableError('Choose at least one skill before submitting');
+  const zoneIds = await zoneIdsOf(prisma, t.id);
+  if (zoneIds.length === 0) throw new UnprocessableError('Choose at least one service zone before submitting');
+  if ((await findActiveZones(zoneIds)).length !== zoneIds.length) {
+    throw new UnprocessableError('One of your service zones is no longer available — update your zones and submit again');
+  }
+  await prisma.$transaction((tx) => applyTechnicianTransition(tx, t.id, 'submit', { type: 'USER', id: userId }));
+  return getTechnicianProfile(userId);
 }
