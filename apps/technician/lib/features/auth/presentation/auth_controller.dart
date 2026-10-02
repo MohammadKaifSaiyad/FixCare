@@ -79,4 +79,33 @@ class AuthController extends _$AuthController {
   /// Called by the auth interceptor when a refresh fails: drop to
   /// unauthenticated so the router pushes the phone screen.
   void onAuthLost() => state = const AsyncData(SessionUnauthenticated());
+
+  Future<Result<TechnicianProfileDto>>? _refreshing;
+
+  /// Re-reads the profile so status changes made by ops (verified, sent back, suspended, reinstated) reach
+  /// the home gate without a re-login. Concurrent callers share one request. A transient failure keeps the
+  /// current session (never eject on a blip); 401 signs out.
+  Future<Result<TechnicianProfileDto>> refreshProfile() =>
+      _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+
+  Future<Result<TechnicianProfileDto>> _refresh() async {
+    // Never the stale value of an error state (Riverpod 3 keeps the previous value on AsyncError).
+    final before = state.hasError ? null : state.value;
+    if (before is! SessionAuthenticated) return const Failure(FailureKind.unauthorized, 'Not signed in.');
+    final r = await ref.read(technicianProfileRepositoryProvider).getProfile();
+    if (!ref.mounted) return r;
+    // A logout / session loss that landed while the request was in flight wins — never resurrect a session.
+    final now = state.hasError ? null : state.value;
+    if (now is! SessionAuthenticated) return r;
+    switch (r) {
+      case Ok(value: final profile):
+        if (!(now.hydrated && now.profile == profile)) state = AsyncData(SessionAuthenticated(profile, hydrated: true));
+      case Failure(kind: FailureKind.unauthorized):
+        await ref.read(tokenStoreProvider).clear();
+        if (ref.mounted) state = const AsyncData(SessionUnauthenticated());
+      case Failure():
+        break;
+    }
+    return r;
+  }
 }

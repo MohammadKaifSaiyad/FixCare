@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +22,23 @@ class _FailingAuthRepo extends AuthRepository {
   Future<Result<VerifyResponse>> verifyOtp(String phone, String otp) async =>
       const Failure(FailureKind.unauthorized, 'Invalid or expired OTP', code: 'UNAUTHORIZED');
 }
+
+/// Returns queued results in order (the last one repeats); [gate], when set, holds every call until completed.
+class _SeqProfileRepo extends TechnicianProfileRepository {
+  _SeqProfileRepo(this._results) : super(Dio());
+  final List<Result<TechnicianProfileDto>> _results;
+  int calls = 0;
+  Completer<void>? gate;
+  @override
+  Future<Result<TechnicianProfileDto>> getProfile() async {
+    final r = _results[calls < _results.length ? calls : _results.length - 1];
+    calls++;
+    if (gate case final g?) await g.future;
+    return r;
+  }
+}
+
+TechnicianProfileDto _p(String status) => TechnicianProfileDto(id: 't1', role: 'TECHNICIAN', name: 'Ramesh', skills: const ['AC'], status: status);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -102,5 +120,79 @@ void main() {
     expect(r.kind, FailureKind.unauthorized);
     expect(r.message, 'Invalid or expired OTP');
     expect(r.code, 'UNAUTHORIZED');
+  });
+
+  Future<(ProviderContainer, _SeqProfileRepo)> booted(List<Result<TechnicianProfileDto>> results) async {
+    backing['fixcare.access'] = 'a'; backing['fixcare.refresh'] = 'r';
+    final repo = _SeqProfileRepo(results);
+    final container = ProviderContainer(overrides: [technicianProfileRepositoryProvider.overrideWithValue(repo)]);
+    addTearDown(container.dispose);
+    await container.read(authControllerProvider.future);
+    return (container, repo);
+  }
+
+  Session? sessionOf(ProviderContainer c) => c.read(authControllerProvider).value;
+
+  test('refreshProfile: a status change updates the session', () async {
+    final (c, _) = await booted([Ok(_p('KYC_SUBMITTED')), Ok(_p('VERIFIED'))]);
+    final r = await c.read(authControllerProvider.notifier).refreshProfile();
+    expect(r, isA<Ok<TechnicianProfileDto>>());
+    expect((sessionOf(c)! as SessionAuthenticated).status, 'VERIFIED');
+  });
+
+  test('refreshProfile: an unchanged profile does not re-emit the session', () async {
+    final (c, _) = await booted([Ok(_p('KYC_SUBMITTED'))]);
+    var emits = 0;
+    c.listen(authControllerProvider, (_, _) => emits++);
+    await c.read(authControllerProvider.notifier).refreshProfile();
+    expect(emits, 0);
+  });
+
+  test('refreshProfile: a network failure keeps the current session', () async {
+    final (c, _) = await booted([Ok(_p('KYC_SUBMITTED')), const Failure(FailureKind.network, 'down')]);
+    final r = await c.read(authControllerProvider.notifier).refreshProfile();
+    expect((r as Failure).kind, FailureKind.network);
+    expect((sessionOf(c)! as SessionAuthenticated).status, 'KYC_SUBMITTED');
+  });
+
+  test('refreshProfile: 401 clears tokens and signs out', () async {
+    final (c, _) = await booted([Ok(_p('VERIFIED')), const Failure(FailureKind.unauthorized, 'stale')]);
+    await c.read(authControllerProvider.notifier).refreshProfile();
+    expect(sessionOf(c), isA<SessionUnauthenticated>());
+    expect(backing['fixcare.access'], isNull);
+  });
+
+  test('refreshProfile: an unhydrated session becomes hydrated', () async {
+    final (c, _) = await booted([const Failure(FailureKind.network, 'down'), Ok(_p('PENDING'))]);
+    expect((sessionOf(c)! as SessionAuthenticated).hydrated, false);
+    await c.read(authControllerProvider.notifier).refreshProfile();
+    expect((sessionOf(c)! as SessionAuthenticated).hydrated, true);
+  });
+
+  test('refreshProfile: concurrent calls share one request', () async {
+    final (c, repo) = await booted([Ok(_p('KYC_SUBMITTED')), Ok(_p('VERIFIED'))]);
+    final n = c.read(authControllerProvider.notifier);
+    await Future.wait([n.refreshProfile(), n.refreshProfile(), n.refreshProfile()]);
+    expect(repo.calls, 2); // 1 boot + 1 shared refresh
+  });
+
+  test('refreshProfile: a logout while the request is in flight is not undone', () async {
+    final (c, repo) = await booted([Ok(_p('KYC_SUBMITTED')), Ok(_p('VERIFIED'))]);
+    repo.gate = Completer<void>();
+    final pending = c.read(authControllerProvider.notifier).refreshProfile();
+    c.read(authControllerProvider.notifier).onAuthLost();
+    repo.gate!.complete();
+    await pending;
+    expect(sessionOf(c), isA<SessionUnauthenticated>());
+  });
+
+  test('refreshProfile when signed out makes no request', () async {
+    final repo = _SeqProfileRepo([Ok(_p('VERIFIED'))]);
+    final c = ProviderContainer(overrides: [technicianProfileRepositoryProvider.overrideWithValue(repo)]);
+    addTearDown(c.dispose);
+    await c.read(authControllerProvider.future);
+    final r = await c.read(authControllerProvider.notifier).refreshProfile();
+    expect((r as Failure).kind, FailureKind.unauthorized);
+    expect(repo.calls, 0);
   });
 }

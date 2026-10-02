@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../env.dart';
 import '../storage/token_store.dart';
 import 'auth_interceptor.dart';
+import 'not_verified_interceptor.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/auth/presentation/auth_controller.dart';
 
@@ -33,6 +36,12 @@ final dioProvider = Provider<Dio>((ref) {
 
   final store = ref.read(tokenStoreProvider);
   final refreshRepo = AuthRepository(refreshDio);
+
+  // Added BEFORE the AuthInterceptor so it sees every response.
+  dio.interceptors.add(NotVerifiedInterceptor(
+    // Lazy read at call time (no provider cycle); refreshProfile de-dupes a burst of 403s into one fetch.
+    () => unawaited(ref.read(authControllerProvider.notifier).refreshProfile()),
+  ));
 
   dio.interceptors.add(AuthInterceptor(
     store,
