@@ -34,4 +34,11 @@ void main() {
     adapter.onGet('/catalog/issues', (s) => s.reply(500, {'code': 'X', 'message': 'boom'}));
     expect((await repo.issues() as Failure).kind, FailureKind.server);
   });
+
+  test('a Failure carries the envelope code alongside the message', () async {
+    adapter.onGet('/catalog/parts', (s) => s.reply(403, {'code': 'FORBIDDEN', 'message': 'Verified technician required'}));
+    final f = await repo.parts() as Failure;
+    expect(f.message, 'Verified technician required');
+    expect(f.code, 'FORBIDDEN');
+  });
 }

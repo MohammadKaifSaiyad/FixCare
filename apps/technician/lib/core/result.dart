@@ -28,5 +28,13 @@ class Ok<T> extends Result<T> {
 class Failure<T> extends Result<T> {
   final FailureKind kind;
   final String message;
-  const Failure(this.kind, this.message);
+
+  /// The backend's stable machine code from its `{code, message}` error envelope (e.g. `JOB_NOT_FOUND`,
+  /// `ESTIMATE_CHANGED`) — callers branch on this, never on [message]. Null when the response carried none
+  /// (a network error, a 404 from a route the backend doesn't have).
+  final String? code;
+  const Failure(this.kind, this.message, {this.code});
 }
+
+/// The `code` of the backend's `{code, message}` error envelope (errorHandler.ts), or null when absent.
+String? errorCodeOf(dynamic data) => (data is Map && data['code'] is String) ? data['code'] as String : null;

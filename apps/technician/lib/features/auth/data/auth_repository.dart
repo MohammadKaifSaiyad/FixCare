@@ -30,10 +30,10 @@ class AuthRepository {
         }
         return Ok(parse(data.cast<String, dynamic>()));
       }
-      return Failure(failureKindFromStatus(status), _msg(res.data));
+      return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
     } on DioException catch (e) {
       if (e.response != null) {
-        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data));
+        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));
       }
       return Failure(FailureKind.network, 'Network error. Check your connection.');
     }

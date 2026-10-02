@@ -17,4 +17,19 @@ void main() {
     expect(failureKindFromStatus(422), FailureKind.unknown);
     expect(failureKindFromStatus(null), FailureKind.unknown);
   });
+
+  test('Failure carries an optional machine code (null by default)', () {
+    const plain = Failure<void>(FailureKind.network, 'offline');
+    expect(plain.code, isNull);
+    const coded = Failure<void>(FailureKind.notFound, 'Job not found', code: 'JOB_NOT_FOUND');
+    expect(coded.code, 'JOB_NOT_FOUND');
+  });
+
+  test('errorCodeOf reads `code` from the {code, message} envelope; null when absent or not a string', () {
+    expect(errorCodeOf({'code': 'ESTIMATE_CHANGED', 'message': 'x'}), 'ESTIMATE_CHANGED');
+    expect(errorCodeOf({'message': 'x'}), isNull);
+    expect(errorCodeOf({'code': 42}), isNull);
+    expect(errorCodeOf('not a map'), isNull);
+    expect(errorCodeOf(null), isNull);
+  });
 }

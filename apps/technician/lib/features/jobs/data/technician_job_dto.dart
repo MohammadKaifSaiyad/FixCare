@@ -64,6 +64,7 @@ abstract class TechnicianJobDto with _$TechnicianJobDto {
 /// One cart line as the backend stores it — the snapshot price, never a live catalog read (Golden Rule 4).
 @freezed
 abstract class JobPartLineDto with _$JobPartLineDto {
+  const JobPartLineDto._();
   const factory JobPartLineDto({
     required String id,
     required String partsCatalogId,
@@ -73,15 +74,34 @@ abstract class JobPartLineDto with _$JobPartLineDto {
     required int ceilingPricePaise,
   }) = _JobPartLineDto;
   factory JobPartLineDto.fromJson(Map<String, dynamic> j) => _$JobPartLineDtoFromJson(j);
+
+  /// The one line-total formula (integer paise) — every line on screen reads this, never its own multiply.
+  int get lineTotalPaise => ceilingPricePaise * qty;
 }
 
-/// GET /technician/jobs/:id — the job plus its parts cart. Composed (not a subtype) so every existing
-/// helper/card keeps taking the plain [TechnicianJobDto]. Parsed by [TechnicianJobRepository.job].
+/// The quote the customer approves at DIAGNOSED — computed by the BACKEND (computeEstimate over the job's
+/// cart, visit-fee credit applied, floored at 0). The app displays it and never re-derives a money figure.
+@freezed
+abstract class JobQuoteDto with _$JobQuoteDto {
+  const factory JobQuoteDto({
+    required int laborPaise,
+    required int partsPaise,
+    required int visitFeeCreditPaise,
+    required int totalPayablePaise,
+  }) = _JobQuoteDto;
+  factory JobQuoteDto.fromJson(Map<String, dynamic> j) => _$JobQuoteDtoFromJson(j);
+}
+
+/// GET /technician/jobs/:id — the job plus its parts cart and the server-computed customer quote. Composed
+/// (not a subtype) so every existing helper/card keeps taking the plain [TechnicianJobDto]. Parsed by
+/// [TechnicianJobRepository.job]. `customerQuote` is null when the backend didn't send one (an older
+/// build): the amount is then hidden, never computed on the device.
 @freezed
 abstract class TechnicianJobDetailDto with _$TechnicianJobDetailDto {
   const factory TechnicianJobDetailDto({
     required TechnicianJobDto job,
     @Default(<JobPartLineDto>[]) List<JobPartLineDto> parts,
+    JobQuoteDto? customerQuote,
   }) = _TechnicianJobDetailDto;
 }
 

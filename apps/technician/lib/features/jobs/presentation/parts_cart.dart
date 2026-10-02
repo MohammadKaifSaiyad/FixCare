@@ -8,13 +8,16 @@ import '../data/catalog_repository.dart';
 import '../data/technician_job_repository.dart';
 import 'job_detail_controller.dart';
 
-/// What the customer will see at DIAGNOSED — mirrors the backend quote (computeEstimate): labor +
-/// Σ(snapshot ceiling price × qty) − visit fee (credited once quoted), floored at 0. Integer paise; only
-/// `rupees()` formats. Shared by the diagnosis form preview and the read-only DIAGNOSED card.
-int estimatePaise(TechnicianJobDto job, List<JobPartLineDto> parts) {
-  final partsTotal = parts.fold<int>(0, (sum, p) => sum + p.ceilingPricePaise * p.qty);
-  final total = job.laborPaise + partsTotal - job.visitFeePaise;
-  return total < 0 ? 0 : total;
+/// One estimate line — `<name> × <qty> · <line total>` from the DTO's own [JobPartLineDto.lineTotalPaise].
+/// The single line widget for the cart, the confirm dialog and the read-only sent card, so the three can
+/// never disagree.
+class PartLineText extends StatelessWidget {
+  const PartLineText(this.line, {super.key});
+
+  final JobPartLineDto line;
+
+  @override
+  Widget build(BuildContext context) => Text('${line.name} × ${line.qty} · ${rupees(line.lineTotalPaise)}');
 }
 
 /// Parts catalog for a job's category (the backend returns that category + generic parts). `null` (an
@@ -28,7 +31,9 @@ final partsCatalogProvider =
 /// (`detail.parts`): every add/remove goes to the backend and then refetches the job — whatever the
 /// outcome — so an app restart, a lost response, or a locked cart can never show a stale or duplicated
 /// cart. If that refetch fails, the cart on screen is marked unconfirmed (Submit stays blocked) until a
-/// fetch succeeds. Catalog prices only (Golden Rule 4): the technician picks a part and a qty, never a price.
+/// fetch ISSUED AFTER it succeeds (tracked by fetch sequence, so an unchanged poll clears it and an older
+/// in-flight one does not). Catalog prices only (Golden Rule 4): the technician picks a part and a qty,
+/// never a price; the "Customer will see" amount is the backend's own quote.
 class PartsSection extends ConsumerStatefulWidget {
   const PartsSection({super.key, required this.detail, required this.onBusyChanged, this.enabled = true});
 
@@ -55,8 +60,10 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
   String _filter = '';
   final Set<String> _busyPartIds = {};
   final Set<String> _busyLineIds = {};
-  // The last refetch after a cart edit failed: what the server holds may differ from the screen.
+  // The last refetch after a cart edit failed: what the server holds may differ from the screen. Cleared
+  // when a fetch with a seq GREATER than [_unconfirmedSeq] (the failed refetch's) comes back Ok.
   bool _cartUnconfirmed = false;
+  int _unconfirmedSeq = 0;
   bool _retrying = false;
 
   @override
@@ -70,19 +77,6 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
     final next = _filterController.text.trim().toLowerCase();
     if (next == _filter) return;
     setState(() => _filter = next);
-  }
-
-  @override
-  void didUpdateWidget(PartsSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // A new job arriving (the poll applied a changed job) is the server's cart again — confirmed. The
-    // parent's busy flag is updated after this frame (never setState an ancestor mid-build).
-    if (_cartUnconfirmed && oldWidget.detail != widget.detail) {
-      _cartUnconfirmed = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reportBusy();
-      });
-    }
   }
 
   @override
@@ -103,16 +97,33 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
   }
 
   /// Refetch the job so the cart on screen is the server's; a failed (or throwing) refetch leaves it
-  /// unconfirmed. Never throws.
+  /// unconfirmed — unless a fetch issued after it already succeeded. Never throws.
   Future<void> _confirmCart(JobDetail detail) async {
     if (!mounted) return;
     var ok = false;
+    final pending = detail.refetch();
+    // Read synchronously: the seq this refetch went out with (a poll issued meanwhile is newer).
+    final issuedSeq = detail.lastIssuedSeq;
     try {
-      ok = await detail.refetch();
-    } catch (_) {
+      ok = await pending;
+    } catch (e, st) {
+      reportJobsError(e, st, 'while confirming the parts cart');
       ok = false;
     }
-    if (mounted) setState(() => _cartUnconfirmed = !ok);
+    if (!mounted) return;
+    // A newer fetch may have succeeded between the refetch failing and this line running.
+    final confirmed = ok || ref.read(jobFetchOkSeqProvider(_jobId)) > issuedSeq;
+    setState(() {
+      _cartUnconfirmed = !confirmed;
+      if (!confirmed) _unconfirmedSeq = issuedSeq;
+    });
+  }
+
+  /// Any fetch issued after the failed refetch came back Ok — even one that changed nothing on screen.
+  void _onFetchOk(int? _, int okSeq) {
+    if (!_cartUnconfirmed || okSeq <= _unconfirmedSeq) return;
+    setState(() => _cartUnconfirmed = false);
+    _reportBusy();
   }
 
   Future<void> _addPart(PartCatalogDto part, int qty) async {
@@ -125,7 +136,8 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
       try {
         final result = await repo.addPart(_jobId, partsCatalogId: part.id, qty: qty);
         if (result case Failure(message: final m)) _snack(m);
-      } catch (_) {
+      } catch (e, st) {
+        reportJobsError(e, st, 'while adding a part to the estimate');
         _snack('Something went wrong.');
       }
       // Refetch on EVERY outcome: a timed-out add the backend applied shows up; a 409 locked / 403
@@ -149,7 +161,8 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
       try {
         final result = await repo.removePart(_jobId, line.id);
         if (result case Failure(message: final m)) _snack(m);
-      } catch (_) {
+      } catch (e, st) {
+        reportJobsError(e, st, 'while removing a part from the estimate');
         _snack('Something went wrong.');
       }
       await _confirmCart(detail);
@@ -179,7 +192,9 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
   @override
   Widget build(BuildContext context) {
     final detail = widget.detail;
+    ref.listen<int>(jobFetchOkSeqProvider(_jobId), _onFetchOk);
     final partsAsync = ref.watch(partsCatalogProvider(detail.job.service.categoryId));
+    final quote = detail.customerQuote;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -215,14 +230,18 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
             ],
           ),
         ],
-        const SizedBox(height: 16),
-        Text(
-          'Customer will see: ${rupees(estimatePaise(detail.job, detail.parts))}',
-          key: const Key('customerWillSee'),
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 4),
-        const Text('(labor + parts − visit fee)', style: TextStyle(fontSize: 12, color: FixCareColors.textMuted)),
+        // The backend's own quote (computeEstimate) — no quote (an older backend) hides the amount rather
+        // than re-deriving a money figure on the device.
+        if (quote != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Customer will see: ${rupees(quote.totalPayablePaise)}',
+            key: const Key('customerWillSee'),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          const Text('(labor + parts − visit fee)', style: TextStyle(fontSize: 12, color: FixCareColors.textMuted)),
+        ],
       ],
     );
   }
@@ -264,6 +283,8 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
     }
     final shown = _filter.isEmpty && matches.length > _unfilteredPartRows ? matches.take(_unfilteredPartRows).toList() : matches;
     final hidden = matches.length - shown.length;
+    // One line per part (backend-enforced): a part already in the estimate offers no second Add.
+    final inEstimate = {for (final l in widget.detail.parts) l.partsCatalogId};
     // Low-end devices: a plain Column of rows (no nested scrollable inside the screen's ListView).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,6 +295,7 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
             part: p,
             busy: _busyPartIds.contains(p.id),
             enabled: widget.enabled,
+            inEstimate: inEstimate.contains(p.id),
             onAdd: (qty) => _addPart(p, qty),
           ),
         if (hidden > 0)
@@ -296,7 +318,7 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
       child: Row(
         key: Key('cartLine_${line.id}'),
         children: [
-          Expanded(child: Text('${line.name} × ${line.qty} · ${rupees(line.ceilingPricePaise * line.qty)}')),
+          Expanded(child: PartLineText(line)),
           IconButton(
             key: Key('removePartBtn_${line.id}'),
             tooltip: 'Remove part',
@@ -310,13 +332,22 @@ class _PartsSectionState extends ConsumerState<PartsSection> {
 }
 
 /// One catalog part with its own qty stepper — a qty tap rebuilds only this row. `busy` (an add of this
-/// part in flight) comes from the section.
+/// part in flight) comes from the section. `inEstimate`: the part already has a line in the cart — the row
+/// shows "In estimate" instead of Add and its stepper is disabled (remove the line to change the qty).
 class _PartRow extends StatefulWidget {
-  const _PartRow({super.key, required this.part, required this.busy, required this.enabled, required this.onAdd});
+  const _PartRow({
+    super.key,
+    required this.part,
+    required this.busy,
+    required this.enabled,
+    required this.inEstimate,
+    required this.onAdd,
+  });
 
   final PartCatalogDto part;
   final bool busy;
   final bool enabled;
+  final bool inEstimate;
   final ValueChanged<int> onAdd;
 
   @override
@@ -329,7 +360,7 @@ class _PartRowState extends State<_PartRow> {
   @override
   Widget build(BuildContext context) {
     final part = widget.part;
-    final active = widget.enabled && !widget.busy;
+    final active = widget.enabled && !widget.busy && !widget.inEstimate;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -356,13 +387,20 @@ class _PartRowState extends State<_PartRow> {
             icon: const Icon(Icons.add),
             onPressed: active ? () => setState(() => _qty = (_qty + 1).clamp(1, 99)) : null,
           ),
-          FilledButton(
-            key: Key('addPartBtn_${part.id}'),
-            onPressed: active ? () => widget.onAdd(_qty) : null,
-            child: widget.busy
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Add'),
-          ),
+          if (widget.inEstimate)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text('In estimate',
+                  key: Key('inEstimate_${part.id}'), style: const TextStyle(color: FixCareColors.textMuted)),
+            )
+          else
+            FilledButton(
+              key: Key('addPartBtn_${part.id}'),
+              onPressed: active ? () => widget.onAdd(_qty) : null,
+              child: widget.busy
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Add'),
+            ),
         ],
       ),
     );
@@ -378,6 +416,7 @@ class EstimateSentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final quote = detail.customerQuote;
     return Card(
       key: const Key('waitingApprovalCard'),
       child: Padding(
@@ -396,14 +435,17 @@ class EstimateSentCard extends StatelessWidget {
               for (final p in detail.parts)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text('${p.name} × ${p.qty} · ${rupees(p.ceilingPricePaise * p.qty)}', key: Key('estimateLine_${p.id}')),
+                  child: PartLineText(p, key: Key('estimateLine_${p.id}')),
                 ),
-            const SizedBox(height: 12),
-            Text(
-              'Total: ${rupees(estimatePaise(detail.job, detail.parts))}',
-              key: const Key('estimateTotal'),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            // The backend's quote — hidden (never recomputed) when an older backend sends none.
+            if (quote != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Total: ${rupees(quote.totalPayablePaise)}',
+                key: const Key('estimateTotal'),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
           ],
         ),
       ),

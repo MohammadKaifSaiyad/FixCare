@@ -10,9 +10,10 @@ class CatalogRepository {
   CatalogRepository(this._dio);
   final Dio _dio;
 
-  // Backend error envelope is { code, message } (errorHandler.ts). Surfaced
-  // verbatim — the UI branches on this exact text (403 "Verified technician
-  // required", 409 "This job is no longer available", 422 cash-debt).
+  // Backend error envelope is { code, message } (errorHandler.ts). The message is
+  // surfaced verbatim (403 "Verified technician required", 409 "This job is no
+  // longer available", 422 cash-debt); anything that BRANCHES uses the stable
+  // `code` (Failure.code, e.g. JOB_NOT_FOUND / ESTIMATE_CHANGED), never the text.
   String _msg(dynamic data) =>
       (data is Map && data['message'] is String) ? data['message'] as String : 'Something went wrong.';
 
@@ -21,7 +22,7 @@ class CatalogRepository {
       return await run();
     } on DioException catch (e) {
       if (e.response != null) {
-        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data));
+        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));
       }
       return const Failure(FailureKind.network, 'Network error. Check your connection.');
     }
@@ -34,7 +35,7 @@ class CatalogRepository {
       if (data is! List) return const Failure(FailureKind.server, 'Unexpected response from the server.');
       return Ok(data.map((e) => DiagnosedIssueDto.fromJson((e as Map).cast<String, dynamic>())).toList());
     }
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
   Result<List<PartCatalogDto>> _parsePartsList(Response res) {
@@ -44,7 +45,7 @@ class CatalogRepository {
       if (data is! List) return const Failure(FailureKind.server, 'Unexpected response from the server.');
       return Ok(data.map((e) => PartCatalogDto.fromJson((e as Map).cast<String, dynamic>())).toList());
     }
-    return Failure(failureKindFromStatus(status), _msg(res.data));
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
   Future<Result<List<DiagnosedIssueDto>>> issues({String? categoryId}) => _guard(() async {

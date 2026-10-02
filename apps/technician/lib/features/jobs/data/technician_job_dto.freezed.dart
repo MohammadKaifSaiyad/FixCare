@@ -1968,8 +1968,8 @@ return $default(_that.id,_that.partsCatalogId,_that.sku,_that.name,_that.qty,_th
 /// @nodoc
 @JsonSerializable()
 
-class _JobPartLineDto implements JobPartLineDto {
-  const _JobPartLineDto({required this.id, required this.partsCatalogId, required this.sku, required this.name, required this.qty, required this.ceilingPricePaise});
+class _JobPartLineDto extends JobPartLineDto {
+  const _JobPartLineDto({required this.id, required this.partsCatalogId, required this.sku, required this.name, required this.qty, required this.ceilingPricePaise}): super._();
   factory _JobPartLineDto.fromJson(Map<String, dynamic> json) => _$JobPartLineDtoFromJson(json);
 
 @override final  String id;
@@ -2046,10 +2046,289 @@ as int,
 
 }
 
+
+/// @nodoc
+mixin _$JobQuoteDto {
+
+ int get laborPaise; int get partsPaise; int get visitFeeCreditPaise; int get totalPayablePaise;
+/// Create a copy of JobQuoteDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$JobQuoteDtoCopyWith<JobQuoteDto> get copyWith => _$JobQuoteDtoCopyWithImpl<JobQuoteDto>(this as JobQuoteDto, _$identity);
+
+  /// Serializes this JobQuoteDto to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as JobQuoteDto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is JobQuoteDto&&(identical(other.laborPaise, _this.laborPaise) || other.laborPaise == _this.laborPaise)&&(identical(other.partsPaise, _this.partsPaise) || other.partsPaise == _this.partsPaise)&&(identical(other.visitFeeCreditPaise, _this.visitFeeCreditPaise) || other.visitFeeCreditPaise == _this.visitFeeCreditPaise)&&(identical(other.totalPayablePaise, _this.totalPayablePaise) || other.totalPayablePaise == _this.totalPayablePaise));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as JobQuoteDto;
+  return Object.hash(runtimeType,_this.laborPaise,_this.partsPaise,_this.visitFeeCreditPaise,_this.totalPayablePaise);
+}
+
+@override
+String toString() {
+  final _this = this as JobQuoteDto;
+  return 'JobQuoteDto(laborPaise: ${_this.laborPaise}, partsPaise: ${_this.partsPaise}, visitFeeCreditPaise: ${_this.visitFeeCreditPaise}, totalPayablePaise: ${_this.totalPayablePaise})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $JobQuoteDtoCopyWith<$Res>  {
+  factory $JobQuoteDtoCopyWith(JobQuoteDto value, $Res Function(JobQuoteDto) _then) = _$JobQuoteDtoCopyWithImpl;
+@useResult
+$Res call({
+ int laborPaise, int partsPaise, int visitFeeCreditPaise, int totalPayablePaise
+});
+
+
+
+
+}
+/// @nodoc
+class _$JobQuoteDtoCopyWithImpl<$Res>
+    implements $JobQuoteDtoCopyWith<$Res> {
+  _$JobQuoteDtoCopyWithImpl(this._self, this._then);
+
+  final JobQuoteDto _self;
+  final $Res Function(JobQuoteDto) _then;
+
+/// Create a copy of JobQuoteDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? laborPaise = null,Object? partsPaise = null,Object? visitFeeCreditPaise = null,Object? totalPayablePaise = null,}) {
+  return _then(JobQuoteDto(
+laborPaise: null == laborPaise ? _self.laborPaise : laborPaise // ignore: cast_nullable_to_non_nullable
+as int,partsPaise: null == partsPaise ? _self.partsPaise : partsPaise // ignore: cast_nullable_to_non_nullable
+as int,visitFeeCreditPaise: null == visitFeeCreditPaise ? _self.visitFeeCreditPaise : visitFeeCreditPaise // ignore: cast_nullable_to_non_nullable
+as int,totalPayablePaise: null == totalPayablePaise ? _self.totalPayablePaise : totalPayablePaise // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [JobQuoteDto].
+extension JobQuoteDtoPatterns on JobQuoteDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _JobQuoteDto value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _JobQuoteDto() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _JobQuoteDto value)  $default,){
+final _that = this;
+switch (_that) {
+case _JobQuoteDto():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _JobQuoteDto value)?  $default,){
+final _that = this;
+switch (_that) {
+case _JobQuoteDto() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int laborPaise,  int partsPaise,  int visitFeeCreditPaise,  int totalPayablePaise)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _JobQuoteDto() when $default != null:
+return $default(_that.laborPaise,_that.partsPaise,_that.visitFeeCreditPaise,_that.totalPayablePaise);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int laborPaise,  int partsPaise,  int visitFeeCreditPaise,  int totalPayablePaise)  $default,) {final _that = this;
+switch (_that) {
+case _JobQuoteDto():
+return $default(_that.laborPaise,_that.partsPaise,_that.visitFeeCreditPaise,_that.totalPayablePaise);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int laborPaise,  int partsPaise,  int visitFeeCreditPaise,  int totalPayablePaise)?  $default,) {final _that = this;
+switch (_that) {
+case _JobQuoteDto() when $default != null:
+return $default(_that.laborPaise,_that.partsPaise,_that.visitFeeCreditPaise,_that.totalPayablePaise);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _JobQuoteDto implements JobQuoteDto {
+  const _JobQuoteDto({required this.laborPaise, required this.partsPaise, required this.visitFeeCreditPaise, required this.totalPayablePaise});
+  factory _JobQuoteDto.fromJson(Map<String, dynamic> json) => _$JobQuoteDtoFromJson(json);
+
+@override final  int laborPaise;
+@override final  int partsPaise;
+@override final  int visitFeeCreditPaise;
+@override final  int totalPayablePaise;
+
+/// Create a copy of JobQuoteDto
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$JobQuoteDtoCopyWith<_JobQuoteDto> get copyWith => __$JobQuoteDtoCopyWithImpl<_JobQuoteDto>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$JobQuoteDtoToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _JobQuoteDto&&(identical(other.laborPaise, laborPaise) || other.laborPaise == laborPaise)&&(identical(other.partsPaise, partsPaise) || other.partsPaise == partsPaise)&&(identical(other.visitFeeCreditPaise, visitFeeCreditPaise) || other.visitFeeCreditPaise == visitFeeCreditPaise)&&(identical(other.totalPayablePaise, totalPayablePaise) || other.totalPayablePaise == totalPayablePaise));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,laborPaise,partsPaise,visitFeeCreditPaise,totalPayablePaise);
+}
+
+@override
+String toString() {
+    return 'JobQuoteDto(laborPaise: $laborPaise, partsPaise: $partsPaise, visitFeeCreditPaise: $visitFeeCreditPaise, totalPayablePaise: $totalPayablePaise)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$JobQuoteDtoCopyWith<$Res> implements $JobQuoteDtoCopyWith<$Res> {
+  factory _$JobQuoteDtoCopyWith(_JobQuoteDto value, $Res Function(_JobQuoteDto) _then) = __$JobQuoteDtoCopyWithImpl;
+@override @useResult
+$Res call({
+ int laborPaise, int partsPaise, int visitFeeCreditPaise, int totalPayablePaise
+});
+
+
+
+
+}
+/// @nodoc
+class __$JobQuoteDtoCopyWithImpl<$Res>
+    implements _$JobQuoteDtoCopyWith<$Res> {
+  __$JobQuoteDtoCopyWithImpl(this._self, this._then);
+
+  final _JobQuoteDto _self;
+  final $Res Function(_JobQuoteDto) _then;
+
+/// Create a copy of JobQuoteDto
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? laborPaise = null,Object? partsPaise = null,Object? visitFeeCreditPaise = null,Object? totalPayablePaise = null,}) {
+  return _then(_JobQuoteDto(
+laborPaise: null == laborPaise ? _self.laborPaise : laborPaise // ignore: cast_nullable_to_non_nullable
+as int,partsPaise: null == partsPaise ? _self.partsPaise : partsPaise // ignore: cast_nullable_to_non_nullable
+as int,visitFeeCreditPaise: null == visitFeeCreditPaise ? _self.visitFeeCreditPaise : visitFeeCreditPaise // ignore: cast_nullable_to_non_nullable
+as int,totalPayablePaise: null == totalPayablePaise ? _self.totalPayablePaise : totalPayablePaise // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
 /// @nodoc
 mixin _$TechnicianJobDetailDto {
 
- TechnicianJobDto get job; List<JobPartLineDto> get parts;
+ TechnicianJobDto get job; List<JobPartLineDto> get parts; JobQuoteDto? get customerQuote;
 /// Create a copy of TechnicianJobDetailDto
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2061,20 +2340,20 @@ $TechnicianJobDetailDtoCopyWith<TechnicianJobDetailDto> get copyWith => _$Techni
 @override
 bool operator ==(Object other) {
   final _this = this as TechnicianJobDetailDto;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TechnicianJobDetailDto&&(identical(other.job, _this.job) || other.job == _this.job)&&const DeepCollectionEquality().equals(other.parts, _this.parts));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TechnicianJobDetailDto&&(identical(other.job, _this.job) || other.job == _this.job)&&const DeepCollectionEquality().equals(other.parts, _this.parts)&&(identical(other.customerQuote, _this.customerQuote) || other.customerQuote == _this.customerQuote));
 }
 
 
 @override
 int get hashCode {
   final _this = this as TechnicianJobDetailDto;
-  return Object.hash(runtimeType,_this.job,const DeepCollectionEquality().hash(_this.parts));
+  return Object.hash(runtimeType,_this.job,const DeepCollectionEquality().hash(_this.parts),_this.customerQuote);
 }
 
 @override
 String toString() {
   final _this = this as TechnicianJobDetailDto;
-  return 'TechnicianJobDetailDto(job: ${_this.job}, parts: ${_this.parts})';
+  return 'TechnicianJobDetailDto(job: ${_this.job}, parts: ${_this.parts}, customerQuote: ${_this.customerQuote})';
 }
 
 
@@ -2085,11 +2364,11 @@ abstract mixin class $TechnicianJobDetailDtoCopyWith<$Res>  {
   factory $TechnicianJobDetailDtoCopyWith(TechnicianJobDetailDto value, $Res Function(TechnicianJobDetailDto) _then) = _$TechnicianJobDetailDtoCopyWithImpl;
 @useResult
 $Res call({
- TechnicianJobDto job, List<JobPartLineDto> parts
+ TechnicianJobDto job, List<JobPartLineDto> parts, JobQuoteDto? customerQuote
 });
 
 
-$TechnicianJobDtoCopyWith<$Res> get job;
+$TechnicianJobDtoCopyWith<$Res> get job;$JobQuoteDtoCopyWith<$Res>? get customerQuote;
 
 }
 /// @nodoc
@@ -2102,11 +2381,12 @@ class _$TechnicianJobDetailDtoCopyWithImpl<$Res>
 
 /// Create a copy of TechnicianJobDetailDto
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? job = null,Object? parts = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? job = null,Object? parts = null,Object? customerQuote = freezed,}) {
   return _then(TechnicianJobDetailDto(
 job: null == job ? _self.job : job // ignore: cast_nullable_to_non_nullable
 as TechnicianJobDto,parts: null == parts ? _self.parts : parts // ignore: cast_nullable_to_non_nullable
-as List<JobPartLineDto>,
+as List<JobPartLineDto>,customerQuote: freezed == customerQuote ? _self.customerQuote : customerQuote // ignore: cast_nullable_to_non_nullable
+as JobQuoteDto?,
   ));
 }
 /// Create a copy of TechnicianJobDetailDto
@@ -2117,6 +2397,18 @@ $TechnicianJobDtoCopyWith<$Res> get job {
   
   return $TechnicianJobDtoCopyWith<$Res>(_self.job, (value) {
     return _then(_self.copyWith(job: value));
+  });
+}/// Create a copy of TechnicianJobDetailDto
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$JobQuoteDtoCopyWith<$Res>? get customerQuote {
+    if (_self.customerQuote == null) {
+    return null;
+  }
+
+  return $JobQuoteDtoCopyWith<$Res>(_self.customerQuote!, (value) {
+    return _then(_self.copyWith(customerQuote: value));
   });
 }
 }
@@ -2200,10 +2492,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( TechnicianJobDto job,  List<JobPartLineDto> parts)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( TechnicianJobDto job,  List<JobPartLineDto> parts,  JobQuoteDto? customerQuote)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TechnicianJobDetailDto() when $default != null:
-return $default(_that.job,_that.parts);case _:
+return $default(_that.job,_that.parts,_that.customerQuote);case _:
   return orElse();
 
 }
@@ -2221,10 +2513,10 @@ return $default(_that.job,_that.parts);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( TechnicianJobDto job,  List<JobPartLineDto> parts)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( TechnicianJobDto job,  List<JobPartLineDto> parts,  JobQuoteDto? customerQuote)  $default,) {final _that = this;
 switch (_that) {
 case _TechnicianJobDetailDto():
-return $default(_that.job,_that.parts);case _:
+return $default(_that.job,_that.parts,_that.customerQuote);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -2241,10 +2533,10 @@ return $default(_that.job,_that.parts);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( TechnicianJobDto job,  List<JobPartLineDto> parts)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( TechnicianJobDto job,  List<JobPartLineDto> parts,  JobQuoteDto? customerQuote)?  $default,) {final _that = this;
 switch (_that) {
 case _TechnicianJobDetailDto() when $default != null:
-return $default(_that.job,_that.parts);case _:
+return $default(_that.job,_that.parts,_that.customerQuote);case _:
   return null;
 
 }
@@ -2256,7 +2548,7 @@ return $default(_that.job,_that.parts);case _:
 
 
 class _TechnicianJobDetailDto implements TechnicianJobDetailDto {
-  const _TechnicianJobDetailDto({required this.job,  List<JobPartLineDto> parts = const <JobPartLineDto>[]}): _parts = parts;
+  const _TechnicianJobDetailDto({required this.job,  List<JobPartLineDto> parts = const <JobPartLineDto>[], this.customerQuote}): _parts = parts;
   
 
 @override final  TechnicianJobDto job;
@@ -2267,6 +2559,7 @@ class _TechnicianJobDetailDto implements TechnicianJobDetailDto {
   return EqualUnmodifiableListView(_parts);
 }
 
+@override final  JobQuoteDto? customerQuote;
 
 /// Create a copy of TechnicianJobDetailDto
 /// with the given fields replaced by the non-null parameter values.
@@ -2278,18 +2571,18 @@ _$TechnicianJobDetailDtoCopyWith<_TechnicianJobDetailDto> get copyWith => __$Tec
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TechnicianJobDetailDto&&(identical(other.job, job) || other.job == job)&&const DeepCollectionEquality().equals(other.parts, _parts));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TechnicianJobDetailDto&&(identical(other.job, job) || other.job == job)&&const DeepCollectionEquality().equals(other.parts, _parts)&&(identical(other.customerQuote, customerQuote) || other.customerQuote == customerQuote));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,job,const DeepCollectionEquality().hash(_parts));
+    return Object.hash(runtimeType,job,const DeepCollectionEquality().hash(_parts),customerQuote);
 }
 
 @override
 String toString() {
-    return 'TechnicianJobDetailDto(job: $job, parts: $parts)';
+    return 'TechnicianJobDetailDto(job: $job, parts: $parts, customerQuote: $customerQuote)';
 }
 
 
@@ -2300,11 +2593,11 @@ abstract mixin class _$TechnicianJobDetailDtoCopyWith<$Res> implements $Technici
   factory _$TechnicianJobDetailDtoCopyWith(_TechnicianJobDetailDto value, $Res Function(_TechnicianJobDetailDto) _then) = __$TechnicianJobDetailDtoCopyWithImpl;
 @override @useResult
 $Res call({
- TechnicianJobDto job, List<JobPartLineDto> parts
+ TechnicianJobDto job, List<JobPartLineDto> parts, JobQuoteDto? customerQuote
 });
 
 
-@override $TechnicianJobDtoCopyWith<$Res> get job;
+@override $TechnicianJobDtoCopyWith<$Res> get job;@override $JobQuoteDtoCopyWith<$Res>? get customerQuote;
 
 }
 /// @nodoc
@@ -2317,11 +2610,12 @@ class __$TechnicianJobDetailDtoCopyWithImpl<$Res>
 
 /// Create a copy of TechnicianJobDetailDto
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? job = null,Object? parts = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? job = null,Object? parts = null,Object? customerQuote = freezed,}) {
   return _then(_TechnicianJobDetailDto(
 job: null == job ? _self.job : job // ignore: cast_nullable_to_non_nullable
 as TechnicianJobDto,parts: null == parts ? _self._parts : parts // ignore: cast_nullable_to_non_nullable
-as List<JobPartLineDto>,
+as List<JobPartLineDto>,customerQuote: freezed == customerQuote ? _self.customerQuote : customerQuote // ignore: cast_nullable_to_non_nullable
+as JobQuoteDto?,
   ));
 }
 
@@ -2333,6 +2627,18 @@ $TechnicianJobDtoCopyWith<$Res> get job {
   
   return $TechnicianJobDtoCopyWith<$Res>(_self.job, (value) {
     return _then(_self.copyWith(job: value));
+  });
+}/// Create a copy of TechnicianJobDetailDto
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$JobQuoteDtoCopyWith<$Res>? get customerQuote {
+    if (_self.customerQuote == null) {
+    return null;
+  }
+
+  return $JobQuoteDtoCopyWith<$Res>(_self.customerQuote!, (value) {
+    return _then(_self.copyWith(customerQuote: value));
   });
 }
 }

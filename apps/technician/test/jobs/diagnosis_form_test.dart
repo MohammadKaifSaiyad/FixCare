@@ -63,7 +63,9 @@ class _FakeJobRepo extends TechnicianJobRepository {
   int jobCalls = 0;
   int diagnoseCalls = 0;
   ({String id, String issueId})? lastDiagnose;
+  List<String>? lastExpectedPartLineIds;
   Result<void> diagnoseResult = const Ok(null);
+  bool diagnoseThrows = false;
   Completer<void>? addGate;
   Completer<void>? diagnoseGate;
   /// Sticky: while set, job() returns this (e.g. the refetch after a part add fails).
@@ -86,9 +88,11 @@ class _FakeJobRepo extends TechnicianJobRepository {
   }
 
   @override
-  Future<Result<void>> diagnose(String id, String diagnosedIssueId) async {
+  Future<Result<void>> diagnose(String id, String diagnosedIssueId, {List<String>? expectedPartLineIds}) async {
     diagnoseCalls++;
     lastDiagnose = (id: id, issueId: diagnosedIssueId);
+    lastExpectedPartLineIds = expectedPartLineIds;
+    if (diagnoseThrows) throw StateError('diagnose boom');
     if (diagnoseGate != null) await diagnoseGate!.future;
     return diagnoseResult;
   }
@@ -114,6 +118,7 @@ Future<void> _pump(
   required _FakeCatalogRepo catalogRepo,
   required PhotoUploadQueue queue,
   List<JobPartLineDto> parts = const [],
+  JobQuoteDto? quote,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -130,7 +135,7 @@ Future<void> _pump(
           return child!;
         },
         child: MaterialApp(
-            home: Scaffold(body: SingleChildScrollView(child: DiagnosisForm(detail: TechnicianJobDetailDto(job: job, parts: parts))))),
+            home: Scaffold(body: SingleChildScrollView(child: DiagnosisForm(detail: TechnicianJobDetailDto(job: job, parts: parts, customerQuote: quote))))),
       ),
     ),
   );
@@ -383,6 +388,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(jobRepo.diagnoseCalls, 1);
     expect(jobRepo.lastDiagnose, (id: 'b1', issueId: 'i1'));
+    expect(jobRepo.lastExpectedPartLineIds, isEmpty, reason: 'an empty confirmed cart is sent as [] (labor only)');
     await _disposeTree(tester);
   });
 
@@ -475,10 +481,11 @@ void main() {
     await _disposeTree(tester);
   });
 
-  testWidgets('the confirm dialog restates every line and what the customer will see', (tester) async {
+  testWidgets('the confirm dialog restates every line and what the customer will see (the server quote)', (tester) async {
     final job = _dto(photos: _bothServerPhotos());
     final jobRepo = _FakeJobRepo(job: job);
     await _pump(tester, job: job, jobRepo: jobRepo, catalogRepo: _FakeCatalogRepo(), parts: const [capLine],
+        quote: const JobQuoteDto(laborPaise: 20000, partsPaise: 30000, visitFeeCreditPaise: 9900, totalPayablePaise: 40100),
         queue: PhotoUploadQueue(repo: jobRepo, put: ({required url, required key, required bytes}) async {}));
     await _pickIssue(tester);
     await _tapKey(tester, const Key('submitDiagnosisBtn'));
@@ -492,6 +499,108 @@ void main() {
     expect(tester.widget<Text>(total).data, 'Customer will see: ₹401'); // 20000 + 2 × 15000 − 9900
     await tester.tap(find.byKey(const Key('cancelSendEstimateBtn')));
     await tester.pumpAndSettle();
+    await _disposeTree(tester);
+  });
+
+  testWidgets('the confirm dialog hides the total when the backend sent no quote (never client math)', (tester) async {
+    final job = _dto(photos: _bothServerPhotos());
+    final jobRepo = _FakeJobRepo(job: job);
+    await _pump(tester, job: job, jobRepo: jobRepo, catalogRepo: _FakeCatalogRepo(), parts: const [capLine],
+        queue: PhotoUploadQueue(repo: jobRepo, put: ({required url, required key, required bytes}) async {}));
+    await _pickIssue(tester);
+    await _tapKey(tester, const Key('submitDiagnosisBtn'));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+    expect(find.descendant(of: dialog, matching: find.text('Capacitor × 2 · ₹300')), findsOneWidget);
+    expect(find.descendant(of: dialog, matching: find.byKey(const Key('confirmEstimateTotal'))), findsNothing);
+    await tester.tap(find.byKey(const Key('cancelSendEstimateBtn')));
+    await tester.pumpAndSettle();
+    await _disposeTree(tester);
+  });
+
+  testWidgets('the line ids sent with diagnose are the dialog snapshot — not a cart that changed while it was open', (tester) async {
+    final job = _dto(photos: _bothServerPhotos());
+    final jobRepo = _FakeJobRepo(job: job);
+    final queue = PhotoUploadQueue(repo: jobRepo, put: ({required url, required key, required bytes}) async {});
+    const fanLine = JobPartLineDto(id: 'l2', partsCatalogId: 'p2', sku: 'FAN', name: 'Fan motor', qty: 1, ceilingPricePaise: 120000);
+    final detail = ValueNotifier(TechnicianJobDetailDto(job: job, parts: const [capLine]));
+    addTearDown(detail.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        technicianJobRepositoryProvider.overrideWithValue(jobRepo),
+        catalogRepositoryProvider.overrideWithValue(_FakeCatalogRepo()),
+        photoUploadQueueProvider.overrideWithValue(queue),
+      ],
+      child: Consumer(
+        builder: (context, ref, child) {
+          ref.listen(jobDetailProvider(job.id), (_, _) {});
+          return child!;
+        },
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ValueListenableBuilder<TechnicianJobDetailDto>(
+                valueListenable: detail,
+                builder: (_, d, _) => DiagnosisForm(detail: d),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _pickIssue(tester);
+    await _tapKey(tester, const Key('submitDiagnosisBtn'));
+    await tester.pumpAndSettle();
+
+    // Another device adds a line while the dialog is open; the screen's job updates under it.
+    detail.value = TechnicianJobDetailDto(job: job, parts: const [capLine, fanLine]);
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+    expect(find.descendant(of: dialog, matching: find.text('Capacitor × 2 · ₹300')), findsOneWidget);
+    expect(find.descendant(of: dialog, matching: find.text('Fan motor × 1 · ₹1200')), findsNothing,
+        reason: 'the dialog shows what was confirmed, not the live cart');
+
+    await tester.tap(find.byKey(const Key('confirmSendEstimateBtn')));
+    await tester.pumpAndSettle();
+    expect(jobRepo.diagnoseCalls, 1);
+    expect(jobRepo.lastExpectedPartLineIds, ['l1'], reason: 'the backend binds to the reviewed set (and 409s the drift)');
+    await _disposeTree(tester);
+  });
+
+  testWidgets('a 409 ESTIMATE_CHANGED follows the Failure path: refetch, then the message inline', (tester) async {
+    final job = _dto(photos: _bothServerPhotos());
+    final jobRepo = _FakeJobRepo(job: job)
+      ..diagnoseResult = const Failure(FailureKind.unknown, 'The estimate changed — check the parts and send again', code: 'ESTIMATE_CHANGED');
+    await _pump(tester, job: job, jobRepo: jobRepo, catalogRepo: _FakeCatalogRepo(), parts: const [capLine],
+        queue: PhotoUploadQueue(repo: jobRepo, put: ({required url, required key, required bytes}) async {}));
+    await _pickIssue(tester);
+    final callsBefore = jobRepo.jobCalls;
+    await _tapKey(tester, const Key('submitDiagnosisBtn'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmSendEstimateBtn')));
+    await tester.pumpAndSettle();
+    expect(jobRepo.lastExpectedPartLineIds, ['l1']);
+    expect(jobRepo.jobCalls, greaterThan(callsBefore), reason: 'refetched so the screen shows the changed cart');
+    expect(find.text('The estimate changed — check the parts and send again'), findsOneWidget);
+    expect(_submitBtn(tester).onPressed, isNotNull, reason: 'the technician can review and send again');
+    await _disposeTree(tester);
+  });
+
+  testWidgets('a diagnose that THROWS is reported (FlutterError) and shows "Something went wrong." inline', (tester) async {
+    final job = _dto(photos: _bothServerPhotos());
+    final jobRepo = _FakeJobRepo(job: job)..diagnoseThrows = true;
+    await _pump(tester, job: job, jobRepo: jobRepo, catalogRepo: _FakeCatalogRepo(),
+        queue: PhotoUploadQueue(repo: jobRepo, put: ({required url, required key, required bytes}) async {}));
+    await _pickIssue(tester);
+    await _tapKey(tester, const Key('submitDiagnosisBtn'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmSendEstimateBtn')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isA<StateError>());
+    expect(find.byKey(const Key('diagnosisError')), findsOneWidget);
+    expect(find.text('Something went wrong.'), findsOneWidget);
+    expect(_submitBtn(tester).onPressed, isNotNull, reason: 'busy reset in finally');
     await _disposeTree(tester);
   });
 

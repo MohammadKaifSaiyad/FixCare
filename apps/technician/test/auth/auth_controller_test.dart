@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fixcare_technician/core/result.dart';
+import 'package:fixcare_technician/features/auth/data/auth_repository.dart';
 import 'package:fixcare_technician/features/auth/domain/session.dart';
 import 'package:fixcare_technician/features/auth/presentation/auth_controller.dart';
 import 'package:fixcare_technician/features/profile/data/technician_profile_repository.dart';
@@ -12,6 +13,13 @@ class _FakeProfileRepo extends TechnicianProfileRepository {
   final Result<TechnicianProfileDto> _result;
   @override
   Future<Result<TechnicianProfileDto>> getProfile() async => _result;
+}
+
+class _FailingAuthRepo extends AuthRepository {
+  _FailingAuthRepo() : super(Dio());
+  @override
+  Future<Result<VerifyResponse>> verifyOtp(String phone, String otp) async =>
+      const Failure(FailureKind.unauthorized, 'Invalid or expired OTP', code: 'UNAUTHORIZED');
 }
 
 void main() {
@@ -81,5 +89,18 @@ void main() {
     expect(a.isVerified, false);
     expect(a.status, 'PENDING');
     expect(backing['fixcare.access'], 'a'); // not cleared
+  });
+
+  test('submitOtp Failure keeps the backend code (never dropped when re-wrapped)', () async {
+    final container = ProviderContainer(overrides: [
+      technicianProfileRepositoryProvider.overrideWithValue(_FakeProfileRepo(const Failure(FailureKind.unauthorized, 'x'))),
+      authRepositoryProvider.overrideWithValue(_FailingAuthRepo()),
+    ]);
+    addTearDown(container.dispose);
+    await container.read(authControllerProvider.future);
+    final r = await container.read(authControllerProvider.notifier).submitOtp('9999999999', '123456') as Failure;
+    expect(r.kind, FailureKind.unauthorized);
+    expect(r.message, 'Invalid or expired OTP');
+    expect(r.code, 'UNAUTHORIZED');
   });
 }

@@ -22,6 +22,15 @@ TechnicianJobDto _job({String state = 'ARRIVED', int labor = 20000, int visit = 
 
 const _capacitor = PartCatalogDto(id: 'p1', sku: 'CAP', name: 'Capacitor', categoryId: 'cat-fan', ceilingPricePaise: 15000, status: 'ACTIVE');
 
+/// What the fake BACKEND sends as `customerQuote` (its computeEstimate as if quoted). Test fixture only — the
+/// app itself never computes this.
+JobQuoteDto _serverQuote(TechnicianJobDto job, List<JobPartLineDto> parts) {
+  final partsPaise = parts.fold<int>(0, (sum, p) => sum + p.ceilingPricePaise * p.qty);
+  final total = job.laborPaise + partsPaise - job.visitFeePaise;
+  return JobQuoteDto(
+      laborPaise: job.laborPaise, partsPaise: partsPaise, visitFeeCreditPaise: job.visitFeePaise, totalPayablePaise: total < 0 ? 0 : total);
+}
+
 /// Server-side cart: addPart/removePart mutate it; job() returns it — like the real backend.
 class _FakeJobRepo extends TechnicianJobRepository {
   _FakeJobRepo({this.categoryId = 'cat-fan'}) : super(Dio());
@@ -34,19 +43,34 @@ class _FakeJobRepo extends TechnicianJobRepository {
   Result<String>? addResultOverride;
   bool applyAddDespiteFailure = false;
   Completer<void>? addGate;
+  bool addThrows = false;
+  bool removeThrows = false;
   /// Sticky: while set, job() returns this instead of the server cart (e.g. the refetch after an add fails).
   Result<TechnicianJobDetailDto>? jobResultOverride;
+  /// One-shot: the NEXT job() call computes its answer now (the server state at issue time) but stays in
+  /// flight until this completes — an older poll that lands late.
+  Completer<void>? nextJobGate;
+  /// false → the backend sends no customerQuote (an older build).
+  bool sendQuote = true;
 
   @override
   Future<Result<TechnicianJobDetailDto>> job(String id) async {
     jobCalls++;
-    return jobResultOverride ?? Ok(TechnicianJobDetailDto(job: _job(categoryId: categoryId), parts: List.of(serverParts)));
+    final job = _job(categoryId: categoryId);
+    final parts = List.of(serverParts);
+    final Result<TechnicianJobDetailDto> answer = jobResultOverride ??
+        Ok(TechnicianJobDetailDto(job: job, parts: parts, customerQuote: sendQuote ? _serverQuote(job, parts) : null));
+    final gate = nextJobGate;
+    nextJobGate = null;
+    if (gate != null) await gate.future;
+    return answer;
   }
 
   @override
   Future<Result<String>> addPart(String id, {required String partsCatalogId, required int qty}) async {
     addCalls++;
     lastAdd = (partsCatalogId: partsCatalogId, qty: qty);
+    if (addThrows) throw StateError('add boom');
     if (addGate != null) await addGate!.future;
     final override = addResultOverride;
     if (override == null || applyAddDespiteFailure) {
@@ -58,6 +82,7 @@ class _FakeJobRepo extends TechnicianJobRepository {
   @override
   Future<Result<void>> removePart(String id, String partId) async {
     lastRemoved = partId;
+    if (removeThrows) throw StateError('remove boom');
     serverParts.removeWhere((p) => p.id == partId);
     return const Ok(null);
   }
@@ -115,12 +140,130 @@ Future<void> _pump(WidgetTester tester, _FakeJobRepo repo, _FakeCatalog catalog,
 }
 
 void main() {
-  group('estimatePaise (what the customer will see — mirrors the backend DIAGNOSED quote)', () {
-    test('labor 20000 + 2 × 15000 − visit fee 9900 = 40100', () {
-      expect(estimatePaise(_job(), const [JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000)]), 40100);
+  group('PartLineText (one line widget for cart line, sent card and confirm dialog)', () {
+    testWidgets("renders '<name> × <qty> · <line total>' from the DTO's lineTotalPaise", (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: PartLineText(
+          JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000)))));
+      expect(find.text('Capacitor × 2 · ₹300'), findsOneWidget);
     });
-    test('floors at 0 when the visit fee exceeds labor + parts', () {
-      expect(estimatePaise(_job(labor: 5000, visit: 9900), const []), 0);
+  });
+
+  group('PartsSection — server quote, part already in the estimate, no silent catches', () {
+    testWidgets('"Customer will see" is the SERVER quote verbatim (never client math)', (tester) async {
+      final repo = _FakeJobRepo()..jobResultOverride = Ok(TechnicianJobDetailDto(
+          job: _job(),
+          customerQuote: const JobQuoteDto(laborPaise: 20000, partsPaise: 0, visitFeeCreditPaise: 9900, totalPayablePaise: 12345)));
+      await _pump(tester, repo, _FakeCatalog());
+      expect(find.text('Customer will see: ₹123.45'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('no customerQuote from the backend → the amount is hidden (no fallback to client math)', (tester) async {
+      final repo = _FakeJobRepo()..sendQuote = false;
+      await _pump(tester, repo, _FakeCatalog());
+      expect(find.byKey(const Key('customerWillSee')), findsNothing);
+      expect(find.textContaining('Customer will see'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a catalog part already in the estimate shows "In estimate" instead of Add; its qty stepper is disabled', (tester) async {
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'SKU1', name: 'Part 1', qty: 1, ceilingPricePaise: 1000));
+      await _pump(tester, repo, _FakeCatalog(catalogParts: _manyParts(2)));
+      expect(find.byKey(const Key('inEstimate_p1')), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const Key('inEstimate_p1'))).data, 'In estimate');
+      expect(find.byKey(const Key('addPartBtn_p1')), findsNothing);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p1'))).onPressed, isNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyMinus_p1'))).onPressed, isNull);
+      // A part not in the estimate is unaffected.
+      expect(find.byKey(const Key('inEstimate_p2')), findsNothing);
+      expect(_addBtn(tester, 'p2').onPressed, isNotNull);
+      expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p2'))).onPressed, isNotNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('after an add lands, that row flips to "In estimate"; removing the line brings Add back', (tester) async {
+      final repo = _FakeJobRepo();
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inEstimate_p1')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('removePartBtn_l1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inEstimate_p1')), findsNothing);
+      expect(find.byKey(const Key('addPartBtn_p1')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an add that THROWS is reported (FlutterError) and shows the generic snack', (tester) async {
+      final repo = _FakeJobRepo()..addThrows = true;
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('Something went wrong.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a remove that THROWS is reported (FlutterError) and shows the generic snack', (tester) async {
+      final repo = _FakeJobRepo()
+        ..removeThrows = true
+        ..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      await _pump(tester, repo, _FakeCatalog());
+      await tester.tap(find.byKey(const Key('removePartBtn_l9')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('Something went wrong.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('PartsSection — unconfirmed cleared by fetch sequence', () {
+    testWidgets('after a failed post-add refetch, an UNCHANGED successful poll clears the notice (no state change needed)', (tester) async {
+      final repo = _FakeJobRepo()
+        // The add itself is rejected (nothing changes server-side) AND the refetch after it fails.
+        ..addResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      expect(busy.last, isTrue);
+
+      repo.jobResultOverride = null; // the next poll succeeds with exactly the job already on screen
+      await tester.pump(jobPollInterval);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsNothing);
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an OLDER in-flight poll landing after the failed refetch does NOT clear the notice', (tester) async {
+      final repo = _FakeJobRepo()..addResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      final busy = <bool>[];
+      await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add);
+      final olderPoll = repo.nextJobGate = Completer<void>();
+      await tester.pump(jobPollInterval); // a poll goes out (issued BEFORE the add) and stays in flight
+      final callsWithPoll = repo.jobCalls;
+
+      repo.jobResultOverride = const Failure(FailureKind.network, 'Network error. Check your connection.');
+      await tester.tap(find.byKey(const Key('addPartBtn_p1')));
+      await tester.pumpAndSettle();
+      expect(repo.jobCalls, callsWithPoll + 1, reason: 'the refetch after the add went out (and failed)');
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+
+      repo.jobResultOverride = null;
+      olderPoll.complete(); // the older poll lands Ok — but it predates the add
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
+      expect(busy.last, isTrue);
+
+      await tester.pump(jobPollInterval); // a poll issued AFTER the add succeeds → cleared
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cartUnconfirmedNotice')), findsNothing);
+      expect(busy.last, isFalse);
+      await tester.pumpWidget(const SizedBox());
     });
   });
 
@@ -267,6 +410,7 @@ void main() {
       await _pump(tester, repo, _FakeCatalog(), onBusy: busy.add, jobDetail: _RefetchThrows.new);
       await tester.tap(find.byKey(const Key('addPartBtn_p1')));
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>(), reason: 'the throw is reported, never swallowed');
       expect(repo.addCalls, 1);
       expect(_addBtn(tester, 'p1').onPressed, isNotNull, reason: 'busy reset despite the throw');
       expect(find.byKey(const Key('cartUnconfirmedNotice')), findsOneWidget);
@@ -274,7 +418,8 @@ void main() {
     });
 
     testWidgets('enabled: false (the estimate is being sent) disables filter, qty, add and remove', (tester) async {
-      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 1, ceilingPricePaise: 15000));
+      // The cart line is a DIFFERENT part (p9) so p1's row still shows Add (an in-estimate row has none).
+      final repo = _FakeJobRepo()..serverParts.add(const JobPartLineDto(id: 'l9', partsCatalogId: 'p9', sku: 'FUSE', name: 'Fuse', qty: 1, ceilingPricePaise: 2000));
       await _pump(tester, repo, _FakeCatalog(), enabled: false);
       expect(_addBtn(tester, 'p1').onPressed, isNull);
       expect(tester.widget<IconButton>(find.byKey(const Key('qtyPlus_p1'))).onPressed, isNull);
@@ -354,21 +499,35 @@ void main() {
   });
 
   group('EstimateSentCard (DIAGNOSED, read-only)', () {
-    testWidgets('shows the frozen lines and the total; no edit controls', (tester) async {
-      final detail = TechnicianJobDetailDto(job: _job(state: 'DIAGNOSED'), parts: const [JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000)]);
+    testWidgets('shows the frozen lines and the server total; no edit controls', (tester) async {
+      final job = _job(state: 'DIAGNOSED');
+      const parts = [JobPartLineDto(id: 'l1', partsCatalogId: 'p1', sku: 'CAP', name: 'Capacitor', qty: 2, ceilingPricePaise: 15000)];
+      final detail = TechnicianJobDetailDto(job: job, parts: parts, customerQuote: _serverQuote(job, parts));
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: detail))));
       expect(find.byKey(const Key('waitingApprovalCard')), findsOneWidget);
       expect(find.text('Estimate sent — waiting for the customer to approve or decline'), findsOneWidget);
       expect(find.byKey(const Key('estimateLine_l1')), findsOneWidget);
+      expect(find.text('Capacitor × 2 · ₹300'), findsOneWidget);
       expect(find.text('Total: ₹401'), findsOneWidget);
       expect(find.byType(IconButton), findsNothing);
     });
 
-    testWidgets('labor-only estimate and a total floored at ₹0', (tester) async {
-      final detail = TechnicianJobDetailDto(job: _job(state: 'DIAGNOSED', labor: 5000, visit: 9900));
+    testWidgets('labor-only estimate and a server total floored at ₹0', (tester) async {
+      final job = _job(state: 'DIAGNOSED', labor: 5000, visit: 9900);
+      final detail = TechnicianJobDetailDto(job: job, customerQuote: _serverQuote(job, const []));
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: detail))));
       expect(find.byKey(const Key('estimateLaborOnly')), findsOneWidget);
       expect(find.text('Total: ₹0'), findsOneWidget);
+    });
+
+    testWidgets('the total is the server quote verbatim; no quote → the total is hidden', (tester) async {
+      final quoted = TechnicianJobDetailDto(
+          job: _job(state: 'DIAGNOSED'),
+          customerQuote: const JobQuoteDto(laborPaise: 20000, partsPaise: 0, visitFeeCreditPaise: 9900, totalPayablePaise: 77700));
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: quoted))));
+      expect(find.text('Total: ₹777'), findsOneWidget);
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: EstimateSentCard(detail: TechnicianJobDetailDto(job: _job(state: 'DIAGNOSED'))))));
+      expect(find.byKey(const Key('estimateTotal')), findsNothing);
     });
   });
 }

@@ -117,6 +117,21 @@ Map<String, dynamic> _$JobPartLineDtoToJson(_JobPartLineDto instance) =>
       'ceilingPricePaise': instance.ceilingPricePaise,
     };
 
+_JobQuoteDto _$JobQuoteDtoFromJson(Map<String, dynamic> json) => _JobQuoteDto(
+  laborPaise: (json['laborPaise'] as num).toInt(),
+  partsPaise: (json['partsPaise'] as num).toInt(),
+  visitFeeCreditPaise: (json['visitFeeCreditPaise'] as num).toInt(),
+  totalPayablePaise: (json['totalPayablePaise'] as num).toInt(),
+);
+
+Map<String, dynamic> _$JobQuoteDtoToJson(_JobQuoteDto instance) =>
+    <String, dynamic>{
+      'laborPaise': instance.laborPaise,
+      'partsPaise': instance.partsPaise,
+      'visitFeeCreditPaise': instance.visitFeeCreditPaise,
+      'totalPayablePaise': instance.totalPayablePaise,
+    };
+
 _ArriveResultDto _$ArriveResultDtoFromJson(Map<String, dynamic> json) =>
     _ArriveResultDto(
       arrivalCode: json['arrivalCode'] as String,

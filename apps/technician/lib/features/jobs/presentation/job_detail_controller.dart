@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show ErrorDescription, FlutterError, FlutterErrorDetails, listEquals;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/result.dart';
 import '../data/technician_job_repository.dart';
@@ -9,8 +9,18 @@ part 'job_detail_controller.g.dart';
 
 const jobPollInterval = Duration(seconds: 5);
 
-/// The job is no longer this technician's: the single-job GET answered 404 (gone) or 403 "This job is not
-/// assigned to you" (reassigned). Distinct from a transient fetch failure so the job-detail screen shows
+/// Reports an unexpected throw that the jobs feature converted into a fallback (keep-last-good, a generic
+/// message) — never swallowed silently (CLAUDE.md). Exception + stack ONLY: no response bodies, ids, phone,
+/// address or codes. [doing] is a fixed description of the operation.
+void reportJobsError(Object e, StackTrace st, String doing) => FlutterError.reportError(FlutterErrorDetails(
+      exception: e,
+      stack: st,
+      library: 'fixcare jobs',
+      context: ErrorDescription(doing),
+    ));
+
+/// The job is no longer this technician's: the single-job GET answered `JOB_NOT_FOUND` (gone) or
+/// `JOB_NOT_ASSIGNED` (reassigned). Distinct from a transient fetch failure so the job-detail screen shows
 /// this exact copy.
 class JobVanishedException implements Exception {
   const JobVanishedException();
@@ -27,17 +37,33 @@ class JobAccessException implements Exception {
   String toString() => message;
 }
 
-/// The backend's 403 copy for "this booking belongs to another technician" (technician-jobs.service.ts).
-const _notAssignedMessage = 'This job is not assigned to you';
+/// The backend's stable codes for "this job is gone / not yours" (technician-jobs.service.ts).
+const _jobNotFoundCode = 'JOB_NOT_FOUND';
+const _jobNotAssignedCode = 'JOB_NOT_ASSIGNED';
 
 /// A definitive answer from the single-job GET (stop polling, show it), or null for a transient failure
-/// (network/5xx/…: keep the last good job and try again next tick).
-Exception? _definitiveError(FailureKind kind, String message) => switch (kind) {
-      FailureKind.notFound => const JobVanishedException(),
-      FailureKind.forbidden when message == _notAssignedMessage => const JobVanishedException(),
-      FailureKind.forbidden => JobAccessException(message),
-      _ => null,
-    };
+/// (network/5xx/…: keep the last good job and try again next tick). A vanish is EXACTLY a job code — never
+/// a message match — so a 404 without one (e.g. route-not-found from a backend that predates
+/// `GET /technician/jobs/:id`) is not mistaken for "no longer assigned".
+Exception? _definitiveError(Failure<Object?> f) {
+  if (f.code == _jobNotFoundCode || f.code == _jobNotAssignedCode) return const JobVanishedException();
+  if (f.kind == FailureKind.forbidden) return JobAccessException(f.message);
+  return null;
+}
+
+/// The request seq of the latest SUCCESSFUL single-job fetch for a booking (applied, or unchanged and
+/// skipped) — written by [JobDetail], 0 until one lands. Lets a widget that marked the cart "unconfirmed"
+/// after a failed refetch clear that mark the moment any LATER fetch succeeds, even one that changed
+/// nothing on screen (so no rebuild/diff would ever tell it).
+@riverpod
+class JobFetchOkSeq extends _$JobFetchOkSeq {
+  @override
+  int build(String bookingId) => 0;
+
+  void set(int seq) {
+    if (seq > state) state = seq;
+  }
+}
 
 /// Riverpod auto-retries a provider whose build threw an [Exception]. A vanished job or a refused access is
 /// a definite answer (404/403), not a glitch — re-asking would only repeat the same request and flicker the
@@ -63,6 +89,9 @@ class JobDetail extends _$JobDetail {
   // Monotonic across polls AND refetches (and rebuilds of this notifier).
   int _requestSeq = 0;
   int _appliedSeq = 0;
+  // The seq of the newest fetch that came back Ok (applied or unchanged) — a superseded refetch is a success.
+  int _okSeq = 0;
+  int _lastIssuedSeq = 0;
   bool _pollInFlight = false;
   bool _paused = false;
   // A definitive answer (vanished, or access refused) stops polling until a successful fetch.
@@ -87,11 +116,21 @@ class JobDetail extends _$JobDetail {
     }
     final detail = switch (r) {
       Ok(value: final v) => v,
-      Failure(kind: final k, message: final m) => throw _definitiveError(k, m) ?? Exception(m),
+      Failure(message: final m) => throw _definitiveError(r) ?? Exception(m),
     };
     if (seq > _appliedSeq) _appliedSeq = seq;
+    _markOk(seq);
     _rearm(detail);
     return detail;
+  }
+
+  /// The seq the latest [refetch] went out with — fixed when it is issued (a poll never moves it). A caller
+  /// that must know "has anything newer than my refetch succeeded?" compares [jobFetchOkSeqProvider] to it.
+  int get lastIssuedSeq => _lastIssuedSeq;
+
+  void _markOk(int seq) {
+    if (seq > _okSeq) _okSeq = seq;
+    if (ref.mounted) ref.read(jobFetchOkSeqProvider(_bookingId).notifier).set(seq);
   }
 
   void _cancelTimer() {
@@ -113,7 +152,7 @@ class JobDetail extends _$JobDetail {
     if (!ref.mounted || _pollInFlight) return;
     _pollInFlight = true;
     try {
-      await _fetchAndApply();
+      await _fetchAndApply(++_requestSeq);
     } finally {
       _pollInFlight = false;
     }
@@ -126,33 +165,37 @@ class JobDetail extends _$JobDetail {
   /// AsyncError(JobAccessException), and polling stops. A response that differs only in photo URLs (the
   /// app never shows them) is applied silently (no listener notify).
   ///
-  /// Returns true iff this fetch returned the job (applied, or unchanged) — false on a Failure, an
-  /// unexpected throw, or a late response dropped as stale.
-  Future<bool> _fetchAndApply() async {
-    final seq = ++_requestSeq;
+  /// Returns true iff the screen now shows a job at least as fresh as this request: this fetch returned the
+  /// job (applied, or unchanged), OR its own outcome was dropped/failed but a NEWER request already came
+  /// back Ok (superseded — not a failure). False on a Failure/throw/stale drop with nothing newer succeeded.
+  Future<bool> _fetchAndApply(int seq) async {
+    bool supersededByNewerOk() => _okSeq > seq;
     final Result<TechnicianJobDetailDto> r;
     try {
       r = await ref.read(technicianJobRepositoryProvider).job(_bookingId);
-    } catch (_) {
+    } catch (e, st) {
       // Unexpected (the repository wraps every known failure): transient — keep last good; the poll
-      // chain must not die on it.
-      return false;
+      // chain must not die on it. Reported, never swallowed (exception + stack only — no response data).
+      reportJobsError(e, st, 'while fetching the job for the job-detail screen');
+      return ref.mounted && supersededByNewerOk();
     }
     if (!ref.mounted) return false;
-    if (seq <= _appliedSeq) return false; // an older response landing late: drop it
+    if (seq <= _appliedSeq) return supersededByNewerOk(); // an older response landing late: drop it
     switch (r) {
       case Ok(value: final detail):
         _appliedSeq = seq;
         _stopped = false;
+        _markOk(seq);
         // An AsyncError (a vanish) keeps the previous good value, so `state.value` is non-null there too:
         // never take the "unchanged → no notify" shortcut while errored, or the stale error would linger.
         final current = state.hasError ? null : state.value;
         if (current != null && _sameIgnoringPhotoUrls(current, detail)) return true;
         state = AsyncData(detail);
         return true;
-      case Failure(kind: final k, message: final m):
-        final definitive = _definitiveError(k, m);
-        if (definitive == null) return false; // transient (network/5xx/…): keep last good, retry next tick
+      case Failure():
+        final definitive = _definitiveError(r);
+        // transient (network/5xx/…): keep last good, retry next tick
+        if (definitive == null) return supersededByNewerOk();
         _appliedSeq = seq;
         _stopped = true;
         _cancelTimer();
@@ -162,10 +205,11 @@ class JobDetail extends _$JobDetail {
   }
 
   /// Forced immediate reload (after an action, or on resume). Never flashes AsyncLoading. Returns whether
-  /// the job came back (true) — callers that must know the screen shows the server's state (the parts
-  /// cart) act on false.
+  /// the screen shows the server's state as of this request (see [_fetchAndApply]) — callers that must know
+  /// the cart on screen is the server's act on false. Its seq is [lastIssuedSeq] from the moment it is called.
   Future<bool> refetch() async {
-    final ok = await _fetchAndApply();
+    final seq = _lastIssuedSeq = ++_requestSeq;
+    final ok = await _fetchAndApply(seq);
     if (ref.mounted) _rearm(state.value);
     return ok;
   }
@@ -189,6 +233,7 @@ class JobDetail extends _$JobDetail {
 bool _sameIgnoringPhotoUrls(TechnicianJobDetailDto a, TechnicianJobDetailDto b) {
   if (a.job.copyWith(photos: const []) != b.job.copyWith(photos: const [])) return false;
   if (!listEquals(a.parts, b.parts)) return false;
+  if (a.customerQuote != b.customerQuote) return false;
   List<(String, String)> photoKeys(TechnicianJobDto j) => [for (final p in j.photos) (p.kind, p.capturedAt)];
   return listEquals(photoKeys(a.job), photoKeys(b.job));
 }

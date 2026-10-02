@@ -78,6 +78,9 @@ class _FakeRepo extends TechnicianJobRepository {
   /// The server-side parts cart the single-job GET returns alongside the job.
   List<JobPartLineDto> parts = const [];
 
+  /// The backend's computed customer quote the single-job GET returns (null = an older backend).
+  JobQuoteDto? quote = const JobQuoteDto(laborPaise: 20000, partsPaise: 15000, visitFeeCreditPaise: 9900, totalPayablePaise: 25100);
+
   int jobCalls = 0;
   int enRouteCalls = 0;
   int startRepairCalls = 0;
@@ -107,7 +110,7 @@ class _FakeRepo extends TechnicianJobRepository {
   @override
   Future<Result<TechnicianJobDetailDto>> job(String bookingId) async {
     jobCalls++;
-    return jobResultOverride ?? Ok(TechnicianJobDetailDto(job: _dto(id: id, state: _state), parts: parts));
+    return jobResultOverride ?? Ok(TechnicianJobDetailDto(job: _dto(id: id, state: _state), parts: parts, customerQuote: quote));
   }
 
   @override
@@ -517,6 +520,7 @@ void main() {
     await _pump(tester, repo);
     expect(find.byKey(const Key('waitingApprovalCard')), findsOneWidget);
     expect(find.byKey(const Key('estimateTotal')), findsOneWidget);
+    expect(find.text('Total: ₹251'), findsOneWidget, reason: "the backend's quote, verbatim");
     await _disposeTree(tester);
   });
 
@@ -579,10 +583,21 @@ void main() {
 
   testWidgets('a 403 from the single-job GET shows "This job is no longer assigned to you."', (tester) async {
     final repo = _FakeRepo(initialState: 'ACCEPTED')
-      ..jobResultOverride = const Failure(FailureKind.forbidden, 'This job is not assigned to you');
+      ..jobResultOverride = const Failure(FailureKind.forbidden, 'This job is not assigned to you', code: 'JOB_NOT_ASSIGNED');
     await _pump(tester, repo);
     expect(find.text('This job is no longer assigned to you.'), findsOneWidget);
     expect(find.text("Couldn't load this job."), findsNothing);
+    expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
+    await _disposeTree(tester);
+  });
+
+  testWidgets('a 404 WITHOUT a job code (route-not-found on an older backend) on first load shows the generic error + Retry, not the vanished copy',
+      (tester) async {
+    final repo = _FakeRepo(initialState: 'ACCEPTED')
+      ..jobResultOverride = const Failure(FailureKind.notFound, 'Route GET:/technician/jobs/b1 not found');
+    await _pump(tester, repo);
+    expect(find.text("Couldn't load this job."), findsOneWidget);
+    expect(find.text('This job is no longer assigned to you.'), findsNothing);
     expect(find.byKey(const Key('jobDetailRetry')), findsOneWidget);
     await _disposeTree(tester);
   });
@@ -614,7 +629,7 @@ void main() {
     await _pump(tester, repo);
     expect(find.byKey(const Key('arriveBtn')), findsOneWidget);
 
-    repo.jobResultOverride = const Failure(FailureKind.notFound, 'Job not found');
+    repo.jobResultOverride = const Failure(FailureKind.notFound, 'Job not found', code: 'JOB_NOT_FOUND');
     await tester.pump(const Duration(seconds: 5)); // the next poll sees the 404 — no 3-miss grace any more
     await tester.pump();
 
@@ -631,7 +646,7 @@ void main() {
     final repo = _FakeRepo(initialState: 'EN_ROUTE');
     await _pump(tester, repo);
 
-    repo.jobResultOverride = const Failure(FailureKind.notFound, 'Job not found');
+    repo.jobResultOverride = const Failure(FailureKind.notFound, 'Job not found', code: 'JOB_NOT_FOUND');
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
     expect(find.text('This job is no longer assigned to you.'), findsOneWidget);

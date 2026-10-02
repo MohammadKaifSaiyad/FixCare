@@ -39,8 +39,11 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
   Future<void> _confirmAndSubmit() async {
     final issueId = _issueId;
     if (issueId == null || _busy || _cartBusy || _confirming) return;
-    final job = widget.detail.job;
-    final parts = widget.detail.parts;
+    // Snapshot the cart (and the server's quote for it) the moment the dialog OPENS: the dialog shows
+    // exactly this, and diagnose sends these line ids — the backend 409s (ESTIMATE_CHANGED) if the cart it
+    // freezes is not this set, so the customer never receives an estimate the technician didn't review.
+    final parts = List<JobPartLineDto>.unmodifiable(widget.detail.parts);
+    final quote = widget.detail.customerQuote;
     setState(() => _confirming = true);
     bool? send;
     try {
@@ -61,14 +64,17 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
                   for (final p in parts)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text('${p.name} × ${p.qty} · ${rupees(p.ceilingPricePaise * p.qty)}'),
+                      child: PartLineText(p),
                     ),
-                const SizedBox(height: 8),
-                Text(
-                  'Customer will see: ${rupees(estimatePaise(job, parts))}',
-                  key: const Key('confirmEstimateTotal'),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
+                // The backend's quote for this cart; hidden (never recomputed) when none was sent.
+                if (quote != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Customer will see: ${rupees(quote.totalPayablePaise)}',
+                    key: const Key('confirmEstimateTotal'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
               ],
             ),
           ),
@@ -81,28 +87,33 @@ class _DiagnosisFormState extends ConsumerState<DiagnosisForm> {
     } finally {
       if (mounted) setState(() => _confirming = false);
     }
-    if (send != true || !mounted) return;
-    await _submit(issueId);
+    // Re-check after the dialog: the cart may have become unsettled while it was open.
+    if (send != true || !mounted || _cartBusy) return;
+    await _submit(issueId, [for (final p in parts) p.id]);
   }
 
-  Future<void> _submit(String issueId) async {
+  Future<void> _submit(String issueId, List<String> expectedPartLineIds) async {
     final jobId = widget.detail.job.id;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await ref.read(technicianJobRepositoryProvider).diagnose(jobId, issueId);
+      final result = await ref
+          .read(technicianJobRepositoryProvider)
+          .diagnose(jobId, issueId, expectedPartLineIds: expectedPartLineIds);
       if (!mounted) return;
       switch (result) {
         case Ok():
           await ref.read(jobDetailProvider(jobId).notifier).refetch();
         case Failure(message: final m):
-          // Refetch anyway (e.g. a 409 because it was already sent moves the screen on), then explain.
+          // Refetch anyway (a 409 because it was already sent moves the screen on; a 409 ESTIMATE_CHANGED
+          // shows the changed cart to review), then explain.
           await ref.read(jobDetailProvider(jobId).notifier).refetch();
           if (mounted) setState(() => _error = m);
       }
-    } catch (_) {
+    } catch (e, st) {
+      reportJobsError(e, st, 'while sending the diagnosis');
       if (mounted) setState(() => _error = 'Something went wrong.');
     } finally {
       if (mounted) setState(() => _busy = false);
