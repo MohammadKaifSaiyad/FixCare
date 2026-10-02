@@ -8,6 +8,32 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-02 — Job estimate integrity: /code-review fix round (on branch)
+
+- **`/code-review` found 10 items; 9 fixed here, 1 deferred** (DB unique index). Backend 400/400, technician app 320,
+  customer app +179 ~5; `tsc` / `flutter analyze` clean.
+- **Backend:** `POST /technician/jobs/:id/diagnose` takes an optional `expectedPartLineIds` (≤ 20, body still
+  `.strict()`); inside the diagnose transaction, after the row lock, a cart whose line-id set differs → 409
+  `ESTIMATE_CHANGED` "The estimate changed — check the parts and send again" (booking stays ARRIVED, nothing
+  written); absent → unchanged behaviour. `NotFoundError` / `ForbiddenError` / `ConflictError` take an optional
+  `code`; the technician job errors now answer `JOB_NOT_FOUND` / `JOB_NOT_ASSIGNED` (messages unchanged).
+  `GET /technician/jobs/:id` adds `customerQuote` = `computeEstimate` as if quoted (visit-fee credit applied,
+  floored at 0).
+- **Technician app:** `Failure.code` from the `{code, message}` envelope in every repository (and kept through the
+  auth controller's re-wrap). The job-detail vanish is exactly `JOB_NOT_FOUND` / `JOB_NOT_ASSIGNED`; a code-less 404
+  (an older backend's route-not-found) is transient on poll and a generic error on first load. Diagnose sends the
+  line ids snapshotted when the confirm dialog opened (the dialog renders that snapshot); `ESTIMATE_CHANGED` refetches
+  and shows the message inline. "Customer will see", the dialog total and the sent card's total show the server's
+  `customerQuote` (`estimatePaise` deleted; no quote → hidden). `refetch()` is true when superseded by a newer
+  success; the unconfirmed-cart notice clears when a fetch with a later sequence succeeds (`jobFetchOkSeq`, replacing
+  the widget-diff clear) — an unchanged poll clears it, an older in-flight one doesn't. A part already in the
+  estimate shows "In estimate" (stepper disabled). `lineTotalPaise` + one `PartLineText`. Unexpected throws in the
+  poll, cart edits and diagnose go to `FlutterError.reportError` (exception + stack only). The cart is re-checked
+  after the dialog closes.
+- **Customer app:** `PartDto.lineTotalPaise`; the approve card uses it.
+- **Deploy order:** still backend first — this technician build's diagnose body is rejected (400) by an older backend.
+- **Deferred:** DB unique index on `(bookingId, partsCatalogId)`; the cosmetic qty reset on a reappearing row.
+
 ## 2026-10-02 — Job estimate integrity: final-review fix wave (on branch)
 
 - **Four final reviews (whole-branch, Golden Rules, fraud-vector, Flutter) found no Critical issues; this wave fixes

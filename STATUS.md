@@ -37,11 +37,22 @@ no longer approve an estimate the technician is still editing, and the technicia
   a non-"not assigned" 403 (e.g. `Verified technician required`) shown verbatim; customer — the approve card shows
   line totals + a Labor / Parts / Visit fee credit breakdown. Estimate-integrity vectors added to
   `docs/02-product/fraud-defenses.md` (#16).
+- **`/code-review` fix round (4 commits):** diagnose is **bound to the confirmed cart** — the app sends the confirm
+  dialog's `expectedPartLineIds` and any drift → 409 `ESTIMATE_CHANGED` (`The estimate changed — check the parts and
+  send again`; booking stays ARRIVED, nothing written; field optional for older builds); stable **`JOB_NOT_FOUND` /
+  `JOB_NOT_ASSIGNED`** codes on the technician job errors, and `Failure.code` in the app — a vanish keys on the code
+  only (a code-less 404 is transient on poll / a generic error on first load); `GET /technician/jobs/:id` carries a
+  **server-computed `customerQuote`** that "Customer will see", the confirm dialog and the sent card display (client
+  `estimatePaise` deleted; no quote → amount hidden); "unconfirmed cart" is cleared by **fetch sequence**
+  (`jobFetchOkSeq`), and a superseded refetch counts as success; a catalog part already in the estimate shows "In
+  estimate"; one line formula (`lineTotalPaise`, both apps) + one `PartLineText` widget; **no silent catches**
+  (`FlutterError.reportError`, exception + stack only).
 - **Deploy order:** requires the matching backend — **deploy the backend first**. Slice-2 technician builds can only
-  send labor-only estimates (part adds 409); a new technician build on an old backend shows "no longer assigned" on
-  every job.
-- **Gates:** backend **392/392 (67 files), tsc clean**; technician app **290 tests, analyze clean**; customer app
-  **+178 ~5, analyze clean**.
+  send labor-only estimates (part adds 409). This technician build on an older backend: diagnose 400s (strict body
+  rejects `expectedPartLineIds`), the quote is hidden, and a job-detail 404/403 without a job code is not treated as
+  "no longer assigned".
+- **Gates:** backend **400/400 (67 files), tsc clean**; technician app **320 tests, analyze clean**; customer app
+  **+179 ~5, analyze clean**.
   Design/plan: `docs/designs/2026-10-01-job-estimate-integrity-design.md`, `docs/plans/2026-10-01-job-estimate-integrity.md`.
 **Next: PR → `main` (founder pushes); on-device smoke (physical Android 12+ phone + iPhone); then the follow-ups below.**
 
@@ -259,9 +270,12 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
   (b) bind the customer's approve to a cart version / expected total (latent while nothing writes parts after
   ARRIVED) — optionally an `expectedPartsTotalPaise` check on diagnose; (c) estimate revision after sending, and a
   rule watching visit-fee farming via deliberately bad estimates (product); (d) `getMyJob` returns the full address
-  after a cancel (parity with `mine()`); (e) diagnose is not bound to the cart the technician confirmed across two
-  sessions (technician-only); (f) a real-screen test of a poll tick at ARRIVED; (g) `mine()` still returns the full
-  job history (not yet trimmed to active jobs).
+  after a cancel (parity with `mine()`); (e) ~~diagnose not bound to the confirmed cart~~ — **DONE in the
+  `/code-review` round** (`expectedPartLineIds` → 409 `ESTIMATE_CHANGED`); (f) a real-screen test of a poll tick at
+  ARRIVED; (g) `mine()` still returns the full job history (not yet trimmed to active jobs); (h) a **DB unique index
+  on `(bookingId, partsCatalogId)`** as defense in depth for one-line-per-part (needs a migration that first
+  de-duplicates any existing duplicate dev lines; review with `prisma-migration-reviewer`); (i) cosmetic: a catalog
+  row's qty resets to 1 when a filtered-out row reappears.
 - **Technician auth (found in a dev run; fix together):** (a) **technician-app login with a number already registered
   as a CUSTOMER silently logs into the customer account** — backend `verifyOtp`
   (`apps/backend/src/modules/auth/auth.service.ts`) ignores the requested role for an existing phone; it should
