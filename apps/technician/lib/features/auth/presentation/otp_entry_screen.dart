@@ -23,6 +23,7 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   bool _error = false;
+  String? _errorMessage;
   String? _notice;
   bool _busy = false;
 
@@ -30,7 +31,10 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
   void initState() {
     super.initState();
     _controller.addListener(() {
-      if (_error) _error = false; // clear error as the user edits
+      if (_error) {
+        _error = false;
+        _errorMessage = null;
+      } // clear error as the user edits
       setState(() {});
     });
     // Dev builds only: prefill the echoed code. Release never receives devOtp.
@@ -61,6 +65,7 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
     }
     setState(() {
       _error = false;
+      _errorMessage = null;
       _busy = true;
     });
     final res =
@@ -70,16 +75,19 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
     switch (res) {
       case Ok():
         break; // session flips → router lands on /home
-      case Failure(kind: FailureKind.unauthorized):
-        setState(() => _error = true);
-      case Failure():
-        setState(() => _error = true);
+      case Failure(:final code, :final message):
+        setState(() {
+          _error = true;
+          // The number belongs to the other app — say so; every other failure keeps the code-error copy.
+          _errorMessage = code == 'ROLE_MISMATCH' ? message : null;
+        });
     }
   }
 
   Future<void> _resend() async {
     setState(() {
       _error = false;
+      _errorMessage = null;
       _notice = null;
     });
     final res = await ref.read(authControllerProvider.notifier).requestOtp(widget.args.phone);
@@ -157,13 +165,18 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
               ),
               if (_error) ...[
                 const SizedBox(height: 12),
-                const Row(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.error_outline, size: 16, color: FixCareColors.errorText),
-                    SizedBox(width: 6),
-                    Text('That code isn\'t right.',
-                        style: TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w500, color: FixCareColors.errorText)),
+                    const Icon(Icons.error_outline, size: 16, color: FixCareColors.errorText),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _errorMessage ?? "That code isn't right.",
+                        key: const Key('otpErrorText'),
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: FixCareColors.errorText),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -175,8 +188,11 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(_notice ?? 'Didn\'t get it?',
-                      style: const TextStyle(fontSize: 14, color: FixCareColors.textMuted)),
+                  Flexible(
+                    child: Text(_notice ?? 'Didn\'t get it?',
+                        style: const TextStyle(fontSize: 14, color: FixCareColors.textMuted)),
+                  ),
+                  const SizedBox(width: 12),
                   GestureDetector(
                     onTap: _busy ? null : _resend,
                     child: const Text('Resend code',

@@ -60,7 +60,7 @@ class AuthController extends _$AuthController {
       return const Ok(null);
     }
     final f = r as Failure<VerifyResponse>;
-    return Failure(f.kind, f.message);
+    return Failure(f.kind, f.message, code: f.code);
   }
 
   /// Update the display name; on success re-emit the session with the new name.
