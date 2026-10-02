@@ -1,4 +1,7 @@
-import type { Customer, Technician } from '@prisma/client';
+import type { Customer } from '@prisma/client';
+import type { TechnicianProfileDto } from '../technicians/technicians.types.js';
+
+export type { TechnicianProfileDto };
 
 export interface CustomerProfileDto {
   id: string;
@@ -7,20 +10,8 @@ export interface CustomerProfileDto {
   status: Customer['status'];
 }
 
-export interface TechnicianProfileDto {
-  id: string;
-  role: 'TECHNICIAN';
-  name: string;
-  skills: Technician['skills'];
-  status: Technician['status'];
-}
-
 export type ProfileDto = CustomerProfileDto | TechnicianProfileDto;
 
 export function toCustomerProfileDto(c: Customer): CustomerProfileDto {
   return { id: c.id, role: 'CUSTOMER', name: c.name, status: c.status };
-}
-
-export function toTechnicianProfileDto(t: Technician): TechnicianProfileDto {
-  return { id: t.id, role: 'TECHNICIAN', name: t.name, skills: t.skills, status: t.status };
 }

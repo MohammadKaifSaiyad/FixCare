@@ -1,0 +1,61 @@
+import type { Prisma, Technician } from '@prisma/client';
+import { prisma } from '../../shared/database/prisma.js';
+import { ConflictError, NotFoundError, UnprocessableError } from '../../shared/errors.js';
+import { findActiveZones, zoneRefs } from '../catalog/catalog.service.js';
+import { toTechnicianProfileDto, type TechnicianProfileDto } from './technicians.types.js';
+import type { TechnicianPatchBody } from './technicians.schemas.js';
+
+/** The technician's own edits are allowed only while PENDING (new, or sent back by ops). */
+export const PROFILE_LOCKED = 'PROFILE_LOCKED';
+
+type Db = Prisma.TransactionClient | typeof prisma;
+
+export async function zoneIdsOf(db: Db, technicianId: string): Promise<string[]> {
+  const rows = await db.technicianZone.findMany({ where: { technicianId }, select: { zoneId: true } });
+  return rows.map((r) => r.zoneId);
+}
+
+/** The technician's service-zone ids — dispatch (technician-jobs) offers only bookings in these zones. */
+export async function technicianZoneIds(technicianId: string): Promise<string[]> {
+  return zoneIdsOf(prisma, technicianId);
+}
+
+export async function replaceZones(tx: Prisma.TransactionClient, technicianId: string, zoneIds: readonly string[]): Promise<void> {
+  await tx.technicianZone.deleteMany({ where: { technicianId } });
+  await tx.technicianZone.createMany({ data: zoneIds.map((zoneId) => ({ technicianId, zoneId })) });
+}
+
+/** Every id must be an ACTIVE, non-deleted zone (ids are unique — Zod enforces it). */
+export async function assertActiveZones(zoneIds: readonly string[]): Promise<void> {
+  const found = await findActiveZones(zoneIds);
+  if (found.length !== zoneIds.length) throw new UnprocessableError('Choose service zones from the list');
+}
+
+export async function toProfileDto(t: Technician): Promise<TechnicianProfileDto> {
+  return toTechnicianProfileDto(t, await zoneRefs(await zoneIdsOf(prisma, t.id)));
+}
+
+export async function getTechnicianProfile(userId: string): Promise<TechnicianProfileDto> {
+  const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
+  if (!t) throw new NotFoundError('Profile not found');
+  return toProfileDto(t);
+}
+
+export async function updateOwnTechnicianProfile(userId: string, patch: TechnicianPatchBody): Promise<TechnicianProfileDto> {
+  const fields = Object.keys(patch); // field NAMES only — never the values (no PII in audit)
+  const { zoneIds, ...columns } = patch;
+  // Pre-tx validation (a read of another module's data): a zone deactivated in the gap is caught again at submit.
+  if (zoneIds) await assertActiveZones(zoneIds);
+  const updated = await prisma.$transaction(async (tx) => {
+    const existing = await tx.technician.findFirst({ where: { userId, deletedAt: null } });
+    if (!existing) throw new NotFoundError('Profile not found');
+    // The UPDATE itself re-checks PENDING, so a submit racing this edit can't slip a change past the lock.
+    // updatedAt is set explicitly so the statement always runs (even for a zones-only edit).
+    const res = await tx.technician.updateMany({ where: { id: existing.id, status: 'PENDING' }, data: { ...columns, updatedAt: new Date() } });
+    if (res.count === 0) throw new ConflictError('Your profile is locked while under review', PROFILE_LOCKED);
+    if (zoneIds) await replaceZones(tx, existing.id, zoneIds);
+    await tx.auditLog.create({ data: { action: 'PROFILE_UPDATED', actorType: 'USER', actorId: userId, subjectId: existing.id, metadata: { fields } } });
+    return tx.technician.findUniqueOrThrow({ where: { id: existing.id } });
+  });
+  return toProfileDto(updated);
+}

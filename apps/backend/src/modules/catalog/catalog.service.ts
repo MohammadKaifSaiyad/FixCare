@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { ConflictError, NotFoundError } from '../../shared/errors.js';
-import { toZoneDto, toCategoryDto, toPartDto, toPincodeZoneDto, toDiagnosedIssueDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto, type PincodeZoneDto, type DiagnosedIssueDto } from './catalog.types.js';
+import { toZoneDto, toCategoryDto, toPartDto, toPincodeZoneDto, toDiagnosedIssueDto, type ZoneDto, type CategoryDto, type ServicePriceDto, type PartDto, type PincodeZoneDto, type DiagnosedIssueDto, type ZoneRef } from './catalog.types.js';
 import type { CreateZoneBody, UpdateZoneBody, CreateCategoryBody, CreateServiceBody, UpsertPriceBody, CreatePartBody, UpdatePartBody, CreatePincodeBody, UpdatePincodeBody, CreateIssueBody, UpdateIssueBody } from './catalog.schemas.js';
 
 /** Map a Prisma unique-violation (P2002) to a 409. */
@@ -13,6 +13,28 @@ function asConflict(err: unknown, message: string): never {
 export async function listZones(): Promise<ZoneDto[]> {
   const zones = await prisma.zone.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, orderBy: { name: 'asc' } });
   return zones.map(toZoneDto);
+}
+
+/** The ACTIVE, non-deleted zones among `ids` — how the technicians module validates a technician's chosen
+ *  service zones (it never queries Zone itself). Unknown / inactive / deleted ids are simply absent. */
+export async function findActiveZones(ids: readonly string[]): Promise<ZoneRef[]> {
+  if (ids.length === 0) return [];
+  return prisma.zone.findMany({
+    where: { id: { in: [...ids] }, deletedAt: null, status: 'ACTIVE' },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+}
+
+/** Display labels for zone ids already linked to a technician — any status (a zone ops deactivated still
+ *  shows by name), soft-deleted excluded. */
+export async function zoneRefs(ids: readonly string[]): Promise<ZoneRef[]> {
+  if (ids.length === 0) return [];
+  return prisma.zone.findMany({
+    where: { id: { in: [...ids] }, deletedAt: null },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
 }
 
 export async function createZone(actorId: string, body: CreateZoneBody): Promise<ZoneDto> {
