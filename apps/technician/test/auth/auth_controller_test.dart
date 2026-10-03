@@ -38,6 +38,32 @@ class _SeqProfileRepo extends TechnicianProfileRepository {
   }
 }
 
+/// Logout / verify succeed; the profile repo (see [_GatedProfileRepo]) decides the rest.
+class _OkAuthRepo extends AuthRepository {
+  _OkAuthRepo() : super(Dio());
+  @override
+  Future<Result<void>> logout(String refreshToken) async => const Ok(null);
+  @override
+  Future<Result<VerifyResponse>> verifyOtp(String phone, String otp) async =>
+      const Ok(VerifyResponse(accessToken: 'a2', refreshToken: 'r2', user: UserDto(id: 'u2', role: 'TECHNICIAN', status: 'ACTIVE')));
+}
+
+/// Call N (0-based) is held until [gate] completes; every call returns its queued result.
+class _GatedProfileRepo extends TechnicianProfileRepository {
+  _GatedProfileRepo(this._results, {required this.gateCall}) : super(Dio());
+  final List<Result<TechnicianProfileDto>> _results;
+  final int gateCall;
+  final gate = Completer<void>();
+  int calls = 0;
+  @override
+  Future<Result<TechnicianProfileDto>> getProfile() async {
+    final i = calls++;
+    final r = _results[i < _results.length ? i : _results.length - 1];
+    if (i == gateCall) await gate.future;
+    return r;
+  }
+}
+
 TechnicianProfileDto _p(String status) => TechnicianProfileDto(id: 't1', role: 'TECHNICIAN', name: 'Ramesh', skills: const ['AC'], status: status);
 
 void main() {
@@ -184,6 +210,43 @@ void main() {
     repo.gate!.complete();
     await pending;
     expect(sessionOf(c), isA<SessionUnauthenticated>());
+  });
+
+  Future<(ProviderContainer, _GatedProfileRepo)> bootedGated(List<Result<TechnicianProfileDto>> results) async {
+    backing['fixcare.access'] = 'a'; backing['fixcare.refresh'] = 'r';
+    final repo = _GatedProfileRepo(results, gateCall: 1);
+    final c = ProviderContainer(overrides: [
+      technicianProfileRepositoryProvider.overrideWithValue(repo),
+      authRepositoryProvider.overrideWithValue(_OkAuthRepo()),
+    ]);
+    addTearDown(c.dispose);
+    await c.read(authControllerProvider.future);
+    return (c, repo);
+  }
+
+  test('refreshProfile: a profile fetched for a previous session is NOT applied to the next login', () async {
+    // call 0 = boot, 1 = the gated (old session) refresh, 2 = hydrate after the new login
+    final (c, repo) = await bootedGated([Ok(_p('KYC_SUBMITTED')), Ok(_p('VERIFIED')), Ok(_p('PENDING'))]);
+    final n = c.read(authControllerProvider.notifier);
+    final pending = n.refreshProfile();
+    await n.logout();
+    await n.submitOtp('9999999999', '123456'); // a new session, hydrated as PENDING
+    expect((sessionOf(c)! as SessionAuthenticated).status, 'PENDING');
+    repo.gate.complete();
+    await pending;
+    expect((sessionOf(c)! as SessionAuthenticated).status, 'PENDING'); // the old VERIFIED profile was dropped
+  });
+
+  test('refreshProfile: a 401 for a previous session does not clear the new session\'s tokens', () async {
+    final (c, repo) = await bootedGated([Ok(_p('KYC_SUBMITTED')), const Failure(FailureKind.unauthorized, 'stale'), Ok(_p('PENDING'))]);
+    final n = c.read(authControllerProvider.notifier);
+    final pending = n.refreshProfile();
+    await n.logout();
+    await n.submitOtp('9999999999', '123456');
+    repo.gate.complete();
+    await pending;
+    expect(sessionOf(c), isA<SessionAuthenticated>());
+    expect(backing['fixcare.access'], 'a2');
   });
 
   test('refreshProfile when signed out makes no request', () async {

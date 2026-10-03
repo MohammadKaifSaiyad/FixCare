@@ -116,6 +116,14 @@ void main() {
     }
   });
 
+  testWidgets('an unknown status fails closed → suspended screen, never jobs home', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+    await pumpApp(tester, status: 'SOMETHING_NEW');
+    expect(find.byKey(const Key('suspendedScreen')), findsOneWidget);
+    expect(find.byKey(const Key('jobsHomeScreen')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('VERIFIED → jobs home', (tester) async {
     backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
     await pumpApp(tester, status: 'VERIFIED');

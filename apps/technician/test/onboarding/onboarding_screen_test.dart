@@ -20,12 +20,13 @@ class _FakeAuth extends AuthController {
   _FakeAuth(this._session);
   final Session _session;
   int refreshCalls = 0;
+  Result<TechnicianProfileDto>? refreshResult;
   @override
   Future<Session> build() async => _session;
   @override
   Future<Result<TechnicianProfileDto>> refreshProfile() async {
     refreshCalls++;
-    return Ok(_profile());
+    return refreshResult ?? Ok(_profile());
   }
 }
 
@@ -53,8 +54,10 @@ class _FakeCatalog extends CatalogRepository {
   final List<Result<List<ZoneRefDto>>> results;
   int calls = 0;
   Completer<void>? gate;
+  bool throwOnCall = false;
   @override
   Future<Result<List<ZoneRefDto>>> zones() async {
+    if (throwOnCall) throw StateError('zones blew up');
     final r = results[calls < results.length ? calls : results.length - 1];
     calls++;
     if (gate case final g?) await g.future;
@@ -182,6 +185,35 @@ void main() {
     await submitAndConfirm(tester);
     expect(auth.refreshCalls, 1);
     expect(profileRepo.calls, ['patch']);
+  });
+
+  testWidgets('submit answers INVALID_TECHNICIAN_TRANSITION → message AND a profile re-check', (tester) async {
+    await pump(tester);
+    profileRepo.submitResults = [const Failure(FailureKind.unknown, 'Your profile has already been submitted', code: 'INVALID_TECHNICIAN_TRANSITION')];
+    await submitAndConfirm(tester);
+    expect(find.text('Your profile has already been submitted'), findsOneWidget);
+    expect(auth.refreshCalls, 1);
+  });
+
+  testWidgets('submit ok but the profile refresh fails → tells the technician to pull down / reopen', (tester) async {
+    await pump(tester);
+    auth.refreshResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
+    await submitAndConfirm(tester);
+    expect(find.text("Submitted. Couldn't refresh — pull down or reopen the app."), findsOneWidget);
+    expect(submitBtn(tester).onPressed, isNotNull);
+  });
+
+  testWidgets('a zones fetch that THROWS is reported and shows the error + Retry (never an endless spinner)', (tester) async {
+    final reported = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = previous);
+    final broken = _FakeCatalog([const Ok(<ZoneRefDto>[])])..throwOnCall = true;
+    await pump(tester, profile: _profile(zones: const []), catalogOverride: broken);
+    expect(reported, hasLength(1));
+    expect(find.text("Couldn't load service zones."), findsOneWidget);
+    expect(find.byKey(const Key('zonesRetryBtn')), findsOneWidget);
+    expect(find.byKey(const Key('zonesLoading')), findsNothing);
   });
 
   testWidgets('a prefilled zone that is no longer offered is not sent', (tester) async {

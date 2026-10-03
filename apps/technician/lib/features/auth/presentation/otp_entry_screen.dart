@@ -68,19 +68,30 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
       _errorMessage = null;
       _busy = true;
     });
-    final res =
-        await ref.read(authControllerProvider.notifier).submitOtp(widget.args.phone, code);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    switch (res) {
-      case Ok():
-        break; // session flips → router lands on /home
-      case Failure(:final code, :final message):
-        setState(() {
-          _error = true;
-          // The number belongs to the other app — say so; every other failure keeps the code-error copy.
-          _errorMessage = code == 'ROLE_MISMATCH' ? message : null;
-        });
+    try {
+      final res =
+          await ref.read(authControllerProvider.notifier).submitOtp(widget.args.phone, code);
+      if (!mounted) return;
+      switch (res) {
+        case Ok():
+          break; // session flips → router lands on /home
+        case Failure(:final code, :final message):
+          setState(() {
+            _error = true;
+            // The number belongs to the other app — say so; every other failure keeps the code-error copy.
+            _errorMessage = code == 'ROLE_MISMATCH' ? message : null;
+          });
+      }
+    } catch (e, st) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: e,
+        stack: st,
+        library: 'fixcare auth',
+        context: ErrorDescription('verifying the OTP'),
+      ));
+      if (mounted) setState(() => _error = true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 

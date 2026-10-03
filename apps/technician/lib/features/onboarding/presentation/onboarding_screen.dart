@@ -55,7 +55,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void _onNameChanged() => setState(() {});
 
   Future<void> _fetchZones() async {
-    final r = await ref.read(catalogRepositoryProvider).zones();
+    Result<List<ZoneRefDto>> r;
+    try {
+      r = await ref.read(catalogRepositoryProvider).zones();
+    } catch (e, st) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: e,
+        stack: st,
+        library: 'fixcare onboarding',
+        context: ErrorDescription('loading service zones'),
+      ));
+      r = const Failure(FailureKind.unknown, "Couldn't load service zones.");
+    }
     if (!mounted) return;
     setState(() {
       switch (r) {
@@ -112,12 +123,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       final sent = await repo.submit();
       if (!mounted) return;
-      if (sent case Failure(:final message)) {
+      if (sent case Failure(:final message, :final code)) {
         _snack(message);
+        // Already submitted / no longer editable: re-check so the gate moves on instead of looping on this form.
+        if (code == 'INVALID_TECHNICIAN_TRANSITION') await ref.read(authControllerProvider.notifier).refreshProfile();
         return;
       }
       // KYC_SUBMITTED → the home gate swaps this screen for "Verification pending".
-      await ref.read(authControllerProvider.notifier).refreshProfile();
+      final refreshed = await ref.read(authControllerProvider.notifier).refreshProfile();
+      if (!mounted) return;
+      if (refreshed is Failure) _snack("Submitted. Couldn't refresh — pull down or reopen the app.");
     } catch (e, st) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: e,
