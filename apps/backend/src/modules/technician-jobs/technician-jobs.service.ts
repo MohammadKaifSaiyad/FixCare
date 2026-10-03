@@ -27,17 +27,18 @@ const ESTIMATE_CHANGED_MESSAGE = 'The estimate changed — check the parts and s
 const TECHNICIAN_NOT_VERIFIED = 'TECHNICIAN_NOT_VERIFIED';
 const JOB_OUT_OF_ZONE = 'JOB_OUT_OF_ZONE';
 
-async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[]; zoneIds: string[] }> {
+async function requireTechnician(userId: string): Promise<{ id: string; skills: import('@prisma/client').ServiceSkill[] }> {
   const t = await prisma.technician.findFirst({ where: { userId, deletedAt: null } });
   // Stable code: the technician app re-checks the profile on it (suspended mid-session → Suspended screen).
   if (!t || t.status !== 'VERIFIED') throw new ForbiddenError('Verified technician required', TECHNICIAN_NOT_VERIFIED);
-  return { id: t.id, skills: t.skills, zoneIds: await technicianZoneIds(t.id) };
+  return { id: t.id, skills: t.skills };
 }
 
 export async function listAvailableJobs(userId: string): Promise<TechnicianJobDto[]> {
   const tech = await requireTechnician(userId);
   const skipped = await prisma.jobSkip.findMany({ where: { technicianId: tech.id }, select: { bookingId: true } });
   const skippedIds = skipped.map((s) => s.bookingId);
+  const zoneIds = await technicianZoneIds(tech.id);
   const bookings = await prisma.booking.findMany({
     where: {
       state: 'DISPATCHED',
@@ -45,7 +46,7 @@ export async function listAvailableJobs(userId: string): Promise<TechnicianJobDt
       deletedAt: null,
       id: { notIn: skippedIds.length ? skippedIds : undefined },
       service: { requiredSkill: { in: tech.skills } },
-      zoneId: { in: tech.zoneIds }, // the booking's SNAPSHOTTED zone — never re-resolved from the address
+      zoneId: { in: zoneIds }, // the booking's SNAPSHOTTED zone — never re-resolved from the address
     },
     include: { address: true, service: true, customer: { include: { user: true } } },
     orderBy: { createdAt: 'desc' },
@@ -88,10 +89,10 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   if (!booking) throw new NotFoundError('Job not found', JOB_NOT_FOUND);
   if (booking.state !== 'DISPATCHED' || booking.technicianId) throw new ConflictError('This job is no longer available');
   if (!tech.skills.includes(booking.service.requiredSkill)) throw new ForbiddenError('You are not skilled for this job');
-  if (!tech.zoneIds.includes(booking.zoneId)) throw new ForbiddenError('This job is outside your service zones', JOB_OUT_OF_ZONE);
+  if (!(await technicianZoneIds(tech.id)).includes(booking.zoneId)) throw new ForbiddenError('This job is outside your service zones', JOB_OUT_OF_ZONE);
   // B6c accept-gate (core-flow: "technician at cash debt limit → cannot accept"). Deferred from
   // B6b until settlement existed — auto-offset now gives a self-healing path out of the lockout.
-  // Note: requireTechnician returns {id, skills, zoneIds} (no cash debt), so cashDebtPaise is fetched separately here.
+  // Note: requireTechnician returns {id, skills} (no cash debt), so cashDebtPaise is fetched separately here.
   // Pre-tx check, UX friction ONLY — a concurrent settlement could flip this between the read and
   // the accept tx. Deliberately NOT a financial invariant (no money moves in accept).
   const techRow = await prisma.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });
@@ -103,6 +104,11 @@ export async function acceptJob(userId: string, bookingId: string): Promise<Tech
   }
 
   await prisma.$transaction(async (tx) => {
+    // Lock + re-check the technician. reviewTechnician's suspend takes the same row lock (and counts active jobs after
+    // flipping the status), so the two transactions serialize: a suspend either sees this accepted job (and refuses) or
+    // this accept sees SUSPENDED (and refuses).
+    const live = await tx.technician.updateMany({ where: { id: tech.id, status: 'VERIFIED', deletedAt: null }, data: { updatedAt: new Date() } });
+    if (live.count === 0) throw new ForbiddenError('Verified technician required', TECHNICIAN_NOT_VERIFIED);
     // transitionBooking does the optimistic-locked DISPATCHED→ACCEPTED + audit; concurrent loser gets count===0 → ConflictError (409)
     await transitionBooking(tx, booking, 'ACCEPTED', { type: 'USER', kind: 'TECHNICIAN', id: userId });
     // Claim defense-in-depth: only set technicianId if still unclaimed. The state lock above already
