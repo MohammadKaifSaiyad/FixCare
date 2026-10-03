@@ -20,9 +20,12 @@ class _FakeAuth extends AuthController {
   _FakeAuth(this._session);
   final Session _session;
   int refreshCalls = 0;
+  final applied = <TechnicianProfileDto>[];
   Result<TechnicianProfileDto>? refreshResult;
   @override
   Future<Session> build() async => _session;
+  @override
+  void applyProfile(TechnicianProfileDto profile) => applied.add(profile);
   @override
   Future<Result<TechnicianProfileDto>> refreshProfile() async {
     refreshCalls++;
@@ -148,7 +151,7 @@ void main() {
     expect(profileRepo.calls, isEmpty);
   });
 
-  testWidgets('confirm → save (trimmed, canonical order) → submit → refresh, in order', (tester) async {
+  testWidgets('confirm → save (trimmed, canonical order) → submit → applyProfile(submitted DTO), in order, no refresh', (tester) async {
     await pump(tester);
     await tester.enterText(find.byKey(const Key('nameField')), '  Ramesh Patel ');
     await tester.tap(find.byKey(const Key('skill_WIRING')));
@@ -157,7 +160,8 @@ void main() {
     await submitAndConfirm(tester);
     expect(profileRepo.calls, ['patch', 'submit']);
     expect(profileRepo.lastPatch, {'name': 'Ramesh Patel', 'skills': ['AC', 'WIRING'], 'zoneIds': ['z1', 'z2']});
-    expect(auth.refreshCalls, 1);
+    expect(auth.applied, [_profile()]);
+    expect(auth.refreshCalls, 0);
   });
 
   testWidgets('save failure → SnackBar with the message, no submit, button usable again', (tester) async {
@@ -176,7 +180,8 @@ void main() {
     expect(find.text('Network error. Check your connection.'), findsOneWidget);
     await submitAndConfirm(tester);
     expect(profileRepo.calls, ['patch', 'submit', 'patch', 'submit']);
-    expect(auth.refreshCalls, 1);
+    expect(auth.applied, hasLength(1));
+    expect(auth.refreshCalls, 0);
   });
 
   testWidgets('save answers PROFILE_LOCKED (an earlier submit landed) → re-checks the profile', (tester) async {
@@ -193,14 +198,6 @@ void main() {
     await submitAndConfirm(tester);
     expect(find.text('Your profile has already been submitted'), findsOneWidget);
     expect(auth.refreshCalls, 1);
-  });
-
-  testWidgets('submit ok but the profile refresh fails → tells the technician to pull down / reopen', (tester) async {
-    await pump(tester);
-    auth.refreshResult = const Failure(FailureKind.network, 'Network error. Check your connection.');
-    await submitAndConfirm(tester);
-    expect(find.text("Submitted. Couldn't refresh — pull down or reopen the app."), findsOneWidget);
-    expect(submitBtn(tester).onPressed, isNotNull);
   });
 
   testWidgets('a zones fetch that THROWS is reported and shows the error + Retry (never an endless spinner)', (tester) async {

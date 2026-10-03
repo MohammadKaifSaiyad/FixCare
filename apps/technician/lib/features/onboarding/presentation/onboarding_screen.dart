@@ -129,10 +129,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         if (code == 'INVALID_TECHNICIAN_TRANSITION') await ref.read(authControllerProvider.notifier).refreshProfile();
         return;
       }
-      // KYC_SUBMITTED → the home gate swaps this screen for "Verification pending".
-      final refreshed = await ref.read(authControllerProvider.notifier).refreshProfile();
-      if (!mounted) return;
-      if (refreshed is Failure) _snack("Submitted. Couldn't refresh — pull down or reopen the app.");
+      // The submit response IS the KYC_SUBMITTED profile — feed it to the session; the home gate then swaps this
+      // screen for "Verification pending" (no second request that could fail after the submit succeeded).
+      if (sent case Ok(:final value)) ref.read(authControllerProvider.notifier).applyProfile(value);
     } catch (e, st) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: e,

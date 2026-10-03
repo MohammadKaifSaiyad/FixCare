@@ -112,6 +112,17 @@ class AuthController extends _$AuthController {
     return f;
   }
 
+  /// Feeds a profile the app already has (e.g. the submit response) straight into the session — no extra fetch.
+  /// Applies only to the live session of the SAME technician: signed out, or a different id (a logout/login landed
+  /// while the caller's request was in flight), is ignored.
+  void applyProfile(TechnicianProfileDto profile) {
+    if (!ref.mounted || state.hasError) return;
+    final now = state.value;
+    if (now is! SessionAuthenticated || now.profile.id != profile.id) return;
+    if (now.hydrated && now.profile == profile) return;
+    state = AsyncData(SessionAuthenticated(profile, hydrated: true));
+  }
+
   Future<Result<TechnicianProfileDto>> _refresh() async {
     // Never the stale value of an error state (Riverpod 3 keeps the previous value on AsyncError).
     final before = state.hasError ? null : state.value;

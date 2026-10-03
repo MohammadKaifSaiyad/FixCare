@@ -195,6 +195,33 @@ void main() {
     expect((sessionOf(c)! as SessionAuthenticated).hydrated, true);
   });
 
+  test('applyProfile: applies the given profile when the session has the same id (no extra fetch)', () async {
+    final (c, repo) = await booted([Ok(_p('PENDING'))]);
+    c.read(authControllerProvider.notifier).applyProfile(_p('KYC_SUBMITTED'));
+    final a = sessionOf(c)! as SessionAuthenticated;
+    expect(a.status, 'KYC_SUBMITTED');
+    expect(a.hydrated, true);
+    expect(repo.calls, 1); // only the boot fetch
+  });
+
+  test('applyProfile: ignored when signed out', () async {
+    final c = ProviderContainer(overrides: [technicianProfileRepositoryProvider.overrideWithValue(_SeqProfileRepo([Ok(_p('PENDING'))]))]);
+    addTearDown(c.dispose);
+    await c.read(authControllerProvider.future); // no token stored → unauthenticated
+    c.read(authControllerProvider.notifier).applyProfile(_p('KYC_SUBMITTED'));
+    expect(sessionOf(c), isA<SessionUnauthenticated>());
+  });
+
+  test('applyProfile: ignored after logout and for a different technician id', () async {
+    final (c, _) = await booted([Ok(_p('PENDING'))]);
+    final n = c.read(authControllerProvider.notifier);
+    n.applyProfile(const TechnicianProfileDto(id: 'someone-else', role: 'TECHNICIAN', name: 'X', skills: [], status: 'VERIFIED'));
+    expect((sessionOf(c)! as SessionAuthenticated).status, 'PENDING');
+    n.onAuthLost();
+    n.applyProfile(_p('KYC_SUBMITTED'));
+    expect(sessionOf(c), isA<SessionUnauthenticated>());
+  });
+
   test('refreshProfile: concurrent calls share one request', () async {
     final (c, repo) = await booted([Ok(_p('KYC_SUBMITTED')), Ok(_p('VERIFIED'))]);
     final n = c.read(authControllerProvider.notifier);
