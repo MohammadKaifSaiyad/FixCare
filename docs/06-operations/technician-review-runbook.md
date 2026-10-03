@@ -84,7 +84,8 @@ Errors: an unknown technician id → 404; a malformed (non-uuid) technician or z
 that is unknown or inactive → 422. The audit log records who/when, which fields changed, and the before/after
 values of the edited fields (skills; zone ids, sorted).
 
-**A VERIFIED technician with no zones sees no jobs.** Dispatch is in-zone: a technician only sees and can accept
+**A VERIFIED technician with no zones sees no jobs** (the deploy backfill, section 6, gives existing technicians every
+active zone, so this applies to technicians verified after it). Dispatch is in-zone: a technician only sees and can accept
 jobs in their own zones (403 `JOB_OUT_OF_ZONE` otherwise).
 
 ## 5. Suspend / reinstate
@@ -103,11 +104,15 @@ curl -s -X POST "$BASE/admin/technicians/$TECH/reinstate" -H "authorization: Bea
   longer block: the technician's work is done, a suspended technician can't collect cash, and the customer's cash
   option falls back to UPI, so the platform keeps the money.
 - 409 `INVALID_TECHNICIAN_TRANSITION`: suspend needs VERIFIED, reinstate needs SUSPENDED.
-- Known race: a technician who accepts a job in the instant ops suspends them can end up SUSPENDED with one active
-  job. Reinstate them; money still needs the customer's OTP, so nothing can move unconfirmed.
+- 409 `TECHNICIAN_COLLECTING_CASH` on suspend: a customer has a cash payment in progress with this technician
+  (a CASH attempt created in the last ~10 minutes, the life of the receipt code). Wait about 10 minutes and retry.
+- The suspend/accept race is closed: suspend and accept serialize on the technician row, so a suspend either sees the
+  just-accepted job (and answers `TECHNICIAN_HAS_ACTIVE_JOB`) or the accept is refused.
 - Suspended and non-verified technicians get 403 `TECHNICIAN_NOT_VERIFIED` from job routes.
 
-## 6. After a deploy: existing VERIFIED technicians have no zones
+## 6. After a deploy: existing technicians were backfilled to every active zone
 
-The zone migration is additive; technicians verified before it have no zones and see no jobs. Before announcing the
-release, give each one zones with section 4 (`PATCH ... {"zoneIds":[...]}`).
+Before zones existed a VERIFIED technician was offered every zone's jobs. The migration
+`technician_zone_backfill` preserves that: every existing VERIFIED or SUSPENDED technician was given every ACTIVE zone,
+so nobody loses jobs at deploy. Ops should then narrow each technician to the zones they actually work in, using
+section 4 (`PATCH ... {"zoneIds":[...]}`). Technicians who onboard after the deploy choose their own zones.

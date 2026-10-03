@@ -228,10 +228,11 @@ skills confirmed (see the technician review runbook).
 **Defense (implemented):**
 - Suspend is refused while a job is between ACCEPTED and REPAIR_COMPLETE (the customer must not be stranded).
 - Payment-only states (CUSTOMER_CONFIRMED, DECLINED_BY_CUSTOMER) no longer block, so a technician can't evade suspension by sitting on an unpaid job. A suspended technician can't collect cash and the cash option falls back to UPI.
+- Suspend is also refused (409 `TECHNICIAN_COLLECTING_CASH`) while a CASH payment attempt is CREATED and younger than the receipt code's 10-minute life, so a handover the customer is mid-way through is never stranded.
 
 **Remaining gaps:**
 - No force-suspend and no ops cancel/close path for stuck bookings.
-- Accepted race: a technician accepting a job in the instant ops suspends them can end up SUSPENDED with one active job.
+- (Closed) The suspend/accept race: suspend flips the status first, then counts active jobs; accept locks and re-checks the technician row in its own transaction, so exactly one of them wins.
 
 ---
 

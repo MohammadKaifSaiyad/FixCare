@@ -30,8 +30,9 @@ submit, be reviewed by ops, and start taking jobs — no more hand-edited DB row
   verify/send-back) → jobs; a **Suspended** screen; `HomeGate` routes by status; the interceptor refreshes the profile
   on `TECHNICIAN_NOT_VERIFIED`. Both apps show a clear ROLE_MISMATCH message.
 - **Ops runbook:** `docs/06-operations/technician-review-runbook.md` (curl against `/admin/auth/login` token).
-- **Rollout / deploy order:** deploy the **backend first**. After deploy every already-VERIFIED technician has **no
-  zones and sees no jobs** until ops runs `PATCH /admin/technicians/:id {zoneIds}` — do that before announcing. Older
+- **Rollout / deploy order:** deploy the **backend first**. The `technician_zone_backfill` migration gives every
+  existing VERIFIED/SUSPENDED technician every ACTIVE zone (behavior-preserving — nobody loses jobs); ops then narrows
+  each technician's zones with `PATCH /admin/technicians/:id {zoneIds}`. Older
   app builds on the new backend: a ROLE_MISMATCH login shows the old "That code isn't right."; an older technician
   build's pending screen still never re-checks. `scripts/dev-drive-booking.sh` links its technician to the booking's zone.
 - **Final-review fix wave (done):** suspend is now blocked only by ACCEPTED…REPAIR_COMPLETE — the payment-only
@@ -40,9 +41,13 @@ submit, be reviewed by ops, and start taking jobs — no more hand-edited DB row
   runs; technician app: `refreshProfile` can't cross sessions (epoch guard), zones load / submit / OTP verify always
   converge; unknown status pinned to fail closed; customer OTP busy flag resets. Gates after the wave: backend
   433/433 + `pnpm build`; technician app 368 + analyze 0; customer app 182 (~5 skipped) + analyze 0.
-- **Known, accepted gaps:** a technician accepting in the instant ops suspends them can end up suspended with one
-  active job (ops reinstates; money still needs the customer's OTP); there is no ops cancel/close path, so a job in
-  ACCEPTED…REPAIR_COMPLETE blocks suspend until it moves on (interim: engineer intervenes manually).
+- **/code-review fix wave (done):** the suspend/accept race is closed (row-lock ordering — no longer an accepted gap);
+  suspend is refused (409 `TECHNICIAN_COLLECTING_CASH`) during a live cash handover; reason guard ignores separators;
+  locked beats invalid zone; refresh-retry path detects suspension; submit feeds its own response to the session.
+  Gates after this wave: backend 447/447 (73 files) + `pnpm build`; technician 371 + analyze 0; customer 182 (~5 skipped)
+  + analyze 0; dev and test DB migrations up to date.
+- **Known, accepted gaps:** there is no ops cancel/close path, so a job in ACCEPTED…REPAIR_COMPLETE blocks suspend
+  until it moves on (interim: engineer intervenes manually).
 - **Gates:** backend **426/426 (71 files), `pnpm build` clean**; technician app **361 tests, analyze clean**; customer
   app **181 passed, 5 skipped (pre-existing), analyze clean**.
   Design/plan: `docs/designs/2026-10-02-technician-app-slice3-onboarding-design.md`, `docs/plans/2026-10-02-technician-app-slice3-onboarding.md`.
@@ -273,6 +278,9 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
   on `(bookingId, partsCatalogId)`** as defense in depth for one-line-per-part (needs a migration that first
   de-duplicates any existing duplicate dev lines; review with `prisma-migration-reviewer`); (i) cosmetic: a catalog
   row's qty resets to 1 when a filtered-out row reappears.
+- **Technician Slice 3 — deferred from the /code-review wave:** a soft-deleted technician gets a profile 404 loop in
+  the app (no soft-delete path exists yet); admin technician list pagination; a distinct "deactivated" screen copy
+  (today it shows "Account suspended" per spec).
 - **Technician Slice 3 — deferred from the final review:** force-suspend (MANAGER, audited) + an ops cancel/close
   path for stuck bookings; a required reason on verify / reinstate / admin edit; two-person approval for verify;
   IP/device on audit rows; a terminal "rejected" status for applicants (final-review M4); app polish — name-field

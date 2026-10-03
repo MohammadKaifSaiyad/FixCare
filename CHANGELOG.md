@@ -8,6 +8,19 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-03 — Technician app Slice 3: /code-review fix wave
+
+- **Backend:** suspend refused (409 `TECHNICIAN_COLLECTING_CASH`) while a fresh CREATED cash payment exists; suspend/accept
+  race closed (suspend flips status first then counts jobs; accept locks + re-checks the technician row); reason guard
+  strips separators before the 10-digit test; locked profile (409 `PROFILE_LOCKED`) now beats an invalid zone (422);
+  zones loaded only where used; submit refusal text has one copy. Migration `technician_zone_backfill` gives existing
+  VERIFIED/SUSPENDED technicians every active zone (behavior-preserving).
+- **Technician app:** the refresh-retry client now detects `TECHNICIAN_NOT_VERIFIED`; submit feeds its response into the
+  session (`applyProfile`) instead of a second fetch. Both apps: stale OTP role comment fixed.
+- Gates: backend 447/447 (73 files), technician 371, customer 182 ~5; `pnpm build` / `flutter analyze` clean; both DBs up to date.
+
+---
+
 ## 2026-10-02 — Technician app Slice 3: onboarding + verification (on branch)
 
 - **Backend:** technician lifecycle PENDING → KYC_SUBMITTED → VERIFIED ⇄ SUSPENDED, each transition in one
