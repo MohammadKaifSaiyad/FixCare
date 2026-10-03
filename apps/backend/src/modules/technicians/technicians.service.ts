@@ -127,12 +127,16 @@ export async function reviewTechnician(
 export async function adminUpdateTechnician(adminUserId: string, technicianId: string, patch: AdminTechnicianPatchBody): Promise<AdminTechnicianDto> {
   if (patch.zoneIds) await assertActiveZones(patch.zoneIds);
   await prisma.$transaction(async (tx) => {
-    const t = await tx.technician.findFirst({ where: { id: technicianId, deletedAt: null }, select: { id: true } });
+    const t = await tx.technician.findFirst({ where: { id: technicianId, deletedAt: null }, select: { id: true, skills: true } });
     if (!t) throw new NotFoundError('Technician not found');
+    const sortedIds = (ids: readonly string[]) => [...ids].sort();
+    const beforeZoneIds = patch.zoneIds ? sortedIds(await zoneIdsOf(tx, t.id)) : undefined;
+    const before = { ...(patch.skills ? { skills: t.skills } : {}), ...(beforeZoneIds ? { zoneIds: beforeZoneIds } : {}) };
+    const after = { ...(patch.skills ? { skills: patch.skills } : {}), ...(patch.zoneIds ? { zoneIds: sortedIds(patch.zoneIds) } : {}) };
     if (patch.skills) await tx.technician.update({ where: { id: t.id }, data: { skills: patch.skills } });
     if (patch.zoneIds) await replaceZones(tx, t.id, patch.zoneIds);
     await tx.auditLog.create({
-      data: { action: 'PROFILE_UPDATED', actorType: 'ADMIN', actorId: adminUserId, subjectId: t.id, metadata: { fields: Object.keys(patch), by: 'admin' } },
+      data: { action: 'PROFILE_UPDATED', actorType: 'ADMIN', actorId: adminUserId, subjectId: t.id, metadata: { fields: Object.keys(patch), by: 'admin', before, after } },
     });
   });
   return getAdminTechnician(technicianId);

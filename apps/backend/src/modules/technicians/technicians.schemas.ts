@@ -22,7 +22,16 @@ export const listTechniciansQuery = z
   .object({ status: z.enum(['PENDING', 'KYC_SUBMITTED', 'VERIFIED', 'SUSPENDED', 'DEACTIVATED']).optional() })
   .strict();
 
-export const reasonBody = z.object({ reason: z.string().trim().min(1, 'reason is required').max(500, 'reason is too long') }).strict();
+export const reasonBody = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(1, 'reason is required')
+      .max(500, 'reason is too long')
+      .refine((r) => !/\d{10,}/.test(r), "Don't include phone or ID numbers in the reason"),
+  })
+  .strict();
 
 export const adminTechnicianPatchBody = z
   .object({ skills: skillsField, zoneIds: zoneIdsField })

@@ -76,10 +76,10 @@ describe('admin technicians', () => {
     const t = await makeTechnician(['AC'], 'KYC_SUBMITTED', [z.id]);
     const admin = await makeAdminToken();
     const url = `/admin/technicians/${t.technicianId}/send-back`;
-    for (const payload of [undefined, {}, { reason: '   ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', extra: 1 }]) {
+    for (const payload of [undefined, {}, { reason: '   ' }, { reason: 'x'.repeat(501) }, { reason: 'ok', extra: 1 }, { reason: 'Call me on 9876543210' }]) {
       expect((await post(admin, url, payload)).statusCode).toBe(400);
     }
-    const reason = 'Add the Wiring skill only if you hold a licence';
+    const reason = 'Add the Wiring skill only if you hold a licence (visit 2 of 3)';
     const res = await post(admin, url, { reason });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ status: 'PENDING', reviewNote: reason });
@@ -136,7 +136,11 @@ describe('admin technicians', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ status: 'VERIFIED', skills: ['AC', 'WIRING'], zones: [{ id: vadodara.id, name: 'Vadodara' }] });
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'PROFILE_UPDATED', subjectId: t.technicianId } });
-    expect(audit).toMatchObject({ actorType: 'ADMIN', actorId: admin.userId, metadata: { fields: ['skills', 'zoneIds'], by: 'admin' } });
+    expect(audit).toMatchObject({ actorType: 'ADMIN', actorId: admin.userId, metadata: { fields: ['skills', 'zoneIds'], by: 'admin', before: { skills: ['AC'], zoneIds: [padra.id] }, after: { skills: ['AC', 'WIRING'], zoneIds: [vadodara.id] } } });
+    // only the edited fields are recorded
+    await app.inject({ method: 'PATCH', url, headers: auth(admin.token), payload: { skills: ['FAN'] } });
+    const audits2 = await prisma.auditLog.findMany({ where: { action: 'PROFILE_UPDATED', subjectId: t.technicianId }, orderBy: { createdAt: 'desc' } });
+    expect(audits2[0]!.metadata).toEqual({ fields: ['skills'], by: 'admin', before: { skills: ['AC', 'WIRING'] }, after: { skills: ['FAN'] } });
     expect((await app.inject({ method: 'PATCH', url, headers: auth(admin.token), payload: {} })).statusCode).toBe(400);
     expect((await app.inject({ method: 'PATCH', url, headers: auth(admin.token), payload: { name: 'X' } })).statusCode).toBe(400);
     const inactive = await prisma.zone.create({ data: { name: 'Old', visitFeePaise: 9900, status: 'INACTIVE' } });

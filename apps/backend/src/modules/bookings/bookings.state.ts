@@ -102,12 +102,16 @@ export async function transitionBooking(
   return updated;
 }
 
-/** Assigned-booking states in which the technician still has work (or a cash collection) left. Ops may not
- *  suspend a technician mid-job — every job route requires VERIFIED, so it would strand the customer.
+/** Assigned-booking states in which the technician still has work left. Ops may not suspend a technician
+ *  mid-job — every job route requires VERIFIED, so it would strand the customer.
+ *  CUSTOMER_CONFIRMED and DECLINED_BY_CUSTOMER are deliberately NOT here: the technician's work is done and only
+ *  payment is pending. Once suspended they can't collect cash (every job route requires VERIFIED) and the
+ *  customer's cash initiate already falls back to UPI when the assigned technician isn't VERIFIED
+ *  (bookings.service initiateCashPayment) — the platform holds cash (Golden Rule 3).
  *  PAYMENT_RECEIVED onward, cancellations and DISPUTED (ops owns it) need nothing more from them. */
 export const TECHNICIAN_ACTIVE_STATES: readonly BookingState[] = [
   'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'DIAGNOSED', 'CUSTOMER_APPROVED', 'PARTS_REQUESTED', 'PARTS_ACQUIRED',
-  'REPAIR_IN_PROGRESS', 'REPAIR_COMPLETE', 'CUSTOMER_CONFIRMED', 'DECLINED_BY_CUSTOMER',
+  'REPAIR_IN_PROGRESS', 'REPAIR_COMPLETE',
 ];
 
 export async function countActiveJobsForTechnician(tx: Prisma.TransactionClient, technicianId: string): Promise<number> {
