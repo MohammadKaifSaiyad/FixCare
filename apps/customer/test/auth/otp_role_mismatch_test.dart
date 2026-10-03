@@ -10,12 +10,16 @@ import 'package:fixcare_customer/features/auth/presentation/phone_entry_screen.d
 const _mismatch = 'This number is registered as a FixCare technician. Please use the FixCare Pro app.';
 
 class _FakeAuth extends AuthController {
-  _FakeAuth(this.result);
+  _FakeAuth(this.result, {this.throws = false});
   final Result<void> result;
+  final bool throws;
   @override
   Future<Session> build() async => const SessionUnauthenticated();
   @override
-  Future<Result<void>> submitOtp(String phone, String code) async => result;
+  Future<Result<void>> submitOtp(String phone, String code) async {
+    if (throws) throw StateError('boom');
+    return result;
+  }
 }
 
 void main() {
@@ -38,6 +42,24 @@ void main() {
     expect(find.text(_mismatch), findsOneWidget);
     expect(find.text("That code isn't right."), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an unexpected throw is reported, shows the generic error and re-enables Verify', (tester) async {
+    final reported = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = previous);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [authControllerProvider.overrideWith(() => _FakeAuth(const Ok(null), throws: true))],
+      child: const MaterialApp(home: OtpEntryScreen(args: OtpArgs('9800000011', null))),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('otpField')), '123456');
+    await tester.tap(find.byKey(const Key('verifyBtn')));
+    await tester.pumpAndSettle();
+    expect(reported, hasLength(1));
+    expect(find.byKey(const Key('otpErrorText')), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('verifyBtn'))).onPressed, isNotNull);
   });
 
   testWidgets('a wrong code still reads "That code isn\'t right."', (tester) async {
