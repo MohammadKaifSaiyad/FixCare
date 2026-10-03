@@ -285,6 +285,8 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
   path for stuck bookings; a required reason on verify / reinstate / admin edit; two-person approval for verify;
   IP/device on audit rows; a terminal "rejected" status for applicants (final-review M4); app polish — name-field
   rebuild scope, silent manual check, support contact on the Suspended screen, interceptor cooldown.
+- Cash-handover suspend guard keys on `Payment.createdAt`; a re-minted cash receipt code gets a fresh 10-minute life, so an older CREATED cash attempt with a recently re-minted code escapes the guard — base the window on the latest mint time.
+- Cash initiate doesn't lock the technician row, so an initiate racing a suspend could create a CREATED cash attempt after the suspend's check — money still needs the customer's OTP; close by locking the technician row in initiate (same pattern as accept).
 - **Technician Slice 3 — out of scope (tracked):** KYC vendors (Setu / Karza), bank account, security deposit, skill
   video, document capture; push / SMS "you're verified" notifications (the app learns by polling); the admin
   dashboard UI; ops reassigning a suspended technician's active job; technicians self-editing zones after
