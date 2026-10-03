@@ -67,7 +67,9 @@ curl -s -X POST "$BASE/admin/technicians/$TECH/send-back" -H "authorization: Bea
 ```
 
 The technician sees the reason, edits their profile and resubmits. 409 `INVALID_TECHNICIAN_TRANSITION` = not
-KYC_SUBMITTED. No identifiers in the reason.
+KYC_SUBMITTED. No identifiers in the reason — the API rejects (400) any reason containing a run of 10 or more
+digits ("Don't include phone or ID numbers in the reason"); short numbers such as "Visit 2 of 3" are fine. The same
+rule applies to the suspend reason.
 
 ## 4. Edit skills / zones
 
@@ -78,8 +80,9 @@ curl -s -X PATCH "$BASE/admin/technicians/$TECH" -H "authorization: Bearer $ADMI
 ```
 
 Either field may be sent alone; zones are replaced, not merged. Skills: `AC FAN ELECTRICAL WIRING APPLIANCE`.
-Invalid or inactive zone ids return 422. The audit log records which field names changed and who/when, not the
-before/after values.
+Errors: an unknown technician id → 404; a malformed (non-uuid) technician or zone id → 400; a well-formed zone id
+that is unknown or inactive → 422. The audit log records who/when, which fields changed, and the before/after
+values of the edited fields (skills; zone ids, sorted).
 
 **A VERIFIED technician with no zones sees no jobs.** Dispatch is in-zone: a technician only sees and can accept
 jobs in their own zones (403 `JOB_OUT_OF_ZONE` otherwise).
@@ -92,9 +95,13 @@ curl -s -X POST "$BASE/admin/technicians/$TECH/suspend" -H "authorization: Beare
 curl -s -X POST "$BASE/admin/technicians/$TECH/reinstate" -H "authorization: Bearer $ADMIN" | jq
 ```
 
-- 409 `TECHNICIAN_HAS_ACTIVE_JOB` on suspend: the technician has a job between ACCEPTED and CUSTOMER_CONFIRMED (or
-  DECLINED_BY_CUSTOMER). Suspending mid-job would strand the customer with a locked visit fee. Resolve the job
-  first (let it complete, or cancel through the booking process), then suspend.
+- 409 `TECHNICIAN_HAS_ACTIVE_JOB` on suspend: the technician has a job in ACCEPTED, EN_ROUTE, ARRIVED, DIAGNOSED,
+  CUSTOMER_APPROVED, PARTS_REQUESTED, PARTS_ACQUIRED, REPAIR_IN_PROGRESS or REPAIR_COMPLETE. Suspending mid-job
+  would strand the customer with a locked visit fee, and the suspend stays blocked until that job moves on.
+  **There is no ops cancel/close endpoint.** Interim procedure: escalate to the engineer, who intervenes manually
+  in the database (audited by hand). Jobs waiting only on payment (CUSTOMER_CONFIRMED, DECLINED_BY_CUSTOMER) no
+  longer block: the technician's work is done, a suspended technician can't collect cash, and the customer's cash
+  option falls back to UPI, so the platform keeps the money.
 - 409 `INVALID_TECHNICIAN_TRANSITION`: suspend needs VERIFIED, reinstate needs SUSPENDED.
 - Known race: a technician who accepts a job in the instant ops suspends them can end up SUSPENDED with one active
   job. Reinstate them; money still needs the customer's OTP, so nothing can move unconfirmed.

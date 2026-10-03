@@ -34,10 +34,15 @@ submit, be reviewed by ops, and start taking jobs — no more hand-edited DB row
   zones and sees no jobs** until ops runs `PATCH /admin/technicians/:id {zoneIds}` — do that before announcing. Older
   app builds on the new backend: a ROLE_MISMATCH login shows the old "That code isn't right."; an older technician
   build's pending screen still never re-checks. `scripts/dev-drive-booking.sh` links its technician to the booking's zone.
+- **Final-review fix wave (done):** suspend is now blocked only by ACCEPTED…REPAIR_COMPLETE — the payment-only
+  states (CUSTOMER_CONFIRMED, DECLINED_BY_CUSTOMER) no longer block (a suspended technician can't collect cash; the
+  customer's cash initiate falls back to UPI); admin skills/zones edits audit before/after; reasons reject 10+ digit
+  runs; technician app: `refreshProfile` can't cross sessions (epoch guard), zones load / submit / OTP verify always
+  converge; unknown status pinned to fail closed; customer OTP busy flag resets. Gates after the wave: backend
+  433/433 + `pnpm build`; technician app 368 + analyze 0; customer app 182 (~5 skipped) + analyze 0.
 - **Known, accepted gaps:** a technician accepting in the instant ops suspends them can end up suspended with one
-  active job (ops reinstates; money still needs the customer's OTP); zone/skill edits are audited by field NAME
-  only (who/when, not before/after); suspend is refused while the technician has an active job (ACCEPTED…
-  CUSTOMER_CONFIRMED or DECLINED_BY_CUSTOMER).
+  active job (ops reinstates; money still needs the customer's OTP); there is no ops cancel/close path, so a job in
+  ACCEPTED…REPAIR_COMPLETE blocks suspend until it moves on (interim: engineer intervenes manually).
 - **Gates:** backend **426/426 (71 files), `pnpm build` clean**; technician app **361 tests, analyze clean**; customer
   app **181 passed, 5 skipped (pre-existing), analyze clean**.
   Design/plan: `docs/designs/2026-10-02-technician-app-slice3-onboarding-design.md`, `docs/plans/2026-10-02-technician-app-slice3-onboarding.md`.
@@ -268,10 +273,14 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
   on `(bookingId, partsCatalogId)`** as defense in depth for one-line-per-part (needs a migration that first
   de-duplicates any existing duplicate dev lines; review with `prisma-migration-reviewer`); (i) cosmetic: a catalog
   row's qty resets to 1 when a filtered-out row reappears.
+- **Technician Slice 3 — deferred from the final review:** force-suspend (MANAGER, audited) + an ops cancel/close
+  path for stuck bookings; a required reason on verify / reinstate / admin edit; two-person approval for verify;
+  IP/device on audit rows; a terminal "rejected" status for applicants (final-review M4); app polish — name-field
+  rebuild scope, silent manual check, support contact on the Suspended screen, interceptor cooldown.
 - **Technician Slice 3 — out of scope (tracked):** KYC vendors (Setu / Karza), bank account, security deposit, skill
   video, document capture; push / SMS "you're verified" notifications (the app learns by polling); the admin
   dashboard UI; ops reassigning a suspended technician's active job; technicians self-editing zones after
-  verification; before/after values in zone/skill audit rows.
+  verification.
 - **Technician Slice 2 — other follow-ups (non-blocking):** `Position.isMocked` arrival signal (needs backend
   `arriveBody` field + a block-vs-flag product decision); **R2 presign before provisioning** — set
   `requestChecksumCalculation: 'WHEN_REQUIRED'` on the S3Client (recent SDKs add checksum params R2 rejects) and note

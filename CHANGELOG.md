@@ -23,6 +23,12 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 - **Technician app:** onboarding form, "Under review" screen with live status, Suspended screen, `HomeGate`
   routing, profile refresh on `TECHNICIAN_NOT_VERIFIED`.
 - Gates: backend 426/426, technician app 361, customer app 181 ~5; `pnpm build` / `flutter analyze` clean.
+- **Final-review fix wave:** suspend no longer blocked by payment-only states (CUSTOMER_CONFIRMED,
+  DECLINED_BY_CUSTOMER); admin skills/zones edit audit records before/after; suspend/send-back reasons reject 10+
+  digit runs; stale auth contract comment fixed. Technician app: `refreshProfile` epoch guard (can't cross
+  sessions), zones-load throw → error + Retry, submit converges on INVALID_TECHNICIAN_TRANSITION / failed refresh,
+  OTP busy flag in try/finally, unknown status pinned fail-closed; customer OTP busy flag likewise. Runbook and
+  fraud-defenses (#14 gap, #17, #18) updated. Gates: backend 433/433, technician 368, customer 182 ~5; analyze 0.
 
 ---
 
