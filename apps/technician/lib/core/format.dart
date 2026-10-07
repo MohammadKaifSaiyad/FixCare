@@ -38,3 +38,15 @@ String formatScheduledSlot(String iso) {
   final suffix = dt.minute == 0 ? (_slotWindowLabels[dt.hour] ?? _timeLabel(dt)) : _timeLabel(dt);
   return '${_fullDateLabel(dt)} · $suffix';
 }
+
+/// "3 Oct" in local time from an ISO (UTC) string.
+String formatShortDate(String iso) {
+  final d = DateTime.parse(iso).toLocal();
+  return '${d.day} ${_months[d.month - 1]}';
+}
+
+/// "5 Oct, 2:00 pm" in local time from an ISO (UTC) string.
+String formatShortDateTime(String iso) {
+  final d = DateTime.parse(iso).toLocal();
+  return '${d.day} ${_months[d.month - 1]}, ${_timeLabel(d)}';
+}

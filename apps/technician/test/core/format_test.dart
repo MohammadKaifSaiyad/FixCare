@@ -43,4 +43,12 @@ void main() {
     expect(rupees(9900), '₹99');
     expect(rupees(12345), '₹123.45');
   });
+
+  test('formatShortDate / formatShortDateTime render local day + month (+ time)', () {
+    final d = DateTime(2026, 10, 5, 14, 0).toUtc().toIso8601String();
+    expect(formatShortDate(d), '5 Oct');
+    expect(formatShortDateTime(d), '5 Oct, 2:00 pm');
+    final midnight = DateTime(2026, 10, 3, 0, 5).toUtc().toIso8601String();
+    expect(formatShortDateTime(midnight), '3 Oct, 12:05 am');
+  });
 }
