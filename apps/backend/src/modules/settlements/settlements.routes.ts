@@ -1,13 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
-import { ValidationError } from '../../shared/errors.js';
+import { ForbiddenError, ValidationError } from '../../shared/errors.js';
 import { settlementAmountBody } from './settlements.schemas.js';
+import { earningsSummary } from './earnings.service.js';
 import { technicianBalance, recordPayout, recordRepayment, getTechnicianSettlement } from './settlements.service.js';
 
 export async function registerSettlementRoutes(app: FastifyInstance): Promise<void> {
   app.get('/technician/me/balance', { preHandler: [requireAuth] }, async (req, reply) => {
     return reply.send(await technicianBalance(req.user!.id)); // service walls non-technicians (403)
+  });
+
+  app.get('/technician/me/earnings', { preHandler: [requireAuth] }, async (req, reply) => {
+    if (req.user!.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
+    return reply.send(await earningsSummary(req.user!.id));
   });
 
   app.post('/admin/settlements/payouts', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
