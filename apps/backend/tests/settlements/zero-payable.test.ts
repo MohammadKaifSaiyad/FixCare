@@ -17,7 +17,7 @@ describe('zero-payable auto-settlement at completion', () => {
   it('confirm-completion chains to PAYMENT_RECEIVED with paidAt when the credit covers everything; sweep later credits the earning', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId, { laborPaise: 10000, visitFeePaise: 14900 }); // credit ≥ labor, empty cart → payable 0
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
     await prisma.booking.update({ where: { id: booking.id }, data: { state: 'REPAIR_COMPLETE', technicianId: t.technicianId } });
     await seedRepairPhotos(booking.id);
@@ -41,7 +41,7 @@ describe('zero-payable auto-settlement at completion', () => {
   it('a payable booking still stops at CUSTOMER_CONFIRMED (no chain)', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId); // labor 60000 > credit
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
     await prisma.booking.update({ where: { id: booking.id }, data: { state: 'REPAIR_COMPLETE', technicianId: t.technicianId } });
     await seedRepairPhotos(booking.id);
@@ -57,7 +57,7 @@ describe('accept-gate at the debt limit', () => {
   it('OVER the limit cannot accept (422); AT exactly the limit CAN (matches the capture gate boundary)', async () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: config.CASH_DEBT_LIMIT_PAISE + 1 } });
     const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
     expect((await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) })).statusCode).toBe(422);

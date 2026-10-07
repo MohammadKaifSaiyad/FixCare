@@ -24,9 +24,9 @@ class TechnicianProfileRepository {
     return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   }
 
-  Future<Result<TechnicianProfileDto>> getProfile() async {
+  Future<Result<TechnicianProfileDto>> _guard(Future<Response> Function() send) async {
     try {
-      return _parse(await _dio.get('/me/profile'));
+      return _parse(await send());
     } on DioException catch (e) {
       if (e.response != null) {
         return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));
@@ -34,6 +34,15 @@ class TechnicianProfileRepository {
       return const Failure(FailureKind.network, 'Network error. Check your connection.');
     }
   }
+
+  Future<Result<TechnicianProfileDto>> getProfile() => _guard(() => _dio.get('/me/profile'));
+
+  /// Saves the onboarding form. Allowed only while PENDING (409 PROFILE_LOCKED otherwise).
+  Future<Result<TechnicianProfileDto>> updateProfile({required String name, required List<String> skills, required List<String> zoneIds}) =>
+      _guard(() => _dio.patch('/me/profile', data: {'name': name, 'skills': skills, 'zoneIds': zoneIds}));
+
+  /// PENDING → KYC_SUBMITTED. Bodyless.
+  Future<Result<TechnicianProfileDto>> submit() => _guard(() => _dio.post('/technician/me/submit'));
 }
 
 final technicianProfileRepositoryProvider =

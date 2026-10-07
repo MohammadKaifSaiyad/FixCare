@@ -8,6 +8,43 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-03 — Technician app Slice 3: /code-review fix wave
+
+- **Backend:** suspend refused (409 `TECHNICIAN_COLLECTING_CASH`) while a fresh CREATED cash payment exists; suspend/accept
+  race closed (suspend flips status first then counts jobs; accept locks + re-checks the technician row); reason guard
+  strips separators before the 10-digit test; locked profile (409 `PROFILE_LOCKED`) now beats an invalid zone (422);
+  zones loaded only where used; submit refusal text has one copy. Migration `technician_zone_backfill` gives existing
+  VERIFIED/SUSPENDED technicians every active zone (behavior-preserving).
+- **Technician app:** the refresh-retry client now detects `TECHNICIAN_NOT_VERIFIED`; submit feeds its response into the
+  session (`applyProfile`) instead of a second fetch. Both apps: stale OTP role comment fixed.
+- Gates: backend 447/447 (73 files), technician 371, customer 182 ~5; `pnpm build` / `flutter analyze` clean; both DBs up to date.
+
+---
+
+## 2026-10-02 — Technician app Slice 3: onboarding + verification (on branch)
+
+- **Backend:** technician lifecycle PENDING → KYC_SUBMITTED → VERIFIED ⇄ SUSPENDED, each transition in one
+  transaction with a `TECHNICIAN_STATUS_CHANGED` audit row. One additive migration `20261002135906_technician_onboarding`
+  (`TechnicianZone`, `submittedAt` / `reviewedAt` / `reviewNote`). Technician `GET/PATCH /me/profile` (name, skills,
+  zones; locked once submitted → 409 `PROFILE_LOCKED`) and `POST /technician/me/submit`.
+- **Ops review endpoints** (MANAGER): `GET /admin/technicians?status=`, `POST /admin/technicians/:id/verify|send-back|
+  suspend|reinstate`, `PATCH /admin/technicians/:id {skills?, zoneIds?}`; 409 `INVALID_TECHNICIAN_TRANSITION` /
+  `TECHNICIAN_HAS_ACTIVE_JOB`. Runbook: `docs/06-operations/technician-review-runbook.md`.
+- **In-zone dispatch:** technicians see and accept only jobs in their zones (403 `JOB_OUT_OF_ZONE`); unverified →
+  403 `TECHNICIAN_NOT_VERIFIED`. Already-VERIFIED technicians have no zones until ops adds them — deploy backend first.
+- **`ROLE_MISMATCH`:** `verifyOtp` rejects (409) a number registered under the other role; both apps show a clear message.
+- **Technician app:** onboarding form, "Under review" screen with live status, Suspended screen, `HomeGate`
+  routing, profile refresh on `TECHNICIAN_NOT_VERIFIED`.
+- Gates: backend 426/426, technician app 361, customer app 181 ~5; `pnpm build` / `flutter analyze` clean.
+- **Final-review fix wave:** suspend no longer blocked by payment-only states (CUSTOMER_CONFIRMED,
+  DECLINED_BY_CUSTOMER); admin skills/zones edit audit records before/after; suspend/send-back reasons reject 10+
+  digit runs; stale auth contract comment fixed. Technician app: `refreshProfile` epoch guard (can't cross
+  sessions), zones-load throw → error + Retry, submit converges on INVALID_TECHNICIAN_TRANSITION / failed refresh,
+  OTP busy flag in try/finally, unknown status pinned fail-closed; customer OTP busy flag likewise. Runbook and
+  fraud-defenses (#14 gap, #17, #18) updated. Gates: backend 433/433, technician 368, customer 182 ~5; analyze 0.
+
+---
+
 ## 2026-10-02 — Job estimate integrity: /code-review fix round (on branch)
 
 - **`/code-review` found 10 items; 9 fixed here, 1 deferred** (DB unique index). Backend 400/400, technician app 320,

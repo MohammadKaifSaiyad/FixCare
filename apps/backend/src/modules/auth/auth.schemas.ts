@@ -8,9 +8,8 @@ const phone = z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number');
 export const sendOtpBody = z.object({ phone, role: otpRole });
 export type SendOtpBody = z.infer<typeof sendOtpBody>;
 
-// NOTE: `role` is accepted for symmetry with the send request, but it is IGNORED
-// for an existing user — their stored role always wins (see verifyOtp). It only
-// affects which profile is created for a brand-new phone (the role captured at send).
+// NOTE: the role captured at SEND decides: a new phone gets that profile; an existing phone with another
+// role gets 409 ROLE_MISMATCH; the body's `role` is unused (accepted for symmetry with the send request).
 export const verifyOtpBody = z.object({
   phone,
   role: otpRole,

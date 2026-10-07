@@ -7,23 +7,25 @@ import 'package:go_router/go_router.dart';
 
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/core/router/app_router.dart';
+import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
 import 'package:fixcare_technician/features/profile/data/technician_profile_repository.dart';
 
-/// Fake profile repo per test: the boot hydration reads getProfile() to
-/// resolve the session's TechnicianStatus (VERIFIED/PENDING/SUSPENDED/...).
+class _FakeCatalog extends CatalogRepository {
+  _FakeCatalog() : super(Dio());
+  @override
+  Future<Result<List<ZoneRefDto>>> zones() async => const Ok([ZoneRefDto(id: 'z1', name: 'Padra')]);
+}
+
+/// Fake profile repo per test: the boot hydration reads getProfile() to resolve the session's
+/// TechnicianStatus. A null status simulates a failed (network) fetch → an unhydrated session.
 class _FakeProfileRepo extends TechnicianProfileRepository {
   _FakeProfileRepo(this._status) : super(Dio());
-  final String _status;
+  final String? _status;
   @override
-  Future<Result<TechnicianProfileDto>> getProfile() async => Ok(
-        TechnicianProfileDto(
-          id: 't1',
-          role: 'TECHNICIAN',
-          name: 'Ramesh',
-          skills: const ['FAN'],
-          status: _status,
-        ),
-      );
+  Future<Result<TechnicianProfileDto>> getProfile() async => switch (_status) {
+        final String status => Ok(TechnicianProfileDto(id: 't1', role: 'TECHNICIAN', name: 'Ramesh', skills: const ['FAN'], status: status)),
+        null => const Failure(FailureKind.network, 'down'),
+      };
 }
 
 /// The router's redirect is driven by AuthController.build(), which reads the
@@ -65,13 +67,14 @@ void main() {
     mockStorage();
   });
 
-  Future<GoRouter> pumpApp(WidgetTester tester, {String? status}) async {
+  Future<GoRouter> pumpApp(WidgetTester tester, {String? status, bool profileFails = false}) async {
     late GoRouter router;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          if (status != null)
-            technicianProfileRepositoryProvider.overrideWithValue(_FakeProfileRepo(status)),
+          if (status != null || profileFails)
+            technicianProfileRepositoryProvider.overrideWithValue(_FakeProfileRepo(profileFails ? null : status)),
+          catalogRepositoryProvider.overrideWithValue(_FakeCatalog()),
         ],
         child: Consumer(
           builder: (context, ref, _) {
@@ -90,36 +93,60 @@ void main() {
     expect(router.routerDelegate.currentConfiguration.uri.path, '/phone');
   });
 
-  testWidgets('token + VERIFIED session → reaches /home (not redirected to /phone)',
-      (tester) async {
-    backing['fixcare.access'] = 'a-token';
-    backing['fixcare.refresh'] = 'r-token';
-    final router = await pumpApp(tester, status: 'VERIFIED');
-    // JobsHomeScreen doesn't exist until Task 6; /home's verified branch is a
-    // temporary placeholder (VerificationPendingScreen). Assert routing
-    // actually reached /home rather than bouncing back to /phone.
-    expect(router.routerDelegate.currentConfiguration.uri.path, '/home');
-  });
-
-  testWidgets('token + PENDING session → verification screen, "under review" copy',
-      (tester) async {
-    backing['fixcare.access'] = 'a-token';
-    backing['fixcare.refresh'] = 'r-token';
+  testWidgets('PENDING → onboarding form', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
     final router = await pumpApp(tester, status: 'PENDING');
     expect(router.routerDelegate.currentConfiguration.uri.path, '/home');
-    expect(find.byKey(const Key('verificationPendingScreen')), findsOneWidget);
-    final bodyText = tester.widget<Text>(find.byKey(const Key('verificationStatusText')));
-    expect(bodyText.data, contains('under review'));
+    expect(find.byKey(const Key('onboardingScreen')), findsOneWidget);
   });
 
-  testWidgets('token + SUSPENDED session → verification screen, "suspended" copy',
-      (tester) async {
-    backing['fixcare.access'] = 'a-token';
-    backing['fixcare.refresh'] = 'r-token';
+  testWidgets('KYC_SUBMITTED → under review', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+    await pumpApp(tester, status: 'KYC_SUBMITTED');
+    expect(find.byKey(const Key('underReviewScreen')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); // dispose the poll timer
+  });
+
+  testWidgets('SUSPENDED and DEACTIVATED → suspended screen', (tester) async {
+    for (final status in ['SUSPENDED', 'DEACTIVATED']) {
+      backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+      await pumpApp(tester, status: status);
+      expect(find.byKey(const Key('suspendedScreen')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('an unknown status fails closed → suspended screen, never jobs home', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+    await pumpApp(tester, status: 'SOMETHING_NEW');
+    expect(find.byKey(const Key('suspendedScreen')), findsOneWidget);
+    expect(find.byKey(const Key('jobsHomeScreen')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('VERIFIED → jobs home', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+    await pumpApp(tester, status: 'VERIFIED');
+    expect(find.byKey(const Key('jobsHomeScreen')), findsOneWidget);
+  });
+
+  testWidgets('profile could not load → "Couldn\'t load your profile" + Retry, never a blank form', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+    await pumpApp(tester, profileFails: true);
+    expect(find.byKey(const Key('profileLoadError')), findsOneWidget);
+    expect(find.text("Couldn't load your profile"), findsOneWidget);
+    expect(find.byKey(const Key('onboardingScreen')), findsNothing);
+    await tester.tap(find.byKey(const Key('retryProfileBtn')));
+    await tester.pumpAndSettle();
+    expect(find.text('down'), findsOneWidget); // the failure is shown, not swallowed
+  });
+
+  testWidgets('a non-verified technician on a job route is sent home', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
     final router = await pumpApp(tester, status: 'SUSPENDED');
+    router.go('/job/b1');
+    await tester.pumpAndSettle();
     expect(router.routerDelegate.currentConfiguration.uri.path, '/home');
-    expect(find.byKey(const Key('verificationPendingScreen')), findsOneWidget);
-    final bodyText = tester.widget<Text>(find.byKey(const Key('verificationStatusText')));
-    expect(bodyText.data, contains('suspended'));
+    expect(find.byKey(const Key('suspendedScreen')), findsOneWidget);
   });
 }

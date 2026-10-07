@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/result.dart';
 import 'catalog_dtos.dart';
+import '../../profile/data/technician_profile_dto.dart';
 
 export 'catalog_dtos.dart';
 
@@ -56,6 +57,17 @@ class CatalogRepository {
   Future<Result<List<PartCatalogDto>>> parts({String? categoryId}) => _guard(() async {
     final res = await _dio.get('/catalog/parts', queryParameters: {if (categoryId case final String id) 'categoryId': id});
     return _parsePartsList(res);
+  });
+
+  Future<Result<List<ZoneRefDto>>> zones() => _guard(() async {
+    final res = await _dio.get('/catalog/zones');
+    final status = res.statusCode ?? 0;
+    if (status >= 200 && status < 300) {
+      final data = res.data;
+      if (data is! List) return const Failure(FailureKind.server, 'Unexpected response from the server.');
+      return Ok(data.map((e) => ZoneRefDto.fromJson((e as Map).cast<String, dynamic>())).toList());
+    }
+    return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
   });
 }
 

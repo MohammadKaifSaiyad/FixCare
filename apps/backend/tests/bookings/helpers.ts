@@ -1,4 +1,4 @@
-import type { ServiceSkill } from '@prisma/client';
+import type { AdminLevel, ServiceSkill, TechnicianStatus } from '@prisma/client';
 import { prisma } from '../schema/helpers.js';
 import { signAccessToken } from '../../src/shared/auth/tokens.js';
 
@@ -11,10 +11,14 @@ export async function makeCustomer(): Promise<{ token: string; userId: string; c
   return { token: signAccessToken(user.id, 'CUSTOMER'), userId: user.id, customerId: c.id };
 }
 
-export async function makeAdminToken(): Promise<string> {
+export async function makeAdmin(level: AdminLevel = 'MANAGER'): Promise<{ token: string; userId: string }> {
   const user = await prisma.user.create({ data: { phone: uniquePhone(), role: 'ADMIN' } });
-  await prisma.admin.create({ data: { userId: user.id, name: 'Adm', email: `adm-${user.id}@fixcare.in`, passwordHash: 'x', adminLevel: 'MANAGER' } });
-  return signAccessToken(user.id, 'ADMIN');
+  await prisma.admin.create({ data: { userId: user.id, name: 'Adm', email: `adm-${user.id}@fixcare.in`, passwordHash: 'x', adminLevel: level } });
+  return { token: signAccessToken(user.id, 'ADMIN'), userId: user.id };
+}
+
+export async function makeAdminToken(level: AdminLevel = 'MANAGER'): Promise<string> {
+  return (await makeAdmin(level)).token;
 }
 
 let fixtureSeq = 0;
@@ -39,9 +43,12 @@ export async function seedBookable(customerId: string, opts?: { visitFeePaise?: 
   return { zone, cat, service, address, visitFeePaise, laborPaise, zoneName, pincode };
 }
 
-export async function makeTechnician(skills: ServiceSkill[] = ['AC'], status: 'VERIFIED' | 'PENDING' = 'VERIFIED') {
+/** A technician with the given skills / status, linked to `zoneIds` (dispatch only offers in-zone jobs —
+ *  a test that goes through /available or /accept must pass the booking's zone). */
+export async function makeTechnician(skills: ServiceSkill[] = ['AC'], status: TechnicianStatus = 'VERIFIED', zoneIds: string[] = []) {
   const user = await prisma.user.create({ data: { phone: uniquePhone(), role: 'TECHNICIAN' } });
   const t = await prisma.technician.create({ data: { userId: user.id, name: 'Tech', skills, status } });
+  if (zoneIds.length) await prisma.technicianZone.createMany({ data: zoneIds.map((zoneId) => ({ technicianId: t.id, zoneId })) });
   return { token: signAccessToken(user.id, 'TECHNICIAN'), userId: user.id, technicianId: t.id };
 }
 

@@ -11,9 +11,9 @@ class AuthRepository {
   final Dio _dio;
 
   // This is the customer app: every OTP registration/login is a CUSTOMER. The
-  // backend requires `role` on both /auth/otp/send and /auth/otp/verify (it's
-  // ignored for an existing user — their stored role wins — but must be present
-  // to pass validation, and it picks the profile type for a brand-new phone).
+  // backend requires `role` on both /auth/otp/send and /auth/otp/verify. The role
+  // is checked at verify — an existing number with a different role gets 409
+  // `ROLE_MISMATCH` — and it picks the profile type for a brand-new phone.
   static const _role = 'CUSTOMER';
 
   Future<Result<T>> _post<T>(String path, Object body, T Function(Map<String, dynamic>) parse) async {
@@ -30,10 +30,10 @@ class AuthRepository {
         }
         return Ok(parse(data.cast<String, dynamic>()));
       }
-      return Failure(failureKindFromStatus(status), _msg(res.data));
+      return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
     } on DioException catch (e) {
       if (e.response != null) {
-        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data));
+        return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));
       }
       return Failure(FailureKind.network, 'Network error. Check your connection.');
     }

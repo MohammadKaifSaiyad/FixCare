@@ -167,6 +167,10 @@ Every fraud vector and its specific structural block.
 - ₹500 deposit from technician's verified bank account
 - Periodic re-verification at trust threshold transitions
 
+**Remaining gap (V1):** VERIFIED currently means "ops verified in person". No document or identity evidence is
+stored, and none of the defenses above exist yet. Interim ops checklist before verifying: identity seen in person,
+skills confirmed (see the technician review runbook).
+
 ---
 
 ### 15. Fake Service Categories
@@ -200,6 +204,35 @@ Every fraud vector and its specific structural block.
 - Approve is not bound to a cart version or an expected total. This is latent: it only becomes a hole if something ever writes parts after ARRIVED.
 - No estimate revision: a wrong estimate can only be declined, and the visit fee stays.
 - No rule yet watches visit-fee farming through deliberately bad estimates (see #1).
+
+---
+
+### 17. Ops Insider Abuse of Technician Lifecycle / Routing
+**Attack:** An ops user verifies an unvetted technician, suspends a rival's technician, or edits skills/zones to steer jobs to a friend.
+
+**Defense (implemented):**
+- Every lifecycle route (verify, send-back, suspend, reinstate) and the skills/zones edit is gated to MANAGER admins.
+- Every status transition writes an audit row (actor, from/to) in the same transaction; send-back and suspend require a reason.
+- Admin skills/zones edits record before/after of the edited fields.
+
+**Remaining gaps:**
+- No reason is required on verify, reinstate or an admin edit.
+- No two-person rule for verify.
+- Audit rows carry no IP or device.
+
+---
+
+### 18. Suspend-Evasion via an Active Job
+**Attack:** A technician keeps a job open to avoid being suspended, or a suspended technician keeps collecting cash.
+
+**Defense (implemented):**
+- Suspend is refused while a job is between ACCEPTED and REPAIR_COMPLETE (the customer must not be stranded).
+- Payment-only states (CUSTOMER_CONFIRMED, DECLINED_BY_CUSTOMER) no longer block, so a technician can't evade suspension by sitting on an unpaid job. A suspended technician can't collect cash and the cash option falls back to UPI.
+- Suspend is also refused (409 `TECHNICIAN_COLLECTING_CASH`) while a CASH payment attempt is CREATED and younger than the receipt code's 10-minute life, so a handover the customer is mid-way through is never stranded.
+
+**Remaining gaps:**
+- No force-suspend and no ops cancel/close path for stuck bookings.
+- (Closed) The suspend/accept race: suspend flips the status first, then counts active jobs; accept locks and re-checks the technician row in its own transaction, so exactly one of them wins.
 
 ---
 

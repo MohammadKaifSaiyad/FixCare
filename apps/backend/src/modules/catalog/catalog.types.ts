@@ -46,3 +46,6 @@ export interface DiagnosedIssueDto { id: string; name: string; categoryId: strin
 export function toDiagnosedIssueDto(i: DiagnosedIssue): DiagnosedIssueDto {
   return { id: i.id, name: i.name, categoryId: i.categoryId, status: i.status };
 }
+
+/** A zone's id + display name — what other modules (technician service zones) need, nothing more. */
+export interface ZoneRef { id: string; name: string; }

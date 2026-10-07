@@ -85,7 +85,7 @@ describe('GET/list + cancel /me/bookings', () => {
     const c = await makeCustomer();
     const f = await seedBookable(c.customerId);
     const booking = await createBooking(c.token, f.address.id, f.service.id);
-    const t = await makeTechnician(['AC']);
+    const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
     await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) });
     const got = (await app.inject({ method: 'GET', url: `/me/bookings/${booking.id}`, headers: auth(c.token) })).json();
     expect(got.state).toBe('ACCEPTED');

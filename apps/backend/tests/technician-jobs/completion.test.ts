@@ -14,7 +14,7 @@ function future() { return new Date(Date.now() + 86_400_000).toISOString(); }
 async function repairCompleteBooking() {
   const c = await makeCustomer();
   const f = await seedBookable(c.customerId);
-  const t = await makeTechnician(['AC']);
+  const t = await makeTechnician(['AC'], 'VERIFIED', [f.zone.id]);
   const booking = (await app.inject({ method: 'POST', url: '/me/bookings', headers: auth(c.token), payload: { addressId: f.address.id, serviceId: f.service.id, scheduledSlot: future() } })).json();
   await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/accept`, headers: auth(t.token) });
   await app.inject({ method: 'POST', url: `/technician/jobs/${booking.id}/en-route`, headers: auth(t.token) });

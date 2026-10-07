@@ -11,9 +11,9 @@ class AuthRepository {
   final Dio _dio;
 
   // This is the technician app: every OTP registration/login is a TECHNICIAN. The
-  // backend requires `role` on both /auth/otp/send and /auth/otp/verify (it's
-  // ignored for an existing user — their stored role wins — but must be present
-  // to pass validation, and it picks the profile type for a brand-new phone).
+  // backend requires `role` on both /auth/otp/send and /auth/otp/verify. The role
+  // is checked at verify — an existing number with a different role gets 409
+  // `ROLE_MISMATCH` — and it picks the profile type for a brand-new phone.
   static const _role = 'TECHNICIAN';
 
   Future<Result<T>> _post<T>(String path, Object body, T Function(Map<String, dynamic>) parse) async {

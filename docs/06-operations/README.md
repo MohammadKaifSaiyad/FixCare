@@ -8,6 +8,7 @@ response. These grow as the platform becomes real (Month 2+ once deployed).
 - `monitoring.md` — Sentry, PostHog, uptime, alerting setup
 - `backups-and-recovery.md` — backup schedule + restore-drill runbook
 - `runbooks/` — "what to do when X breaks" (DB down, Razorpay webhook failing, etc.)
+- `technician-review-runbook.md` — ops review of technicians via the admin API: verify / send back / suspend / reinstate, zones and skills
 
 > Currently a stub. Until these files exist, operational detail lives inside
 > `docs/03-tech-stack/infrastructure.md` (security, monitoring, backups, costs).

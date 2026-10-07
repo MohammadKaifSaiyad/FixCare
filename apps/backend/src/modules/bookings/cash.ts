@@ -2,7 +2,8 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { mintOtp, verifyOtp } from '../../shared/auth/otp-store.js';
 
 // Same knobs as the completion code (10-min TTL, 5 attempts, 3 sends / 15 min — real SMS spend).
-const TTL_SECONDS = 600;
+/** The cash receipt OTP's lifetime — also the window in which a CREATED cash attempt is still live. */
+export const CASH_RECEIPT_TTL_SECONDS = 600;
 const MAX_ATTEMPTS = 5;
 const SEND_LIMIT = { max: 3, windowSeconds: 900 };
 const key = (bookingId: string) => `cash-receipt:${bookingId}`;
@@ -14,7 +15,7 @@ export type CashReceiptMint = { status: 'ok'; code: string } | { status: 'thrott
 
 /** Mint the single-use cash receipt code to the CUSTOMER. A re-mint replaces any prior code. */
 export async function mintCashReceiptCode(bookingId: string, payload: CashReceiptPayload): Promise<CashReceiptMint> {
-  return mintOtp(key(bookingId), { ttlSeconds: TTL_SECONDS, sendLimit: SEND_LIMIT }, payload);
+  return mintOtp(key(bookingId), { ttlSeconds: CASH_RECEIPT_TTL_SECONDS, sendLimit: SEND_LIMIT }, payload);
 }
 
 export type CashReceiptVerify =
@@ -62,4 +63,17 @@ export async function cashCollectedLast24hPaise(
     where: { method: 'CASH', status: 'CAPTURED', capturedAt: { gt: new Date(Date.now() - CASH_WINDOW_MS) }, booking: { technicianId } },
   });
   return agg._sum.amountPaise ?? 0;
+}
+
+/** CASH attempts still awaiting their receipt OTP for this technician's bookings (CREATED and younger than the
+ *  OTP's lifetime). Suspending now would strand a handover the customer is mid-way through. */
+export async function countLiveCashAttemptsForTechnician(tx: Prisma.TransactionClient, technicianId: string, now: Date): Promise<number> {
+  return tx.payment.count({
+    where: {
+      method: 'CASH',
+      status: 'CREATED',
+      createdAt: { gt: new Date(now.getTime() - CASH_RECEIPT_TTL_SECONDS * 1000) },
+      booking: { technicianId },
+    },
+  });
 }
