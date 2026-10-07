@@ -471,6 +471,7 @@ model LedgerEntry {
   amountPaise  Int
   metadata     Json? // rate bps + base at close; actor for manual entries. Ids and paise only — no PII.
   createdAt    DateTime        @default(now())
+  payoutRequest PayoutRequest?
 
   @@index([technicianId, createdAt]) // time-range sweeps / drill-down
   @@index([technicianId, type]) // the balance groupBy (SUM by type WHERE technicianId)
@@ -489,6 +490,7 @@ enum LedgerEntryType {
 /// A technician's request to be paid what FixCare owes them (net of cash debt). Ops transfers the money by hand, then
 /// marks it PAID — which writes the CASH_DEBT_OFFSET (if any) + PAYOUT ledger entries in the same locked transaction —
 /// or REJECTED with a reason. One open (REQUESTED) request per technician, enforced under the technician row lock.
+/// No deletedAt — an evidence record whose lifecycle is carried by `status` (like Dispute / LedgerEntry).
 model PayoutRequest {
   id            String              @id @default(uuid())
   technicianId  String
@@ -499,6 +501,7 @@ model PayoutRequest {
   reviewedBy    String?             // admin user id
   reviewedAt    DateTime?
   payoutEntryId String?             @unique // the PAYOUT LedgerEntry written when marked paid
+  payoutEntry   LedgerEntry?        @relation(fields: [payoutEntryId], references: [id], onDelete: Restrict)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 

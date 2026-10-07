@@ -21,9 +21,16 @@ describe('PayoutRequest model', () => {
 
   it('a ledger entry backs at most one request (payoutEntryId is unique)', async () => {
     const t = await tech();
-    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, payoutEntryId: 'e1' } });
-    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, payoutEntryId: 'e1' } }))
+    const e = await prisma.ledgerEntry.create({ data: { technicianId: t.id, type: 'PAYOUT', amountPaise: 100 } });
+    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, payoutEntryId: e.id } });
+    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, payoutEntryId: e.id } }))
       .rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('a payoutEntryId matching no ledger entry is rejected (FK)', async () => {
+    const t = await tech();
+    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, payoutEntryId: 'missing' } }))
+      .rejects.toMatchObject({ code: 'P2003' });
   });
 
   it('PAYOUT_MIN_PAISE defaults to ₹100', () => {
