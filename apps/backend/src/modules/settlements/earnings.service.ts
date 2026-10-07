@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
 import { ForbiddenError } from '../../shared/errors.js';
@@ -13,7 +14,7 @@ export async function technicianForUser(userId: string): Promise<{ id: string }>
 
 export async function earningsSummary(userId: string): Promise<EarningsSummaryDto> {
   const tech = await technicianForUser(userId);
-  // One snapshot: balance, debt, pending and the latest request read in the same transaction.
+  // One REPEATABLE READ snapshot: balance, debt, pending and the latest request read in the same transaction.
   return prisma.$transaction(async (tx) => {
     const owedPaise = await payableBalancePaise(tx, tech.id);
     const { cashDebtPaise } = await tx.technician.findUniqueOrThrow({ where: { id: tech.id }, select: { cashDebtPaise: true } });
@@ -46,5 +47,5 @@ export async function earningsSummary(userId: string): Promise<EarningsSummaryDt
       pending,
       latestPayoutRequest: latest ? toPayoutRequestDto(latest) : null,
     };
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
