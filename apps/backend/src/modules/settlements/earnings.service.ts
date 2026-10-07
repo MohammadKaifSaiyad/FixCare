@@ -3,7 +3,8 @@ import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
 import { ForbiddenError } from '../../shared/errors.js';
 import { payableBalancePaise, splitPaise } from './settlements.service.js';
-import { toPayoutRequestDto, type EarningsSummaryDto, type PendingReleaseDto } from './settlements.types.js';
+import { toPayoutRequestDto, type EarningsSummaryDto, type LedgerPageDto, type PendingReleaseDto } from './settlements.types.js';
+import { decodeLedgerCursor, encodeLedgerCursor, type LedgerQuery } from './settlements.schemas.js';
 
 /** The caller's technician row (any status — a suspended technician is still owed their money). */
 export async function technicianForUser(userId: string): Promise<{ id: string }> {
@@ -48,4 +49,28 @@ export async function earningsSummary(userId: string): Promise<EarningsSummaryDt
       latestPayoutRequest: latest ? toPayoutRequestDto(latest) : null,
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+export async function ledgerStatement(userId: string, q: LedgerQuery): Promise<LedgerPageDto> {
+  const tech = await technicianForUser(userId);
+  const c = q.before ? decodeLedgerCursor(q.before) : null;
+  const rows = await prisma.ledgerEntry.findMany({
+    where: {
+      technicianId: tech.id,
+      ...(c ? { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] } : {}),
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: q.limit + 1, // one extra row tells us whether another page exists
+    include: { booking: { select: { bookingNumber: true, service: { select: { name: true } } } } },
+  });
+  const pageRows = rows.slice(0, q.limit);
+  const last = pageRows[pageRows.length - 1];
+  return {
+    entries: pageRows.map((e) => ({
+      id: e.id, type: e.type, amountPaise: e.amountPaise,
+      bookingNumber: e.booking?.bookingNumber ?? null, serviceName: e.booking?.service.name ?? null,
+      createdAt: e.createdAt.toISOString(),
+    })),
+    nextCursor: rows.length > q.limit && last ? encodeLedgerCursor(last.createdAt, last.id) : null,
+  };
 }

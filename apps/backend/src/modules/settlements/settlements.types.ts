@@ -38,3 +38,13 @@ export interface EarningsSummaryDto {
   pending: PendingReleaseDto[];
   latestPayoutRequest: PayoutRequestDto | null;
 }
+
+export interface LedgerEntryDto {
+  id: string;
+  type: string;
+  amountPaise: number;
+  bookingNumber: string | null;
+  serviceName: string | null;
+  createdAt: string;
+}
+export interface LedgerPageDto { entries: LedgerEntryDto[]; nextCursor: string | null; }

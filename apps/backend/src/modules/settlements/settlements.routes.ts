@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ForbiddenError, ValidationError } from '../../shared/errors.js';
-import { settlementAmountBody } from './settlements.schemas.js';
-import { earningsSummary } from './earnings.service.js';
+import { ledgerQuery, settlementAmountBody } from './settlements.schemas.js';
+import { earningsSummary, ledgerStatement } from './earnings.service.js';
 import { technicianBalance, recordPayout, recordRepayment, getTechnicianSettlement } from './settlements.service.js';
 
 export async function registerSettlementRoutes(app: FastifyInstance): Promise<void> {
@@ -14,6 +14,13 @@ export async function registerSettlementRoutes(app: FastifyInstance): Promise<vo
   app.get('/technician/me/earnings', { preHandler: [requireAuth] }, async (req, reply) => {
     if (req.user!.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
     return reply.send(await earningsSummary(req.user!.id));
+  });
+
+  app.get('/technician/me/ledger', { preHandler: [requireAuth] }, async (req, reply) => {
+    if (req.user!.role !== 'TECHNICIAN') throw new ForbiddenError('Technician access required');
+    const p = ledgerQuery.safeParse(req.query);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await ledgerStatement(req.user!.id, p.data));
   });
 
   app.post('/admin/settlements/payouts', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
