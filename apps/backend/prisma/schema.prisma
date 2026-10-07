@@ -102,6 +102,7 @@ model Technician {
   bookings       Booking[]
   jobSkips       JobSkip[]
   ledgerEntries  LedgerEntry[]
+  payoutRequests PayoutRequest[]
   zones          TechnicianZone[]
 }
 
@@ -483,6 +484,32 @@ enum LedgerEntryType {
   PAYOUT
   DEBT_REPAYMENT
   DISPUTE_REVERSAL
+}
+
+/// A technician's request to be paid what FixCare owes them (net of cash debt). Ops transfers the money by hand, then
+/// marks it PAID — which writes the CASH_DEBT_OFFSET (if any) + PAYOUT ledger entries in the same locked transaction —
+/// or REJECTED with a reason. One open (REQUESTED) request per technician, enforced under the technician row lock.
+model PayoutRequest {
+  id            String              @id @default(uuid())
+  technicianId  String
+  technician    Technician          @relation(fields: [technicianId], references: [id])
+  amountPaise   Int                 // the net amount the technician saw when requesting (positive)
+  status        PayoutRequestStatus @default(REQUESTED)
+  reviewNote    String?             // ops' reject reason, shown to the technician
+  reviewedBy    String?             // admin user id
+  reviewedAt    DateTime?
+  payoutEntryId String?             @unique // the PAYOUT LedgerEntry written when marked paid
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([technicianId, createdAt])
+  @@index([status, createdAt])
+}
+
+enum PayoutRequestStatus {
+  REQUESTED
+  PAID
+  REJECTED
 }
 
 // Case record, evidence-adjacent to Payment/LedgerEntry — no soft-delete; status carries the

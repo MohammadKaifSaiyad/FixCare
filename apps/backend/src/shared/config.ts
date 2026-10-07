@@ -27,6 +27,8 @@ const ConfigSchema = z.object({
   // the trust module lands. Velocity cap is per-technician over a trailing 24h window.
   CASH_DEBT_LIMIT_PAISE: z.coerce.number().int().positive().default(50000),
   CASH_VELOCITY_CAP_PAISE: z.coerce.number().int().positive().default(300000),
+  // Smallest net payout a technician can request (integer paise). Stops ₹12 transfers.
+  PAYOUT_MIN_PAISE: z.coerce.number().int().positive().default(10000),
   // Settlement (B6c). Commission in basis points (2000 = 20% platform / 80% technician —
   // pricing-model.md split table). Sweep closes PAYMENT_RECEIVED bookings paid > window ago.
   COMMISSION_RATE_BPS: z.coerce.number().int().min(0).max(10000).default(2000),
