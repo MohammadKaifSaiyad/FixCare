@@ -2,9 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ForbiddenError, ValidationError } from '../../shared/errors.js';
-import { ledgerQuery, settlementAmountBody } from './settlements.schemas.js';
+import { reasonBody } from '../../shared/validation/review-reason.js';
+import { ledgerQuery, listPayoutRequestsQuery, payoutRequestIdParams, settlementAmountBody } from './settlements.schemas.js';
 import { earningsSummary, ledgerStatement } from './earnings.service.js';
-import { requestPayout } from './payout-requests.service.js';
+import { listPayoutRequests, payPayoutRequest, rejectPayoutRequest, requestPayout } from './payout-requests.service.js';
 import { technicianBalance, recordPayout, recordRepayment, getTechnicianSettlement } from './settlements.service.js';
 
 export async function registerSettlementRoutes(app: FastifyInstance): Promise<void> {
@@ -43,5 +44,27 @@ export async function registerSettlementRoutes(app: FastifyInstance): Promise<vo
 
   app.get('/admin/settlements/technicians/:id', { preHandler: [requireAuth, requireAdminLevel('MANAGER')] }, async (req, reply) => {
     return reply.send(await getTechnicianSettlement((req.params as { id: string }).id));
+  });
+
+  const manager = { preHandler: [requireAuth, requireAdminLevel('MANAGER')] };
+
+  app.get('/admin/payout-requests', manager, async (req, reply) => {
+    const q = listPayoutRequestsQuery.safeParse(req.query);
+    if (!q.success) throw new ValidationError(q.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await listPayoutRequests(q.data.status));
+  });
+
+  app.post('/admin/payout-requests/:id/pay', manager, async (req, reply) => {
+    const p = payoutRequestIdParams.safeParse(req.params);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await payPayoutRequest(req.user!.id, p.data.id));
+  });
+
+  app.post('/admin/payout-requests/:id/reject', manager, async (req, reply) => {
+    const p = payoutRequestIdParams.safeParse(req.params);
+    if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
+    const b = reasonBody.safeParse(req.body);
+    if (!b.success) throw new ValidationError(b.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await rejectPayoutRequest(req.user!.id, p.data.id, b.data.reason));
   });
 }

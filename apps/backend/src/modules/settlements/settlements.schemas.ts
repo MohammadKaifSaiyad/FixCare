@@ -25,3 +25,6 @@ export const ledgerQuery = z.object({
   before: z.string().min(1).refine((c) => decodeLedgerCursor(c) !== null, 'Invalid cursor').optional(),
 }).strict();
 export type LedgerQuery = z.infer<typeof ledgerQuery>;
+
+export const payoutRequestIdParams = z.object({ id: z.string().uuid('Invalid payout request id') });
+export const listPayoutRequestsQuery = z.object({ status: z.enum(['REQUESTED', 'PAID', 'REJECTED']).optional() }).strict();

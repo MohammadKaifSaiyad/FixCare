@@ -48,3 +48,13 @@ export interface LedgerEntryDto {
   createdAt: string;
 }
 export interface LedgerPageDto { entries: LedgerEntryDto[]; nextCursor: string | null; }
+
+export interface AdminPayoutRequestDto extends PayoutRequestDto {
+  technicianId: string;
+  technicianName: string;
+  maskedPhone: string;
+  /** Amount of the PAYOUT entry when PAID (may differ from amountPaise if money moved in between). */
+  paidPaise: number | null;
+  currentOwedPaise: number;
+  currentCashDebtPaise: number;
+}
