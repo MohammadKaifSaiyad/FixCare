@@ -8,6 +8,22 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-08 — Technician app Slice 4: earnings, cash debt + payout requests (on branch)
+
+- **Backend:** technician earnings summary, pending releases and cursor-paged money history; `POST
+  /technician/me/payout-requests` (one open at a time, net of cash debt, minimum `PAYOUT_MIN_PAISE` default ₹100).
+  Ops (MANAGER) `GET /admin/payout-requests`, `POST …/:id/pay {amountPaise}` and `POST …/:id/reject {reason}`. Pay
+  requires the amount ops transferred; the server recomputes under the technician row lock and a mismatch is 409
+  `PAYOUT_AMOUNT_CHANGED` with nothing written; cash debt is netted (CASH_DEBT_OFFSET) before the PAYOUT; 409
+  `NOTHING_TO_PAY` / `PAYOUT_REQUEST_NOT_OPEN`. The technician sees `paidPaise`. Everything audited. Two additive
+  migrations: `technician_payout_requests`, `payout_request_entry_fk`.
+- **Technician app:** Earnings screen (balance, pending releases, cash debt, payout request, money history with Load
+  more), money card on jobs home, Earnings reachable when suspended.
+- **Docs:** ops runbook section 7 "Payout requests".
+- Gates: backend 475/475 (78 files), technician 407, customer app untouched; `pnpm build` / `flutter analyze` clean.
+
+---
+
 ## 2026-10-03 — Technician app Slice 3: /code-review fix wave
 
 - **Backend:** suspend refused (409 `TECHNICIAN_COLLECTING_CASH`) while a fresh CREATED cash payment exists; suspend/accept

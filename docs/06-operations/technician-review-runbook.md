@@ -116,3 +116,69 @@ Before zones existed a VERIFIED technician was offered every zone's jobs. The mi
 `technician_zone_backfill` preserves that: every existing VERIFIED or SUSPENDED technician was given every ACTIVE zone,
 so nobody loses jobs at deploy. Ops should then narrow each technician to the zones they actually work in, using
 section 4 (`PATCH ... {"zoneIds":[...]}`). Technicians who onboard after the deploy choose their own zones.
+
+## 7. Payout requests
+
+A VERIFIED technician taps "Request payout" in the app. The request asks for everything currently owed **minus the cash
+they hold** (cash debt), and must be at least `PAYOUT_MIN_PAISE` (default 10000 paise = ₹100; below it the app gets
+422 `PAYOUT_BELOW_MINIMUM`). One open request per technician (409 `PAYOUT_ALREADY_REQUESTED`). Bank/UPI details are
+**collected in person, not in the app** — the platform never stores them. Money is paid by hand (Golden Rule 1: the
+request, the pay and the reject all write audit rows).
+
+### The queue
+
+```bash
+curl -s "$BASE/admin/payout-requests?status=REQUESTED" -H "authorization: Bearer $ADMIN" | jq
+# status is optional: REQUESTED | PAID | REJECTED (omit for all). Oldest first.
+```
+
+Each row: `id`, `status`, `amountPaise` (what the technician asked for), `technicianName`, `maskedPhone`,
+`currentOwedPaise`, `currentCashDebtPaise` and **`currentNetPaise` = owed − cash debt = what to transfer right now**
+(it can differ from `amountPaise` if money moved since the request). All amounts are integer paise (10000 = ₹100).
+
+### Paying
+
+1. Read `currentNetPaise` from the queue. Transfer exactly that amount **by hand first**, to the details collected in
+   person.
+2. Then record it, stating the exact amount you transferred:
+
+```bash
+REQ=<payout request id from the queue>
+curl -s -X POST "$BASE/admin/payout-requests/$REQ/pay" -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"amountPaise": <currentNetPaise you transferred>}' | jq
+```
+
+The body is required and strict: `{"amountPaise": <positive integer paise>}`; anything else is 400. Under the technician
+lock the server recomputes the figure. **Cash debt is netted first** (a `CASH_DEBT_OFFSET` ledger entry clears the
+debt from what is owed), then a `PAYOUT` entry is written for the rest and the request closes as PAID. The response is
+the request with `status: "PAID"` and **`paidPaise`** = the amount actually paid, which the technician sees in the app
+(it can differ from the requested `amountPaise` if money moved before you paid).
+
+Errors (all 409; nothing is written):
+- `PAYOUT_AMOUNT_CHANGED` — "The amount to pay is now ₹X — check it before marking paid". Your amount differs from the
+  server's current figure (a settlement released, cash debt changed). Re-read the queue, settle the difference with the
+  technician (top up or recover), and retry with the new amount.
+- `NOTHING_TO_PAY` — cash debt now covers everything owed. Do not transfer anything; **reject** the request instead.
+- `PAYOUT_REQUEST_NOT_OPEN` — already paid or rejected (maybe by another admin). Re-list.
+- 404 — unknown id; 400 — malformed (non-uuid) id.
+
+### Rejecting
+
+```bash
+curl -s -X POST "$BASE/admin/payout-requests/$REQ/reject" -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"reason":"Please visit the ops desk to confirm your payout details."}' | jq
+```
+
+The reason is 1-500 characters, **shown to the technician in the app and stored in the audit log**: never include a
+phone number, account/UPI/ID number or document number (the API refuses any 10+-digit run, separators ignored).
+Same 409 `PAYOUT_REQUEST_NOT_OPEN` if the request is already closed. A rejected request can be re-raised by the
+technician.
+
+### Do not use the legacy payout endpoint
+
+`POST /admin/settlements/payouts` still records a bare PAYOUT **without netting cash debt or closing an open request**.
+Use the request flow above until that endpoint is retired or gated (tracked in STATUS.md).
+
+### Deploy note
+
+Two additive migrations (`technician_payout_requests`, `payout_request_entry_fk`); deploy the backend before the app.
