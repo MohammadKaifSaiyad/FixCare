@@ -37,6 +37,9 @@ export async function earningsSummary(userId: string): Promise<EarningsSummaryDt
       };
     });
     const latest = await tx.payoutRequest.findFirst({ where: { technicianId: tech.id }, orderBy: { createdAt: 'desc' } });
+    const paidEntry = latest?.status === 'PAID' && latest.payoutEntryId
+      ? await tx.ledgerEntry.findUnique({ where: { id: latest.payoutEntryId }, select: { amountPaise: true } })
+      : null;
     return {
       owedPaise,
       netPayoutPaise: Math.max(0, owedPaise - cashDebtPaise),
@@ -46,7 +49,7 @@ export async function earningsSummary(userId: string): Promise<EarningsSummaryDt
       acceptBlocked: cashDebtPaise > config.CASH_DEBT_LIMIT_PAISE, // the exact rule acceptJob uses
       payoutMinPaise: config.PAYOUT_MIN_PAISE,
       pending,
-      latestPayoutRequest: latest ? toPayoutRequestDto(latest) : null,
+      latestPayoutRequest: latest ? toPayoutRequestDto(latest, paidEntry?.amountPaise ?? null) : null,
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }

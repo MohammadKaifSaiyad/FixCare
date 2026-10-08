@@ -45,7 +45,7 @@ describe('admin payout requests', () => {
     const list = res.json() as Array<Record<string, unknown>>;
     expect(list.map((r) => r.id)).toEqual([a.requestId, b.requestId]);
     const phone = (await prisma.user.findUniqueOrThrow({ where: { id: b.t.userId } })).phone;
-    expect(list[1]).toMatchObject({ technicianName: 'Tech', maskedPhone: `••••••${phone.slice(-4)}`, amountPaise: 25000, status: 'REQUESTED', paidPaise: null, currentOwedPaise: 30000, currentCashDebtPaise: 5000 });
+    expect(list[1]).toMatchObject({ technicianName: 'Tech', maskedPhone: `••••••${phone.slice(-4)}`, amountPaise: 25000, status: 'REQUESTED', paidPaise: null, currentOwedPaise: 30000, currentCashDebtPaise: 5000, currentNetPaise: 25000 });
     expect(res.body).not.toContain(phone);
     expect((await app.inject({ method: 'GET', url: '/admin/payout-requests?status=NOPE', headers: auth(admin) })).statusCode).toBe(400);
   });
@@ -55,7 +55,13 @@ describe('admin payout requests', () => {
     await ledger(t.technicianId, [{ type: 'CASH_COLLECTED', amountPaise: 5000 }]); // more cash collected after the request
     await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: 15000 } });
     const admin = await makeAdmin();
-    const res = await post(admin.token, `/admin/payout-requests/${requestId}/pay`);
+    const stale = await post(admin.token, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 50000 });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toEqual({ code: 'PAYOUT_AMOUNT_CHANGED', message: 'The amount to pay is now ₹450 — check it before marking paid' });
+    expect(await prisma.ledgerEntry.count({ where: { type: { in: ['PAYOUT', 'CASH_DEBT_OFFSET'] } } })).toBe(0);
+    expect((await prisma.technician.findUniqueOrThrow({ where: { id: t.technicianId } })).cashDebtPaise).toBe(15000);
+    expect((await prisma.payoutRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe('REQUESTED');
+    const res = await post(admin.token, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 45000 });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ status: 'PAID', amountPaise: 50000, paidPaise: 45000, currentOwedPaise: 0, currentCashDebtPaise: 0 });
     const req = await prisma.payoutRequest.findUniqueOrThrow({ where: { id: requestId } });
@@ -69,27 +75,52 @@ describe('admin payout requests', () => {
     expect(audit.metadata).toMatchObject({ event: 'payout_request_paid', payoutRequestId: requestId, requestedPaise: 50000, offsetPaise: 15000, paidPaise: 45000 });
   });
 
+  it('pay: earnings credited after the request → requested amount is rejected, the new net is accepted', async () => {
+    const { t, requestId } = await openRequest(60000); // requested 60000
+    await ledger(t.technicianId, [{ type: 'EARNING_CREDIT', amountPaise: 20000 }]);
+    const admin = await makeAdminToken();
+    const stale = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60000 });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toEqual({ code: 'PAYOUT_AMOUNT_CHANGED', message: 'The amount to pay is now ₹800 — check it before marking paid' });
+    expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(0);
+    const queue = (await app.inject({ method: 'GET', url: '/admin/payout-requests', headers: auth(admin) })).json() as Array<Record<string, unknown>>;
+    expect(queue[0]).toMatchObject({ currentNetPaise: 80000 });
+    const ok = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 80000 });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ status: 'PAID', amountPaise: 60000, paidPaise: 80000 });
+  });
+
+  it('pay: missing or invalid body → 400, nothing written', async () => {
+    const { requestId } = await openRequest(60000);
+    const admin = await makeAdminToken();
+    const url = `/admin/payout-requests/${requestId}/pay`;
+    for (const payload of [undefined, {}, { amountPaise: 0 }, { amountPaise: -5 }, { amountPaise: 600.5 }, { amountPaise: '60000' }, { amountPaise: 60000, extra: 1 }]) {
+      expect((await post(admin, url, payload)).statusCode).toBe(400);
+    }
+    expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(0);
+  });
+
   it('pay: 409 NOTHING_TO_PAY when debt now covers everything (nothing written); 409 when not open; 404 missing', async () => {
     const { t, requestId } = await openRequest(30000); // requested 30000
     await ledger(t.technicianId, [{ type: 'CASH_COLLECTED', amountPaise: 30000 }]);
     await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: 30000 } });
     const admin = await makeAdminToken();
-    const res = await post(admin, `/admin/payout-requests/${requestId}/pay`);
+    const res = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 30000 });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({ code: 'NOTHING_TO_PAY', message: 'Nothing is owed after settling cash debt — reject this request instead' });
     expect(await prisma.ledgerEntry.count({ where: { type: { in: ['PAYOUT', 'CASH_DEBT_OFFSET'] } } })).toBe(0);
     expect((await prisma.technician.findUniqueOrThrow({ where: { id: t.technicianId } })).cashDebtPaise).toBe(30000);
     expect((await post(admin, `/admin/payout-requests/${requestId}/reject`, { reason: 'Covered by your cash collections' })).statusCode).toBe(200);
-    const notOpen = await post(admin, `/admin/payout-requests/${requestId}/pay`);
+    const notOpen = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 30000 });
     expect(notOpen.json()).toEqual({ code: 'PAYOUT_REQUEST_NOT_OPEN', message: 'This payout request is no longer open' });
-    expect((await post(admin, '/admin/payout-requests/00000000-0000-0000-0000-000000000000/pay')).statusCode).toBe(404);
-    expect((await post(admin, '/admin/payout-requests/not-a-uuid/pay')).statusCode).toBe(400);
+    expect((await post(admin, '/admin/payout-requests/00000000-0000-0000-0000-000000000000/pay', { amountPaise: 100 })).statusCode).toBe(404);
+    expect((await post(admin, '/admin/payout-requests/not-a-uuid/pay', { amountPaise: 100 })).statusCode).toBe(400);
   });
 
   it('two concurrent pays of one request → exactly one PAYOUT', async () => {
     const { requestId } = await openRequest(60000);
     const admin = await makeAdminToken();
-    const [a, b] = await Promise.all([post(admin, `/admin/payout-requests/${requestId}/pay`), post(admin, `/admin/payout-requests/${requestId}/pay`)]);
+    const [a, b] = await Promise.all([post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60000 }), post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60000 })]);
     expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
     expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(1);
   });
@@ -97,7 +128,7 @@ describe('admin payout requests', () => {
   it('pay racing reject → exactly one terminal state, at most one PAYOUT', async () => {
     const { requestId } = await openRequest(60000);
     const admin = await makeAdminToken();
-    const [p, r] = await Promise.all([post(admin, `/admin/payout-requests/${requestId}/pay`), post(admin, `/admin/payout-requests/${requestId}/reject`, { reason: 'Duplicate' })]);
+    const [p, r] = await Promise.all([post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60000 }), post(admin, `/admin/payout-requests/${requestId}/reject`, { reason: 'Duplicate' })]);
     expect([p.statusCode, r.statusCode].sort()).toEqual([200, 409]);
     const final = await prisma.payoutRequest.findUniqueOrThrow({ where: { id: requestId } });
     expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(final.status === 'PAID' ? 1 : 0);

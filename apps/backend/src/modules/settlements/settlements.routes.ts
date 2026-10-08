@@ -3,7 +3,7 @@ import { requireAuth } from '../../shared/middleware/auth.js';
 import { requireAdminLevel } from '../../shared/middleware/rbac.js';
 import { ForbiddenError, ValidationError } from '../../shared/errors.js';
 import { reasonBody } from '../../shared/validation/review-reason.js';
-import { ledgerQuery, listPayoutRequestsQuery, payoutRequestIdParams, settlementAmountBody } from './settlements.schemas.js';
+import { ledgerQuery, listPayoutRequestsQuery, payoutRequestIdParams, payPayoutRequestBody, settlementAmountBody } from './settlements.schemas.js';
 import { earningsSummary, ledgerStatement } from './earnings.service.js';
 import { listPayoutRequests, payPayoutRequest, rejectPayoutRequest, requestPayout } from './payout-requests.service.js';
 import { technicianBalance, recordPayout, recordRepayment, getTechnicianSettlement } from './settlements.service.js';
@@ -57,7 +57,9 @@ export async function registerSettlementRoutes(app: FastifyInstance): Promise<vo
   app.post('/admin/payout-requests/:id/pay', manager, async (req, reply) => {
     const p = payoutRequestIdParams.safeParse(req.params);
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
-    return reply.send(await payPayoutRequest(req.user!.id, p.data.id));
+    const b = payPayoutRequestBody.safeParse(req.body);
+    if (!b.success) throw new ValidationError(b.error.issues[0]?.message ?? 'Invalid input');
+    return reply.send(await payPayoutRequest(req.user!.id, p.data.id, b.data.amountPaise));
   });
 
   app.post('/admin/payout-requests/:id/reject', manager, async (req, reply) => {

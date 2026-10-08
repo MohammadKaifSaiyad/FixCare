@@ -7,12 +7,14 @@ export interface PayoutRequestDto {
   requestedAt: string;
   reviewedAt: string | null;
   reviewNote: string | null;
+  /** Amount of the PAYOUT ledger entry when PAID (what was actually transferred); null otherwise. */
+  paidPaise: number | null;
 }
 
-export function toPayoutRequestDto(r: PayoutRequest): PayoutRequestDto {
+export function toPayoutRequestDto(r: PayoutRequest, paidPaise: number | null = null): PayoutRequestDto {
   return {
     id: r.id, status: r.status, amountPaise: r.amountPaise, requestedAt: r.createdAt.toISOString(),
-    reviewedAt: r.reviewedAt?.toISOString() ?? null, reviewNote: r.reviewNote,
+    reviewedAt: r.reviewedAt?.toISOString() ?? null, reviewNote: r.reviewNote, paidPaise,
   };
 }
 
@@ -53,8 +55,8 @@ export interface AdminPayoutRequestDto extends PayoutRequestDto {
   technicianId: string;
   technicianName: string;
   maskedPhone: string;
-  /** Amount of the PAYOUT entry when PAID (may differ from amountPaise if money moved in between). */
-  paidPaise: number | null;
   currentOwedPaise: number;
   currentCashDebtPaise: number;
+  /** max(0, owed − cash debt): the exact figure ops must transfer and send to pay. */
+  currentNetPaise: number;
 }

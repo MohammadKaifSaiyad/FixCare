@@ -48,13 +48,13 @@ async function toAdminDtos(ids: string[]): Promise<AdminPayoutRequestDto[]> {
   const owedByTech = new Map<string, number>();
   for (const techId of new Set(rows.map((r) => r.technicianId))) owedByTech.set(techId, await payableBalancePaise(prisma, techId));
   return rows.map((r) => ({
-    ...toPayoutRequestDto(r),
+    ...toPayoutRequestDto(r, r.payoutEntryId ? paidById.get(r.payoutEntryId) ?? null : null),
     technicianId: r.technicianId,
     technicianName: r.technician.name,
     maskedPhone: maskPhone(r.technician.user.phone),
-    paidPaise: r.payoutEntryId ? paidById.get(r.payoutEntryId) ?? null : null,
     currentOwedPaise: owedByTech.get(r.technicianId) ?? 0,
     currentCashDebtPaise: r.technician.cashDebtPaise,
+    currentNetPaise: Math.max(0, (owedByTech.get(r.technicianId) ?? 0) - r.technician.cashDebtPaise),
   }));
 }
 
@@ -67,7 +67,7 @@ export async function listPayoutRequests(status?: PayoutRequestStatus): Promise<
 /** Ops transferred the money by hand: net the technician's CURRENT cash debt first (CASH_DEBT_OFFSET, like the
  *  sweep), then record the PAYOUT for the rest, and close the request — one transaction under the technician row
  *  lock. The request row is updated with a status guard, so a racing pay/reject can never both win. */
-export async function payPayoutRequest(adminUserId: string, requestId: string): Promise<AdminPayoutRequestDto> {
+export async function payPayoutRequest(adminUserId: string, requestId: string, transferredPaise: number): Promise<AdminPayoutRequestDto> {
   // Relies on READ COMMITTED: reads after the row lock see other transactions' commits — never switch this tx to REPEATABLE READ.
   await prisma.$transaction(async (tx) => {
     const req = await tx.payoutRequest.findUnique({ where: { id: requestId }, select: { technicianId: true } });
@@ -80,6 +80,10 @@ export async function payPayoutRequest(adminUserId: string, requestId: string): 
     const offset = Math.min(Math.max(owed, 0), cashDebtPaise);
     const pay = owed - offset;
     if (pay <= 0) throw new ConflictError('Nothing is owed after settling cash debt — reject this request instead', 'NOTHING_TO_PAY');
+    // Ops states what they actually sent; if the figure moved since they looked, nothing is written.
+    if (transferredPaise !== pay) {
+      throw new ConflictError(`The amount to pay is now ${rupeeLabel(pay)} — check it before marking paid`, 'PAYOUT_AMOUNT_CHANGED');
+    }
     if (offset > 0) {
       await tx.technician.update({ where: { id: req.technicianId }, data: { cashDebtPaise: { decrement: offset } } });
       await tx.ledgerEntry.create({ data: { technicianId: req.technicianId, type: 'CASH_DEBT_OFFSET', amountPaise: offset, metadata: { payoutRequestId: requestId } } });

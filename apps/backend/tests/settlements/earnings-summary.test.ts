@@ -68,8 +68,15 @@ describe('GET /technician/me/earnings', () => {
     await prisma.payoutRequest.create({ data: { technicianId: t.technicianId, amountPaise: 20000, status: 'REJECTED', reviewNote: 'Bank details not confirmed', createdAt: new Date('2026-10-03T00:00:00Z'), reviewedAt: new Date('2026-10-04T00:00:00Z') } });
     expect((await get(t.token)).json().latestPayoutRequest).toEqual({
       id: expect.any(String), status: 'REJECTED', amountPaise: 20000, requestedAt: '2026-10-03T00:00:00.000Z',
-      reviewedAt: '2026-10-04T00:00:00.000Z', reviewNote: 'Bank details not confirmed',
+      reviewedAt: '2026-10-04T00:00:00.000Z', reviewNote: 'Bank details not confirmed', paidPaise: null,
     });
+  });
+
+  it('a PAID latest request reports the linked PAYOUT amount as paidPaise', async () => {
+    const t = await makeTechnician(['AC']);
+    const entry = await prisma.ledgerEntry.create({ data: { technicianId: t.technicianId, type: 'PAYOUT', amountPaise: 12000 } });
+    await prisma.payoutRequest.create({ data: { technicianId: t.technicianId, amountPaise: 15000, status: 'PAID', payoutEntryId: entry.id, reviewedAt: new Date() } });
+    expect((await get(t.token)).json().latestPayoutRequest).toMatchObject({ status: 'PAID', amountPaise: 15000, paidPaise: 12000 });
   });
 
   it('works for a SUSPENDED technician; customer → 403; no token → 401', async () => {

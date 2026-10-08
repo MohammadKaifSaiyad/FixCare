@@ -28,3 +28,5 @@ export type LedgerQuery = z.infer<typeof ledgerQuery>;
 
 export const payoutRequestIdParams = z.object({ id: z.string().uuid('Invalid payout request id') });
 export const listPayoutRequestsQuery = z.object({ status: z.enum(['REQUESTED', 'PAID', 'REJECTED']).optional() }).strict();
+/** What ops actually transferred — must equal the amount the server computes under the lock. */
+export const payPayoutRequestBody = z.object({ amountPaise: z.number().int().positive() }).strict();

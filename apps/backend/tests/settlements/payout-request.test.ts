@@ -17,7 +17,7 @@ describe('POST /technician/me/payout-requests', () => {
     await prisma.technician.update({ where: { id: t.technicianId }, data: { cashDebtPaise: 40000 } });
     const res = await request(t.token);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ status: 'REQUESTED', amountPaise: 20000, reviewedAt: null, reviewNote: null });
+    expect(res.json()).toMatchObject({ status: 'REQUESTED', amountPaise: 20000, reviewedAt: null, reviewNote: null, paidPaise: null });
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'SETTLEMENT_EVENT' } });
     expect(audit.metadata).toMatchObject({ event: 'payout_requested', technicianId: t.technicianId, amountPaise: 20000 });
     expect((await app.inject({ method: 'GET', url: '/technician/me/earnings', headers: auth(t.token) })).json().latestPayoutRequest.status).toBe('REQUESTED');
