@@ -502,6 +502,7 @@ model PayoutRequest {
   reviewedAt    DateTime?
   payoutEntryId String?             @unique // the PAYOUT LedgerEntry written when marked paid
   payoutEntry   LedgerEntry?        @relation(fields: [payoutEntryId], references: [id], onDelete: Restrict)
+  transferReference String?         // bank/UPI transaction reference of the manual transfer; set only when PAID
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
