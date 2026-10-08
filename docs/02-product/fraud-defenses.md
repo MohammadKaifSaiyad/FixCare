@@ -242,15 +242,15 @@ skills confirmed (see the technician review runbook).
 
 **Defense (implemented):**
 - Only MANAGER can list, pay or reject; the payout queue is the ONLY way to write a PAYOUT (the legacy direct-payout endpoint is removed).
-- The technician row is locked for the whole pay; one open request per technician; the amount is server-computed (owed minus cash debt) and ops must state exactly that amount or nothing is written (`PAYOUT_AMOUNT_CHANGED`).
+- The technician row is locked for the whole pay; the server computes the net (owed minus cash debt) under the lock and ops record the amount they actually transferred, which must be > 0 and never above the net (`PAYOUT_EXCEEDS_NET`, nothing written); a deleted technician is never paid (`TECHNICIAN_DELETED`).
+- One open request per technician is DB-enforced (partial unique index, backing the lock check); a transfer reference closes at most one request (unique, `TRANSFER_REFERENCE_USED`); `amountPaise > 0` is a CHECK constraint.
 - Cash debt is netted (CASH_DEBT_OFFSET) before the PAYOUT, so cash held can't be paid out.
 - A bank/UPI transfer reference is required evidence (Golden Rule 1) and is stored on the request and in the audit row.
 - Ledger entry + audit row (actor = ADMIN, with reference and ledger entry id) + FK link from request to PAYOUT entry, all in one transaction; reasons can't carry phone/ID numbers, UPI IDs or emails.
 
 **Remaining gaps:**
-- No two-person rule: one MANAGER can pay alone.
+- No technician receipt confirmation and no two-person approval: one MANAGER can pay alone, and the technician does not confirm receiving the money (accepted V1 trade-off against Golden Rule 2).
 - No database-level append-only guard on LedgerEntry / AuditLog.
-- No partial unique index enforcing one open request per technician (the row lock does).
 
 ---
 

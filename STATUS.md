@@ -19,21 +19,22 @@ still on Razorpay test keys until KYC (UPI blocked on Razorpay account activatio
 **Technician app Slice 4 — earnings, cash debt + payout requests** COMPLETE on
 `feature/technician-app-slice4-earnings` (cut from `main` after Slice 3 merged), **ready for PR → `main`** (not pushed).
 A technician sees what they are owed, what is on hold, their cash debt, and can ask to be paid; ops pays by hand.
-- **Backend:** three additive migrations `technician_payout_requests` (PayoutRequest table + status enum),
-  `payout_request_entry_fk` (`payoutEntryId` is a real FK to LedgerEntry) and `payout_request_transfer_reference`; config `PAYOUT_MIN_PAISE` (default ₹100).
+- **Backend:** four additive migrations `technician_payout_requests` (PayoutRequest table + status enum),
+  `payout_request_entry_fk` (`payoutEntryId` is a real FK to LedgerEntry), `payout_request_transfer_reference` and `payout_request_constraints` (unique reference, one open request per technician, amount > 0); config `PAYOUT_MIN_PAISE` (default ₹100).
   Technician earnings summary / pending releases / money history (cursor) and `POST /technician/me/payout-requests`
   (one open at a time; net of cash debt; 409 `PAYOUT_ALREADY_REQUESTED`, 422 `PAYOUT_BELOW_MINIMUM`). Ops (MANAGER)
   `GET /admin/payout-requests?status=` (shows `currentNetPaise` = what to transfer), `POST …/:id/pay {amountPaise, transferReference}`
   (reference required; queue rows show `technicianStatus`; the legacy `POST /admin/settlements/payouts` is REMOVED)
   and `POST …/:id/reject {reason}`. Pay nets cash debt first (CASH_DEBT_OFFSET) then writes the PAYOUT, all audited;
-  the server recomputes under the technician row lock and a different amount → 409 `PAYOUT_AMOUNT_CHANGED` with
-  nothing written (`NOTHING_TO_PAY` → reject; `PAYOUT_REQUEST_NOT_OPEN`). The technician sees `paidPaise`.
+  ops record the amount actually transferred (0 < amount ≤ the net recomputed under the technician row lock; above it
+  → 409 `PAYOUT_EXCEEDS_NET`, nothing written; also `TRANSFER_REFERENCE_USED`, `TECHNICIAN_DELETED`, `NOTHING_TO_PAY` →
+  reject, `PAYOUT_REQUEST_NOT_OPEN`). The technician sees `paidPaise`.
 - **Technician app:** Earnings screen (balance, on-hold/pending releases, cash debt, payout request + status, money
   history with Load more); money card on jobs home; Earnings reachable when suspended.
 - **Ops runbook:** `docs/06-operations/technician-review-runbook.md` section 7 "Payout requests".
-- **Rollout / deploy order:** deploy the **backend first** (three additive migrations). An older app build on the new
+- **Rollout / deploy order:** deploy the **backend first** (four additive migrations). An older app build on the new
   backend simply doesn't show earnings.
-- **Gates:** backend **479/479 (78 files)** + `pnpm build` clean; technician app **413 tests**, `flutter analyze` 0;
+- **Gates:** backend **488/488 (78 files)** + `pnpm build` clean, both DBs up to date; technician app **416 tests**, `flutter analyze` 0;
   customer app untouched.
   Design: `docs/designs/2026-10-07-technician-app-slice4-earnings-design.md`.
 **Next: PR → `main` (founder pushes); on-device smoke incl. a payout round-trip via the runbook; then the follow-ups below.**
@@ -242,17 +243,21 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 
 ## Next 3 targets
 1. **PR Slice 4 earnings** → `main` (founder pushes/merges `feature/technician-app-slice4-earnings`). Deploy backend
-   first (three additive migrations). Then a clean `flutter build ios` on the Mac (after accepting the Xcode license).
+   first (four additive migrations). Then a clean `flutter build ios` on the Mac (after accepting the Xcode license).
 2. **On-device smoke** on a physical Android 12+ phone and an iPhone: onboarding → verify → job → earnings, including a
    **payout round-trip via the runbook** (request in app → queue → transfer by hand → `pay` with `amountPaise` + `transferReference` → paid
    amount shows in the app; also a reject).
 3. **Remaining follow-ups** (Slice 4 group below, Slice 2/3 items) and provision Cloudflare R2 (`R2_*`).
 
 ## Deferred follow-ups (carry forward)
+- **Technician Slice 4 — deferred from the /code-review wave:** technician receipt confirmation + two-person approval of
+  payouts (Golden Rule 2 trade-off, accepted for V1); cross-module queries inside settlements; admin payout-list
+  pagination; a shared repository error-mapping helper; the ledger cursor is decoded twice / `technicianBalance` lookup
+  reuse.
 - **Technician Slice 4 — earnings / payouts:** (a) two-person approval for payouts; (b) pre-existing deadlock risk: the
   settlement sweep and dispute resolve take a key-share lock (ledger insert) before `FOR UPDATE` on the technician row,
   so two of them for one technician can deadlock (the sweep retries; a dispute resolve that loses after the gateway refund leaves the refund without ledger rows);
-  (c) the money history renders every loaded row eagerly — lazy SliverList if histories grow; fee label rate from config; DB partial unique index (one open request) + append-only triggers on LedgerEntry/AuditLog; dynamic/graduated cash limit (trust-system) and debt-cycling signals not fed by payouts; (d) in-app bank/UPI
+  (c) the money history renders every loaded row eagerly — lazy SliverList if histories grow; append-only triggers on LedgerEntry/AuditLog; dynamic/graduated cash limit (trust-system) and debt-cycling signals not fed by payouts; (d) in-app bank/UPI
   capture; (e) Razorpay Route automatic payouts; (f) technician-cancelled requests; (g) push on paid; (h) trust score;
   (i) statements/CSV; (j) online/offline mode.
 - **Job estimate integrity — deferred from the final review (the pilot blockers and the review's Important/Medium

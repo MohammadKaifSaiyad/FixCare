@@ -141,8 +141,8 @@ transfer right now** (it can differ from `amountPaise` if money moved since the 
 
 1. Check `currentNetPaise` **and `technicianStatus`**. A SUSPENDED technician needs a second look (why were they
    suspended? is anything unresolved?) before you pay.
-2. Transfer exactly `currentNetPaise` **by hand**, to the details collected in person. Note the bank/UPI transaction
-   reference of that transfer.
+2. Transfer `currentNetPaise` (or less, if you are deliberately paying part) **by hand**, to the details collected in
+   person. Note the bank/UPI transaction reference of that transfer.
 3. Mark it paid with the amount and the reference:
 
 ```bash
@@ -154,21 +154,27 @@ curl -s -X POST "$BASE/admin/payout-requests/$REQ/pay" -H "authorization: Bearer
 
 The body is required and strict: `amountPaise` (positive integer paise) and `transferReference` (4-64 characters,
 letters, digits, `-` and `/` only, e.g. `UTR-2026-10-0001`; leading/trailing spaces are trimmed). Anything else is 400.
-Under the technician lock the server recomputes the figure. **Cash debt is netted first** (a `CASH_DEBT_OFFSET` ledger
-entry clears the debt from what is owed), then a `PAYOUT` entry is written for the rest and the request closes as PAID,
+**Pay rule: record the amount you actually transferred** — it must be greater than 0 and no more than the current net.
+Under the technician lock the server recomputes the net; **cash debt is netted first** (a `CASH_DEBT_OFFSET` ledger
+entry clears the debt from what is owed), then a `PAYOUT` entry is written for the amount you transferred and the request closes as PAID,
 with the reference stored on the request and in the audit row. The response has `status: "PAID"` and **`paidPaise`** =
-the amount actually paid, which the technician sees in the app. The technician never sees the reference.
+the amount actually paid, which the technician sees in the app. The technician never sees the reference. **A partial
+payout leaves the rest owed** — the technician can simply request again.
 
 Errors (all 409; nothing is written):
-- `PAYOUT_AMOUNT_CHANGED` — "The amount to pay is now ₹X — check it before marking paid".
+- `PAYOUT_EXCEEDS_NET` — "That is more than FixCare owes (₹X) — escalate before recording it": the figure you sent is
+  above the current net.
+- `TRANSFER_REFERENCE_USED` — that reference already closed another payout; one reference closes at most one request.
+- `TECHNICIAN_DELETED` — the technician account was removed; escalate before paying (SUSPENDED / DEACTIVATED
+  technicians can still be paid).
 - `NOTHING_TO_PAY` — cash debt now covers everything owed.
 - `PAYOUT_REQUEST_NOT_OPEN` — already paid or rejected (maybe by another admin).
 - 404 — unknown id; 400 — malformed id or body.
 
-**If you get `NOTHING_TO_PAY` or `PAYOUT_AMOUNT_CHANGED` BEFORE you transferred anything:** re-read the queue; adjust
-and retry with the new amount, or reject the request. **If you already transferred and then get
-`PAYOUT_AMOUNT_CHANGED` or `PAYOUT_REQUEST_NOT_OPEN`: stop and escalate to the engineer** (manual reconciliation).
-Never transfer again.
+**If you get `NOTHING_TO_PAY` BEFORE you transferred anything:** re-read the queue and reject the request (or retry
+with the right amount). **If you already transferred and then get `PAYOUT_EXCEEDS_NET`, `TRANSFER_REFERENCE_USED`,
+`TECHNICIAN_DELETED` or `PAYOUT_REQUEST_NOT_OPEN`: stop and escalate to the engineer** (manual reconciliation). Never
+transfer again.
 
 ### Rejecting
 
@@ -189,6 +195,6 @@ only be written by marking a payout request paid, which nets cash debt and requi
 
 ### Deploy note
 
-Three additive migrations (`technician_payout_requests`, `payout_request_entry_fk`,
-`payout_request_transfer_reference`); deploy the backend before the app. Callers of `POST …/pay` must now send
+Four additive migrations (`technician_payout_requests`, `payout_request_entry_fk`,
+`payout_request_transfer_reference`, `payout_request_constraints`); deploy the backend before the app. Callers of `POST …/pay` must now send
 `transferReference`.
