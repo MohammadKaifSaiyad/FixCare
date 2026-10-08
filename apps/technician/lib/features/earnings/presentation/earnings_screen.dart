@@ -6,6 +6,7 @@ import '../../../core/theme.dart';
 import '../data/earnings_repository.dart';
 import 'earnings_providers.dart';
 import 'payout_section.dart';
+import 'statement_section.dart';
 
 class EarningsScreen extends ConsumerWidget {
   const EarningsScreen({super.key});
@@ -46,7 +47,7 @@ class EarningsScreen extends ConsumerWidget {
                 _ => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
               },
               const SizedBox(height: 24),
-              const SizedBox.shrink(key: Key('statementSlot')), // Task 9: pending + history
+              StatementSection(key: const Key('statementSlot'), pending: async.hasError ? const [] : (async.value?.pending ?? const [])),
             ],
           ),
         ),
