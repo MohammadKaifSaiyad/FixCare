@@ -212,4 +212,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(earnings.summaryCalls, 2);
   });
+
+  testWidgets('returning from a job reloads the money card', (tester) async {
+    final earnings = _FakeEarningsRepo();
+    final router = GoRouter(initialLocation: '/', routes: [
+      GoRoute(path: '/', builder: (_, _) => const JobsHomeScreen()),
+      GoRoute(path: '/job/:id', builder: (ctx, _) => Scaffold(body: TextButton(key: const Key('backBtn'), onPressed: () => ctx.pop(), child: const Text('back')))),
+    ]);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        technicianJobRepositoryProvider.overrideWithValue(_FakeJobRepo(available: [], mine: [_dto(id: 'm1')])),
+        earningsRepositoryProvider.overrideWithValue(earnings),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await tester.pumpAndSettle();
+    final before = earnings.summaryCalls;
+    await tester.tap(find.byKey(const Key('myJob_m1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('backBtn')));
+    await tester.pumpAndSettle();
+    expect(earnings.summaryCalls, before + 1);
+  });
 }

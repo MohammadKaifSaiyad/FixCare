@@ -23,6 +23,10 @@ class EarningsRepository {
         return Ok(parse(data.cast<String, dynamic>()));
       }
       return Failure(failureKindFromStatus(status), _msg(res.data), code: errorCodeOf(res.data));
+    } on TypeError {
+      return const Failure(FailureKind.server, 'Unexpected response from the server.');
+    } on FormatException {
+      return const Failure(FailureKind.server, 'Unexpected response from the server.');
     } on DioException catch (e) {
       if (e.response != null) {
         return Failure(failureKindFromStatus(e.response!.statusCode), _msg(e.response!.data), code: errorCodeOf(e.response!.data));

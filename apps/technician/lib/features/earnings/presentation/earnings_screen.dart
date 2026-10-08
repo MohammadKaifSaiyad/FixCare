@@ -8,11 +8,27 @@ import 'earnings_providers.dart';
 import 'payout_section.dart';
 import 'statement_section.dart';
 
-class EarningsScreen extends ConsumerWidget {
+class EarningsScreen extends ConsumerStatefulWidget {
   const EarningsScreen({super.key});
 
+  @override
+  ConsumerState<EarningsScreen> createState() => _EarningsScreenState();
+}
+
+class _EarningsScreenState extends ConsumerState<EarningsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // One fresh fetch per open: a summary cached from the jobs-home card may be stale. If the provider is still
+    // on its first load that load IS the fresh fetch — don't double it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!ref.read(earningsSummaryProvider).isLoading) ref.invalidate(earningsSummaryProvider);
+    });
+  }
+
   /// Reloads the summary and the statement; never throws (failures surface in the sections themselves).
-  Future<void> _refresh(WidgetRef ref) async {
+  Future<void> _refresh() async {
     await Future.wait([
       ref.read(ledgerControllerProvider.notifier).refresh().then((_) {}, onError: (_) {}),
       ref.refresh(earningsSummaryProvider.future).then((_) {}, onError: (_) {}),
@@ -20,32 +36,33 @@ class EarningsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final async = ref.watch(earningsSummaryProvider);
     return Scaffold(
       key: const Key('earningsScreen'),
       appBar: AppBar(title: const Text('Earnings')),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () => _refresh(ref),
+          onRefresh: () => _refresh(),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             children: [
-              switch (async) {
-                AsyncData(value: final s) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [_SummaryBlock(summary: s), const SizedBox(height: 20), PayoutSection(summary: s)],
-                  ),
-                AsyncError(error: final e) => Column(
-                    key: const Key('earningsError'),
-                    children: [
-                      Text('$e', textAlign: TextAlign.center, style: const TextStyle(color: FixCareColors.errorText)),
-                      TextButton(key: const Key('earningsRetryBtn'), onPressed: () => ref.invalidate(earningsSummaryProvider), child: const Text('Retry')),
-                    ],
-                  ),
-                _ => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
-              },
+              if (async.hasError)
+                Column(
+                  key: const Key('earningsError'),
+                  children: [
+                    Text('${async.error}', textAlign: TextAlign.center, style: const TextStyle(color: FixCareColors.errorText)),
+                    TextButton(key: const Key('earningsRetryBtn'), onPressed: () => ref.invalidate(earningsSummaryProvider), child: const Text('Retry')),
+                  ],
+                )
+              else if (async.value case final s?)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [_SummaryBlock(summary: s), const SizedBox(height: 20), PayoutSection(summary: s)],
+                )
+              else
+                const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
               const SizedBox(height: 24),
               StatementSection(key: const Key('statementSlot'), pending: async.hasError ? const [] : (async.value?.pending ?? const [])),
             ],

@@ -49,9 +49,12 @@ class LedgerController extends _$LedgerController {
   @override
   Future<LedgerState> build() async {
     final gen = ++_generation;
+    _refreshing = false; // a rebuild supersedes any refresh in flight
     final r = await ref.read(earningsRepositoryProvider).ledger();
     if (gen != _generation) {
-      final existing = state.hasError ? null : state.value;
+      // Superseded by a newer refresh: never overwrite its result with this older page.
+      if (state.hasError) throw state.error!;
+      final existing = state.value;
       if (existing != null) return existing;
     }
     return switch (r) {
@@ -60,8 +63,19 @@ class LedgerController extends _$LedgerController {
     };
   }
 
+  bool _refreshing = false;
+
   Future<void> refresh() async {
     final gen = ++_generation;
+    _refreshing = true;
+    try {
+      await _refreshInner(gen);
+    } finally {
+      if (gen == _generation) _refreshing = false;
+    }
+  }
+
+  Future<void> _refreshInner(int gen) async {
     final r = await ref.read(earningsRepositoryProvider).ledger();
     if (!ref.mounted || gen != _generation) return;
     state = switch (r) {
@@ -72,16 +86,24 @@ class LedgerController extends _$LedgerController {
 
   Future<void> loadMore() async {
     final current = state.hasError ? null : state.value;
-    if (current == null || current.loadingMore || current.nextCursor == null) return;
+    if (_refreshing || current == null || current.loadingMore || current.nextCursor == null) return;
     final gen = _generation;
     state = AsyncData(current.copyWith(loadingMore: true, clearError: true));
-    final r = await ref.read(earningsRepositoryProvider).ledger(before: current.nextCursor);
-    if (!ref.mounted || gen != _generation) return; // a refresh replaced the list meanwhile
-    final now = state.hasError ? null : state.value;
-    if (now == null) return;
-    state = AsyncData(switch (r) {
-      Ok(value: final p) => now.copyWith(entries: [...now.entries, ...p.entries], nextCursor: p.nextCursor, clearCursor: p.nextCursor == null, loadingMore: false),
-      Failure(message: final m) => now.copyWith(loadingMore: false, loadMoreError: m),
-    });
+    try {
+      final r = await ref.read(earningsRepositoryProvider).ledger(before: current.nextCursor);
+      if (!ref.mounted || gen != _generation) return; // a refresh replaced the list meanwhile
+      final now = state.hasError ? null : state.value;
+      if (now == null) return;
+      state = AsyncData(switch (r) {
+        Ok(value: final p) => now.copyWith(entries: [...now.entries, ...p.entries], nextCursor: p.nextCursor, clearCursor: p.nextCursor == null, loadingMore: false),
+        Failure(message: final m) => now.copyWith(loadingMore: false, loadMoreError: m),
+      });
+    } finally {
+      // Never leave "Load more" stuck on its spinner (a throw, or an early return above).
+      if (ref.mounted && gen == _generation) {
+        final now = state.hasError ? null : state.value;
+        if (now != null && now.loadingMore) state = AsyncData(now.copyWith(loadingMore: false));
+      }
+    }
   }
 }

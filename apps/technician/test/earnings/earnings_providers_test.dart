@@ -16,6 +16,7 @@ class _FakeRepo extends EarningsRepository {
   final ledgerCalls = <String?>[];
   Completer<void>? gate;
   final gates = <String?, Completer<void>>{};
+  final throwsOn = <String?>{};
   @override
   Future<Result<EarningsSummaryDto>> summary() async {
     summaryCalls++;
@@ -24,6 +25,7 @@ class _FakeRepo extends EarningsRepository {
   @override
   Future<Result<LedgerPageDto>> ledger({String? before, int limit = 20}) async {
     ledgerCalls.add(before);
+    if (throwsOn.contains(before)) throw StateError('boom');
     if (gate case final g?) await g.future;
     if (gates[before] case final g?) await g.future;
     return pages[before] ?? const Ok(LedgerPageDto());
@@ -96,5 +98,32 @@ void main() {
     expect(s.entries.map((e) => e.id), ['fresh']);
     expect(s.loadingMore, false);
     expect(s.loadMoreError, isNull);
+  });
+
+  test('a throwing loadMore page never leaves loadingMore stuck at true', () async {
+    repo.pages[null] = Ok(LedgerPageDto(entries: [_e('a')], nextCursor: 'c1'));
+    await c.read(ledgerControllerProvider.future);
+    repo.throwsOn.add('c1');
+    final n = c.read(ledgerControllerProvider.notifier);
+    await expectLater(n.loadMore(), throwsA(isA<StateError>()));
+    expect(c.read(ledgerControllerProvider).value!.loadingMore, false);
+    repo.throwsOn.clear();
+    repo.pages['c1'] = Ok(LedgerPageDto(entries: [_e('b')]));
+    await n.loadMore(); // and Load more works again
+    expect(c.read(ledgerControllerProvider).value!.entries.map((e) => e.id), ['a', 'b']);
+  });
+
+  test('loadMore is a no-op while a refresh is in flight; the fresh page wins', () async {
+    repo.pages[null] = Ok(LedgerPageDto(entries: [_e('a')], nextCursor: 'c1'));
+    await c.read(ledgerControllerProvider.future);
+    repo.gates[null] = Completer<void>();
+    repo.pages[null] = Ok(LedgerPageDto(entries: [_e('fresh')], nextCursor: 'c9'));
+    final n = c.read(ledgerControllerProvider.notifier);
+    final refreshed = n.refresh();
+    await n.loadMore();
+    expect(repo.ledgerCalls, [null, null]); // no 'c1' call
+    repo.gates[null]!.complete();
+    await refreshed;
+    expect(c.read(ledgerControllerProvider).value!.entries.map((e) => e.id), ['fresh']);
   });
 }

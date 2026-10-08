@@ -225,6 +225,7 @@ class _MyJobCard extends ConsumerWidget {
     // start repair, ...) — refresh the list on return so it isn't stale.
     if (!context.mounted) return;
     ref.read(myJobsControllerProvider.notifier).refresh();
+    ref.invalidate(earningsSummaryProvider); // a job may have changed what's owed / the cash held
   }
 
   @override

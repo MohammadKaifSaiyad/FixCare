@@ -81,7 +81,7 @@ final class LedgerControllerProvider
   LedgerController create() => LedgerController();
 }
 
-String _$ledgerControllerHash() => r'827618693c561ab629fdf3f44940800626c0c305';
+String _$ledgerControllerHash() => r'191657dadbd7489824b139e49ce904183f4d825a';
 
 /// The paged money statement. Every fetch takes a generation number; a page that lands after a refresh started is
 /// dropped, so a late "Load more" can never splice stale rows into a fresh list.

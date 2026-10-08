@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/earnings/data/earnings_repository.dart';
+import 'package:fixcare_technician/features/earnings/presentation/earnings_providers.dart';
 import 'package:fixcare_technician/features/earnings/presentation/earnings_screen.dart';
 
 EarningsSummaryDto summary({int owed = 33000, int net = 13000, int debt = 20000, bool blocked = false, PayoutRequestDto? latest}) => EarningsSummaryDto(
@@ -19,11 +22,13 @@ class _FakeRepo extends EarningsRepository {
   final List<Result<EarningsSummaryDto>> summaries;
   int summaryCalls = 0;
   int requestCalls = 0;
+  Completer<void>? gate;
   Result<PayoutRequestDto> requestResult = Ok(req('REQUESTED'));
   @override
   Future<Result<EarningsSummaryDto>> summary() async {
     final r = summaries[summaryCalls < summaries.length ? summaryCalls : summaries.length - 1];
     summaryCalls++;
+    if (summaryCalls > 1 && gate != null) await gate!.future;
     return r;
   }
   @override
@@ -131,5 +136,36 @@ void main() {
     addTearDown(tester.view.reset);
     await pump(tester, [Ok(summary(latest: req('REJECTED', note: 'word ' * 100)))]);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opening Earnings re-fetches even when the summary is already cached', (tester) async {
+    repo = _FakeRepo([Ok(summary())]);
+    final container = ProviderContainer(overrides: [earningsRepositoryProvider.overrideWithValue(repo)]);
+    addTearDown(container.dispose);
+    final sub = container.listen(earningsSummaryProvider, (_, _) {});
+    addTearDown(sub.close);
+    await container.read(earningsSummaryProvider.future);
+    expect(repo.summaryCalls, 1);
+    await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const MaterialApp(home: EarningsScreen())));
+    await tester.pumpAndSettle();
+    expect(repo.summaryCalls, 2);
+  });
+
+  testWidgets('during a reload the numbers and the payout button stay visible', (tester) async {
+    repo = _FakeRepo([Ok(summary()), Ok(summary(owed: 40000))]);
+    repo.gate = Completer<void>();
+    final container = ProviderContainer(overrides: [earningsRepositoryProvider.overrideWithValue(repo)]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const MaterialApp(home: EarningsScreen())));
+    await tester.pumpAndSettle();
+    expect(find.text('₹330'), findsOneWidget);
+    container.invalidate(earningsSummaryProvider); // gated reload
+    await tester.pump();
+    expect(find.text('₹330'), findsOneWidget);
+    expect(find.byKey(const Key('requestPayoutBtn')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    repo.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('₹400'), findsOneWidget);
   });
 }

@@ -80,4 +80,11 @@ void main() {
     adapter.onGet('/technician/me/earnings', (s) => s.throws(0, DioException.connectionError(requestOptions: RequestOptions(path: '/technician/me/earnings'), reason: 'down')));
     expect((await repo.summary() as Failure).kind, FailureKind.network);
   });
+
+  test('a 200 with a wrong-typed field → Failure(server), never a thrown TypeError', () async {
+    adapter.onGet('/technician/me/earnings', (s) => s.reply(200, {...summaryJson(), 'owedPaise': 'lots'}));
+    final f = await repo.summary() as Failure;
+    expect(f.kind, FailureKind.server);
+    expect(f.message, 'Unexpected response from the server.');
+  });
 }
