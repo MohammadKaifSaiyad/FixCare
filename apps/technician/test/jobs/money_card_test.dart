@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,13 +17,18 @@ class _FakeRepo extends EarningsRepository {
   _FakeRepo(this.results) : super(Dio());
   final List<Result<EarningsSummaryDto>> results;
   int calls = 0;
+  Completer<void>? gateSecondCall;
   @override
-  Future<Result<EarningsSummaryDto>> summary() async => results[calls++ < results.length ? calls - 1 : results.length - 1];
+  Future<Result<EarningsSummaryDto>> summary() async {
+    final i = calls++;
+    if (i == 1) await gateSecondCall?.future;
+    return results[i < results.length ? i : results.length - 1];
+  }
 }
 
 void main() {
-  Future<_FakeRepo> pump(WidgetTester tester, List<Result<EarningsSummaryDto>> results) async {
-    final repo = _FakeRepo(results);
+  Future<_FakeRepo> pump(WidgetTester tester, List<Result<EarningsSummaryDto>> results, {Completer<void>? gate}) async {
+    final repo = _FakeRepo(results)..gateSecondCall = gate;
     final router = GoRouter(routes: [
       GoRoute(path: '/', builder: (_, _) => const Scaffold(body: MoneyCard())),
       GoRoute(path: '/earnings', builder: (_, _) => const Text('EARNINGS PAGE')),
@@ -69,5 +76,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('moneyCard')), findsOneWidget);
     expect(repo.calls, 2);
+  });
+
+  testWidgets('a reload keeps showing the old numbers (no blank spacer), then swaps in the new ones', (tester) async {
+    final gate = Completer<void>();
+    final repo = await pump(tester, [Ok(_summary()), Ok(_summary(debt: 0))], gate: gate);
+    await tester.tap(find.byKey(const Key('moneyCard')));
+    await tester.pumpAndSettle();
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pumpAndSettle();
+    expect(repo.calls, 2); // reload in flight
+    expect(find.byKey(const Key('moneyCard')), findsOneWidget);
+    expect(find.text('Cash to hand over ₹200'), findsOneWidget);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Cash to hand over ₹200'), findsNothing);
+    expect(find.text('Owed to you ₹330'), findsOneWidget);
+  });
+
+  testWidgets('a failed reload shows the error row, not the stale card', (tester) async {
+    await pump(tester, [Ok(_summary()), const Failure(FailureKind.network, 'down')]);
+    await tester.tap(find.byKey(const Key('moneyCard')));
+    await tester.pumpAndSettle();
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moneyCardError')), findsOneWidget);
+    expect(find.byKey(const Key('moneyCard')), findsNothing);
   });
 }

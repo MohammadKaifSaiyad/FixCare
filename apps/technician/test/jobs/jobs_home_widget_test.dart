@@ -61,8 +61,14 @@ class _FakeJobRepo extends TechnicianJobRepository {
 /// The money card on jobs home reads the earnings summary — keep it off the network.
 class _FakeEarningsRepo extends EarningsRepository {
   _FakeEarningsRepo() : super(Dio());
+  int summaryCalls = 0;
   @override
-  Future<Result<EarningsSummaryDto>> summary() async => const Ok(EarningsSummaryDto(
+  Future<Result<EarningsSummaryDto>> summary() async {
+    summaryCalls++;
+    return _summaryOk;
+  }
+
+  static const _summaryOk = Ok(EarningsSummaryDto(
       owedPaise: 33000, netPayoutPaise: 13000, pendingPaise: 0, cashDebtPaise: 0, cashDebtLimitPaise: 50000, acceptBlocked: false, payoutMinPaise: 10000));
   @override
   Future<Result<LedgerPageDto>> ledger({String? before, int limit = 20}) async => const Ok(LedgerPageDto());
@@ -189,5 +195,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('detail b1'), findsOneWidget);
+  });
+
+  testWidgets('pull-to-refresh on My jobs also reloads the money card', (tester) async {
+    final earnings = _FakeEarningsRepo();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        technicianJobRepositoryProvider.overrideWithValue(_FakeJobRepo(available: [], mine: [_dto(id: 'm1')])),
+        earningsRepositoryProvider.overrideWithValue(earnings),
+      ],
+      child: const MaterialApp(home: JobsHomeScreen()),
+    ));
+    await tester.pumpAndSettle();
+    expect(earnings.summaryCalls, 1);
+    await tester.fling(find.byKey(const Key('myJob_m1')), const Offset(0, 300), 1000);
+    await tester.pumpAndSettle();
+    expect(earnings.summaryCalls, 2);
   });
 }

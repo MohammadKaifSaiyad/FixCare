@@ -173,7 +173,10 @@ class _MyJobsSection extends ConsumerWidget {
   const _MyJobsSection({required this.async});
   final AsyncValue<List<TechnicianJobDto>> async;
 
-  Future<void> _onRefresh(WidgetRef ref) => ref.read(myJobsControllerProvider.notifier).refresh();
+  Future<void> _onRefresh(WidgetRef ref) {
+    ref.invalidate(earningsSummaryProvider); // the money card reloads with the pull
+    return ref.read(myJobsControllerProvider.notifier).refresh();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
