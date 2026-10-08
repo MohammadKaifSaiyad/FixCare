@@ -12,15 +12,18 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 - **Backend:** technician earnings summary, pending releases and cursor-paged money history; `POST
   /technician/me/payout-requests` (one open at a time, net of cash debt, minimum `PAYOUT_MIN_PAISE` default ₹100).
-  Ops (MANAGER) `GET /admin/payout-requests`, `POST …/:id/pay {amountPaise}` and `POST …/:id/reject {reason}`. Pay
+  Ops (MANAGER) `GET /admin/payout-requests`, `POST …/:id/pay {amountPaise, transferReference}` and `POST …/:id/reject {reason}`. Pay
   requires the amount ops transferred; the server recomputes under the technician row lock and a mismatch is 409
   `PAYOUT_AMOUNT_CHANGED` with nothing written; cash debt is netted (CASH_DEBT_OFFSET) before the PAYOUT; 409
-  `NOTHING_TO_PAY` / `PAYOUT_REQUEST_NOT_OPEN`. The technician sees `paidPaise`. Everything audited. Two additive
-  migrations: `technician_payout_requests`, `payout_request_entry_fk`.
+  `NOTHING_TO_PAY` / `PAYOUT_REQUEST_NOT_OPEN`. The technician sees `paidPaise`. Everything audited. Three additive
+  migrations: `technician_payout_requests`, `payout_request_entry_fk`, `payout_request_transfer_reference`.
+  Final-review fix wave: legacy `POST /admin/settlements/payouts` removed; the pay requires a bank/UPI transfer
+  reference (stored + audited); queue rows show `technicianStatus`; reasons reject `@`; repayments audit as ADMIN.
 - **Technician app:** Earnings screen (balance, pending releases, cash debt, payout request, money history with Load
   more), money card on jobs home, Earnings reachable when suspended.
-- **Docs:** ops runbook section 7 "Payout requests".
-- Gates: backend 475/475 (78 files), technician 407, customer app untouched; `pnpm build` / `flutter analyze` clean.
+- **App fixes:** Earnings refetches on open and after a job; malformed responses become a Failure; no stale ledger page during a refresh.
+- **Docs:** ops runbook section 7 "Payout requests"; fraud-defenses #19 payout insider abuse, #20 payout during suspension.
+- Gates: backend 479/479 (78 files), technician 413, customer app untouched; `pnpm build` / `flutter analyze` clean.
 
 ---
 
