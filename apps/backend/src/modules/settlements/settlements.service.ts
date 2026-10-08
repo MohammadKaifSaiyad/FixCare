@@ -124,21 +124,6 @@ async function technicianOrThrow(technicianId: string) {
   return t;
 }
 
-/** Manual payout record (until Razorpay Route): money the founder actually transferred. */
-export async function recordPayout(adminUserId: string, body: { technicianId: string; amountPaise: number }): Promise<{ id: string }> {
-  await technicianOrThrow(body.technicianId);
-  return prisma.$transaction(async (tx) => {
-    // Lock the technician row BEFORE reading the ledger payable: unlike cashDebtPaise, payable has
-    // no CHECK backstop, so two concurrent payouts must not each pass the guard and jointly overdraw.
-    await tx.$queryRaw`SELECT id FROM "Technician" WHERE id = ${body.technicianId} FOR UPDATE`;
-    const payable = await payableBalancePaise(tx, body.technicianId);
-    if (body.amountPaise > payable) throw new ConflictError('Amount exceeds the payable balance');
-    const entry = await tx.ledgerEntry.create({ data: { technicianId: body.technicianId, type: 'PAYOUT', amountPaise: body.amountPaise } });
-    await tx.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'USER', actorId: adminUserId, metadata: { event: 'payout_recorded', technicianId: body.technicianId, amountPaise: body.amountPaise } } });
-    return { id: entry.id };
-  });
-}
-
 /** Manual cash-repayment record: the technician handed collected cash back to the platform. */
 export async function recordRepayment(adminUserId: string, body: { technicianId: string; amountPaise: number }): Promise<{ id: string }> {
   await technicianOrThrow(body.technicianId);
@@ -154,7 +139,7 @@ export async function recordRepayment(adminUserId: string, body: { technicianId:
       throw e;
     }
     const entry = await tx.ledgerEntry.create({ data: { technicianId: body.technicianId, type: 'DEBT_REPAYMENT', amountPaise: body.amountPaise } });
-    await tx.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'USER', actorId: adminUserId, metadata: { event: 'repayment_recorded', technicianId: body.technicianId, amountPaise: body.amountPaise } } });
+    await tx.auditLog.create({ data: { action: 'SETTLEMENT_EVENT', actorType: 'ADMIN', actorId: adminUserId, metadata: { event: 'repayment_recorded', technicianId: body.technicianId, amountPaise: body.amountPaise } } });
     return { id: entry.id };
   });
 }

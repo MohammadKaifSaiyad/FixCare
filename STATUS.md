@@ -4,7 +4,7 @@
 > session start and updates it at session end. Keep it short — this is a
 > dashboard, not a journal. Detail goes in `CHANGELOG.md` and weekly notes.
 
-_Last updated: 2026-10-02_
+_Last updated: 2026-10-08_
 
 ---
 
@@ -12,48 +12,32 @@ _Last updated: 2026-10-02_
 **Technician app (Flutter).** Backend booking module COMPLETE (B1→B7, PR #21); **customer app Slices 1-5 all
 merged** (#22-#33). Build order (ADR-0004) is on the **technician app** (`apps/technician`, Android + iOS per
 ADR-0005): Slice 1 (#35), customer interceptor back-port (#36), Slice 2 "drive a job" (#37) and **job estimate
-integrity (#38)** are merged; **Slice 3 "onboarding + verification"** is complete on branch, ready for PR. Money
+integrity (#38)** are merged; **Slice 3 "onboarding + verification"** is merged (#39); **Slice 4 "earnings + payout requests"** is complete on branch, ready for PR. Money
 still on Razorpay test keys until KYC (UPI blocked on Razorpay account activation — see Blocked on).
 
 ## Active task
-**Technician app Slice 3 — onboarding + verification** COMPLETE on `feature/technician-app-slice3-onboarding` (cut
-from `main` @ `e370a9c`), **ready for PR → `main`** (not pushed). A new technician can now sign up, fill a profile,
-submit, be reviewed by ops, and start taking jobs — no more hand-edited DB rows.
-- **Backend:** one additive migration `20261002135906_technician_onboarding` (`TechnicianZone`, `submittedAt` /
-  `reviewedAt` / `reviewNote`, audit action `TECHNICIAN_STATUS_CHANGED`). Technician `GET/PATCH /me/profile`
-  (name/skills/zoneIds, editable only while PENDING else 409 `PROFILE_LOCKED`) and `POST /technician/me/submit`.
-  Ops (MANAGER) `GET /admin/technicians?status=`, `POST …/:id/verify|send-back|suspend|reinstate`, `PATCH …/:id
-  {skills?, zoneIds?}`; invalid moves 409 `INVALID_TECHNICIAN_TRANSITION`; suspend refused with an active job (409
-  `TECHNICIAN_HAS_ACTIVE_JOB`). **Dispatch is in-zone** (403 `JOB_OUT_OF_ZONE`); unverified → 403
-  `TECHNICIAN_NOT_VERIFIED`. `verifyOtp` rejects a number registered under the other role (409 `ROLE_MISMATCH`).
-- **Technician app:** onboarding form (name/skills/zones) → "Under review" (polls, refreshes the session on
-  verify/send-back) → jobs; a **Suspended** screen; `HomeGate` routes by status; the interceptor refreshes the profile
-  on `TECHNICIAN_NOT_VERIFIED`. Both apps show a clear ROLE_MISMATCH message.
-- **Ops runbook:** `docs/06-operations/technician-review-runbook.md` (curl against `/admin/auth/login` token).
-- **Rollout / deploy order:** deploy the **backend first**. The `technician_zone_backfill` migration gives every
-  existing VERIFIED/SUSPENDED technician every ACTIVE zone (behavior-preserving — nobody loses jobs); ops then narrows
-  each technician's zones with `PATCH /admin/technicians/:id {zoneIds}`. Older
-  app builds on the new backend: a ROLE_MISMATCH login shows the old "That code isn't right."; an older technician
-  build's pending screen still never re-checks. `scripts/dev-drive-booking.sh` links its technician to the booking's zone.
-- **Final-review fix wave (done):** suspend is now blocked only by ACCEPTED…REPAIR_COMPLETE — the payment-only
-  states (CUSTOMER_CONFIRMED, DECLINED_BY_CUSTOMER) no longer block (a suspended technician can't collect cash; the
-  customer's cash initiate falls back to UPI); admin skills/zones edits audit before/after; reasons reject 10+ digit
-  runs; technician app: `refreshProfile` can't cross sessions (epoch guard), zones load / submit / OTP verify always
-  converge; unknown status pinned to fail closed; customer OTP busy flag resets. Gates after the wave: backend
-  433/433 + `pnpm build`; technician app 368 + analyze 0; customer app 182 (~5 skipped) + analyze 0.
-- **/code-review fix wave (done):** the suspend/accept race is closed (row-lock ordering — no longer an accepted gap);
-  suspend is refused (409 `TECHNICIAN_COLLECTING_CASH`) during a live cash handover; reason guard ignores separators;
-  locked beats invalid zone; refresh-retry path detects suspension; submit feeds its own response to the session.
-  Gates after this wave: backend 447/447 (73 files) + `pnpm build`; technician 371 + analyze 0; customer 182 (~5 skipped)
-  + analyze 0; dev and test DB migrations up to date.
-- **Known, accepted gaps:** there is no ops cancel/close path, so a job in ACCEPTED…REPAIR_COMPLETE blocks suspend
-  until it moves on (interim: engineer intervenes manually).
-- **Gates:** backend **426/426 (71 files), `pnpm build` clean**; technician app **361 tests, analyze clean**; customer
-  app **181 passed, 5 skipped (pre-existing), analyze clean**.
-  Design/plan: `docs/designs/2026-10-02-technician-app-slice3-onboarding-design.md`, `docs/plans/2026-10-02-technician-app-slice3-onboarding.md`.
-- **Environment (founder):** the Mac's Xcode license is unaccepted after an Xcode update — run `sudo xcodebuild
-  -license accept` before any iOS build or plain `git`.
-**Next: PR → `main` (founder pushes); on-device smoke of onboarding → verify → first job; then the follow-ups below.**
+**Technician app Slice 4 — earnings, cash debt + payout requests** COMPLETE on
+`feature/technician-app-slice4-earnings` (cut from `main` after Slice 3 merged), **ready for PR → `main`** (not pushed).
+A technician sees what they are owed, what is on hold, their cash debt, and can ask to be paid; ops pays by hand.
+- **Backend:** four additive migrations `technician_payout_requests` (PayoutRequest table + status enum),
+  `payout_request_entry_fk` (`payoutEntryId` is a real FK to LedgerEntry), `payout_request_transfer_reference` and `payout_request_constraints` (unique reference, one open request per technician, amount > 0); config `PAYOUT_MIN_PAISE` (default ₹100).
+  Technician earnings summary / pending releases / money history (cursor) and `POST /technician/me/payout-requests`
+  (one open at a time; net of cash debt; 409 `PAYOUT_ALREADY_REQUESTED`, 422 `PAYOUT_BELOW_MINIMUM`). Ops (MANAGER)
+  `GET /admin/payout-requests?status=` (shows `currentNetPaise` = what to transfer), `POST …/:id/pay {amountPaise, transferReference}`
+  (reference required; queue rows show `technicianStatus`; the legacy `POST /admin/settlements/payouts` is REMOVED)
+  and `POST …/:id/reject {reason}`. Pay nets cash debt first (CASH_DEBT_OFFSET) then writes the PAYOUT, all audited;
+  ops record the amount actually transferred (0 < amount ≤ the net recomputed under the technician row lock; above it
+  → 409 `PAYOUT_EXCEEDS_NET`, nothing written; also `TRANSFER_REFERENCE_USED`, `TECHNICIAN_DELETED`, `NOTHING_TO_PAY` →
+  reject, `PAYOUT_REQUEST_NOT_OPEN`). The technician sees `paidPaise`.
+- **Technician app:** Earnings screen (balance, on-hold/pending releases, cash debt, payout request + status, money
+  history with Load more); money card on jobs home; Earnings reachable when suspended.
+- **Ops runbook:** `docs/06-operations/technician-review-runbook.md` section 7 "Payout requests".
+- **Rollout / deploy order:** deploy the **backend first** (four additive migrations). An older app build on the new
+  backend simply doesn't show earnings.
+- **Gates:** backend **488/488 (78 files)** + `pnpm build` clean, both DBs up to date; technician app **416 tests**, `flutter analyze` 0;
+  customer app untouched.
+  Design: `docs/designs/2026-10-07-technician-app-slice4-earnings-design.md`.
+**Next: PR → `main` (founder pushes); on-device smoke incl. a payout round-trip via the runbook; then the follow-ups below.**
 
 ## PRIOR active task (customer app Slice 5 — payment, MERGED #31; kept below for history)
 **Customer app Slice 5 — payment** COMPLETE on `feature/customer-app-slice5-payment` (commits `5c337a3..ebe211b`),
@@ -73,6 +57,8 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 **Next: PR → `main` (founder pushes/merges). Then Razorpay TEST keys to exercise UPI end-to-end, or the next slice.**
 
 ## Last shipped
+- **Technician app Slice 3 — onboarding + verification** (**merged PR #39**) — sign-up → profile → submit → ops review
+  (runbook) → jobs; in-zone dispatch; suspend/reinstate; zone backfill migration. Backend 447, technician 371.
 - **Job estimate integrity** (**merged PR #38**) — parts add/remove ARRIVED-only; diagnose freezes the cart and is
   bound to the confirmed cart (`expectedPartLineIds` → 409 `ESTIMATE_CHANGED`); `GET /technician/jobs/:id` with
   server-computed `customerQuote`; stable `JOB_NOT_FOUND`/`JOB_NOT_ASSIGNED` codes; technician diagnosis form carries
@@ -256,17 +242,24 @@ Podfile.lock changes were intentionally NOT committed — pod resolution was inc
 - Commit-authorship hooks (`.githooks/commit-msg` + Claude PreToolUse hook).
 
 ## Next 3 targets
-1. **PR Slice 3 onboarding** → `main` (founder pushes/merges `feature/technician-app-slice3-onboarding`). Deploy
-   backend first, then add zones to existing VERIFIED technicians (runbook) before announcing. Then a clean
-   `flutter build ios` on the Mac (after accepting the Xcode license) to wire the Slice 2 pods.
-2. **On-device smoke** on a **physical Android 12+ phone** and an **iPhone**: onboarding → submit → ops verify
-   (runbook) → first job, plus the full job flow against the local backend (dev photo hook): deny-then-allow for camera +
-   location, the diagnosis-form confirm dialog / cart-lock path, airplane-mode during a part add at ARRIVED. Record
-   anything found (e.g. image_picker activity-kill → `retrieveLostData`).
-3. **Remaining Slice 2 follow-ups** and provision Cloudflare R2 (`R2_*`) — fix the presign settings first; then the
-   Slice 3 out-of-scope items below as product needs them.
+1. **PR Slice 4 earnings** → `main` (founder pushes/merges `feature/technician-app-slice4-earnings`). Deploy backend
+   first (four additive migrations). Then a clean `flutter build ios` on the Mac (after accepting the Xcode license).
+2. **On-device smoke** on a physical Android 12+ phone and an iPhone: onboarding → verify → job → earnings, including a
+   **payout round-trip via the runbook** (request in app → queue → transfer by hand → `pay` with `amountPaise` + `transferReference` → paid
+   amount shows in the app; also a reject).
+3. **Remaining follow-ups** (Slice 4 group below, Slice 2/3 items) and provision Cloudflare R2 (`R2_*`).
 
 ## Deferred follow-ups (carry forward)
+- **Technician Slice 4 — deferred from the /code-review wave:** technician receipt confirmation + two-person approval of
+  payouts (Golden Rule 2 trade-off, accepted for V1); cross-module queries inside settlements; admin payout-list
+  pagination; a shared repository error-mapping helper; the ledger cursor is decoded twice / `technicianBalance` lookup
+  reuse.
+- **Technician Slice 4 — earnings / payouts:** (a) two-person approval for payouts; (b) pre-existing deadlock risk: the
+  settlement sweep and dispute resolve take a key-share lock (ledger insert) before `FOR UPDATE` on the technician row,
+  so two of them for one technician can deadlock (the sweep retries; a dispute resolve that loses after the gateway refund leaves the refund without ledger rows);
+  (c) the money history renders every loaded row eagerly — lazy SliverList if histories grow; append-only triggers on LedgerEntry/AuditLog; dynamic/graduated cash limit (trust-system) and debt-cycling signals not fed by payouts; (d) in-app bank/UPI
+  capture; (e) Razorpay Route automatic payouts; (f) technician-cancelled requests; (g) push on paid; (h) trust score;
+  (i) statements/CSV; (j) online/offline mode.
 - **Job estimate integrity — deferred from the final review (the pilot blockers and the review's Important/Medium
   items are fixed on `feature/job-estimate-integrity`):** (a) minimum-app-version gate for technician builds;
   (b) bind the customer's approve to a cart version / expected total (latent while nothing writes parts after

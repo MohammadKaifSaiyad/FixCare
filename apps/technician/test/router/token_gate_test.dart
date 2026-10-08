@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/core/router/app_router.dart';
+import 'package:fixcare_technician/features/earnings/data/earnings_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/catalog_repository.dart';
 import 'package:fixcare_technician/features/profile/data/technician_profile_repository.dart';
 
@@ -14,6 +15,15 @@ class _FakeCatalog extends CatalogRepository {
   _FakeCatalog() : super(Dio());
   @override
   Future<Result<List<ZoneRefDto>>> zones() async => const Ok([ZoneRefDto(id: 'z1', name: 'Padra')]);
+}
+
+class _FakeEarnings extends EarningsRepository {
+  _FakeEarnings() : super(Dio());
+  @override
+  Future<Result<EarningsSummaryDto>> summary() async => const Ok(EarningsSummaryDto(
+      owedPaise: 0, netPayoutPaise: 0, pendingPaise: 0, cashDebtPaise: 60000, cashDebtLimitPaise: 50000, acceptBlocked: true, payoutMinPaise: 10000));
+  @override
+  Future<Result<LedgerPageDto>> ledger({String? before, int limit = 20}) async => const Ok(LedgerPageDto());
 }
 
 /// Fake profile repo per test: the boot hydration reads getProfile() to resolve the session's
@@ -75,6 +85,7 @@ void main() {
           if (status != null || profileFails)
             technicianProfileRepositoryProvider.overrideWithValue(_FakeProfileRepo(profileFails ? null : status)),
           catalogRepositoryProvider.overrideWithValue(_FakeCatalog()),
+          earningsRepositoryProvider.overrideWithValue(_FakeEarnings()),
         ],
         child: Consumer(
           builder: (context, ref, _) {
@@ -148,5 +159,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(router.routerDelegate.currentConfiguration.uri.path, '/home');
     expect(find.byKey(const Key('suspendedScreen')), findsOneWidget);
+  });
+
+  testWidgets('a SUSPENDED technician can still open /earnings (to settle cash); /job/* stays blocked', (tester) async {
+    backing['fixcare.access'] = 'a-token'; backing['fixcare.refresh'] = 'r-token';
+    final router = await pumpApp(tester, status: 'SUSPENDED');
+    router.go('/earnings');
+    await tester.pumpAndSettle();
+    expect(router.routerDelegate.currentConfiguration.uri.path, '/earnings');
+    expect(find.byKey(const Key('earningsScreen')), findsOneWidget);
+    router.go('/job/b1');
+    await tester.pumpAndSettle();
+    expect(router.routerDelegate.currentConfiguration.uri.path, '/home');
   });
 }

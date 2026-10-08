@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:fixcare_technician/core/format.dart';
 import 'package:fixcare_technician/core/result.dart';
+import 'package:fixcare_technician/features/earnings/data/earnings_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/jobs_home_screen.dart';
 
@@ -57,6 +58,22 @@ class _FakeJobRepo extends TechnicianJobRepository {
   }
 }
 
+/// The money card on jobs home reads the earnings summary — keep it off the network.
+class _FakeEarningsRepo extends EarningsRepository {
+  _FakeEarningsRepo() : super(Dio());
+  int summaryCalls = 0;
+  @override
+  Future<Result<EarningsSummaryDto>> summary() async {
+    summaryCalls++;
+    return _summaryOk;
+  }
+
+  static const _summaryOk = Ok(EarningsSummaryDto(
+      owedPaise: 33000, netPayoutPaise: 13000, pendingPaise: 0, cashDebtPaise: 0, cashDebtLimitPaise: 50000, acceptBlocked: false, payoutMinPaise: 10000));
+  @override
+  Future<Result<LedgerPageDto>> ledger({String? before, int limit = 20}) async => const Ok(LedgerPageDto());
+}
+
 class _EmptyJobRepo extends TechnicianJobRepository {
   _EmptyJobRepo() : super(Dio());
   @override
@@ -68,7 +85,7 @@ class _EmptyJobRepo extends TechnicianJobRepository {
 Future<void> _pump(WidgetTester tester, TechnicianJobRepository repo) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)],
+      overrides: [technicianJobRepositoryProvider.overrideWithValue(repo), earningsRepositoryProvider.overrideWithValue(_FakeEarningsRepo())],
       child: const MaterialApp(home: JobsHomeScreen()),
     ),
   );
@@ -167,7 +184,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)],
+        overrides: [technicianJobRepositoryProvider.overrideWithValue(repo), earningsRepositoryProvider.overrideWithValue(_FakeEarningsRepo())],
         child: MaterialApp.router(routerConfig: router),
       ),
     );
@@ -178,5 +195,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('detail b1'), findsOneWidget);
+  });
+
+  testWidgets('pull-to-refresh on My jobs also reloads the money card', (tester) async {
+    final earnings = _FakeEarningsRepo();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        technicianJobRepositoryProvider.overrideWithValue(_FakeJobRepo(available: [], mine: [_dto(id: 'm1')])),
+        earningsRepositoryProvider.overrideWithValue(earnings),
+      ],
+      child: const MaterialApp(home: JobsHomeScreen()),
+    ));
+    await tester.pumpAndSettle();
+    expect(earnings.summaryCalls, 1);
+    await tester.fling(find.byKey(const Key('myJob_m1')), const Offset(0, 300), 1000);
+    await tester.pumpAndSettle();
+    expect(earnings.summaryCalls, 2);
+  });
+
+  testWidgets('returning from a job reloads the money card', (tester) async {
+    final earnings = _FakeEarningsRepo();
+    final router = GoRouter(initialLocation: '/', routes: [
+      GoRoute(path: '/', builder: (_, _) => const JobsHomeScreen()),
+      GoRoute(path: '/job/:id', builder: (ctx, _) => Scaffold(body: TextButton(key: const Key('backBtn'), onPressed: () => ctx.pop(), child: const Text('back')))),
+    ]);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        technicianJobRepositoryProvider.overrideWithValue(_FakeJobRepo(available: [], mine: [_dto(id: 'm1')])),
+        earningsRepositoryProvider.overrideWithValue(earnings),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await tester.pumpAndSettle();
+    final before = earnings.summaryCalls;
+    await tester.tap(find.byKey(const Key('myJob_m1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('backBtn')));
+    await tester.pumpAndSettle();
+    expect(earnings.summaryCalls, before + 1);
   });
 }

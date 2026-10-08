@@ -8,6 +8,33 @@ Format: `## YYYY-MM-DD` headers, bullet entries. Update every session.
 
 ---
 
+## 2026-10-08 — Technician app Slice 4: earnings, cash debt + payout requests (on branch)
+
+- **Backend:** technician earnings summary, pending releases and cursor-paged money history; `POST
+  /technician/me/payout-requests` (one open at a time, net of cash debt, minimum `PAYOUT_MIN_PAISE` default ₹100).
+  Ops (MANAGER) `GET /admin/payout-requests`, `POST …/:id/pay {amountPaise, transferReference}` and `POST …/:id/reject {reason}`. Pay
+  requires the amount ops transferred (see the fix wave below); cash debt is netted (CASH_DEBT_OFFSET) before the PAYOUT; 409
+  `NOTHING_TO_PAY` / `PAYOUT_REQUEST_NOT_OPEN`. The technician sees `paidPaise`. Everything audited. Additive
+  migrations: `technician_payout_requests`, `payout_request_entry_fk`, `payout_request_transfer_reference`.
+  Final-review fix wave: legacy `POST /admin/settlements/payouts` removed; the pay requires a bank/UPI transfer
+  reference (stored + audited); queue rows show `technicianStatus`; reasons reject `@`; repayments audit as ADMIN.
+- **Technician app:** Earnings screen (balance, pending releases, cash debt, payout request, money history with Load
+  more), money card on jobs home, Earnings reachable when suspended.
+- **App fixes:** Earnings refetches on open and after a job; malformed responses become a Failure; no stale ledger page during a refresh.
+- **/code-review fix wave:** pay records the amount ops actually transferred (0 < amount ≤ net; above it 409
+  `PAYOUT_EXCEEDS_NET`; `PAYOUT_AMOUNT_CHANGED` removed; a partial payout leaves the rest owed); a transfer reference
+  closes at most one request (`TRANSFER_REFERENCE_USED`); no payout to a deleted technician (`TECHNICIAN_DELETED`); the
+  admin queue reads rows + balances in one snapshot with one groupBy; ledger rows carry `rateBps` (fee label shows the
+  real rate). Fourth migration `payout_request_constraints` (unique reference, partial unique one-open-per-technician,
+  `amountPaise > 0` CHECK). App: payout success snackbar with the server amount and a button that stays disabled until
+  the refreshed summary loads; load-more / refresh errors are shown, never thrown; one summary fetch per Earnings visit.
+  Deferred: receipt confirmation + two-person approval, cross-module queries, admin list pagination, shared repo error
+  helper, cursor decoded twice / technicianBalance reuse.
+- **Docs:** ops runbook section 7 "Payout requests"; fraud-defenses #19 payout insider abuse, #20 payout during suspension.
+- Gates: backend 488/488 (78 files), technician 416, customer app untouched, both DBs up to date; `pnpm build` / `flutter analyze` clean.
+
+---
+
 ## 2026-10-03 — Technician app Slice 3: /code-review fix wave
 
 - **Backend:** suspend refused (409 `TECHNICIAN_COLLECTING_CASH`) while a fresh CREATED cash payment exists; suspend/accept

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/result.dart';
 import '../../../core/theme.dart';
@@ -78,6 +79,8 @@ class _SuspendedScreenState extends ConsumerState<SuspendedScreen> {
               ),
               const SizedBox(height: 28),
               FilledButton(key: const Key('checkAgainBtn'), onPressed: _busy ? null : _check, child: const Text('Check again')),
+              const SizedBox(height: 8),
+              OutlinedButton(key: const Key('earningsBtn'), onPressed: () => context.push('/earnings'), child: const Text('Earnings')),
               const SizedBox(height: 8),
               TextButton(
                 key: const Key('logoutBtn'),

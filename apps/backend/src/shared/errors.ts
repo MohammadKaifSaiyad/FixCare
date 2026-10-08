@@ -31,5 +31,5 @@ export class ConflictError extends AppError {
   constructor(message = 'Conflict', code = 'CONFLICT') { super(message, 409, code); }
 }
 export class UnprocessableError extends AppError {
-  constructor(message = 'Unprocessable') { super(message, 422, 'UNPROCESSABLE'); }
+  constructor(message = 'Unprocessable', code = 'UNPROCESSABLE') { super(message, 422, code); }
 }

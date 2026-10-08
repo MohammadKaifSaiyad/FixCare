@@ -66,6 +66,7 @@ Every fraud vector and its specific structural block.
 - Debt aging alerts: any debt >7 days → flagged
 - Velocity cap: ₹3000 cash/24h regardless of debt limit
 - Customer-side cash confirmation closes the loop
+- Payout is the enforced debt-recovery point: marking a payout paid nets the technician's cash debt first (CASH_DEBT_OFFSET) before any PAYOUT is written (see #19)
 
 ---
 
@@ -233,6 +234,31 @@ skills confirmed (see the technician review runbook).
 **Remaining gaps:**
 - No force-suspend and no ops cancel/close path for stuck bookings.
 - (Closed) The suspend/accept race: suspend flips the status first, then counts active jobs; accept locks and re-checks the technician row in its own transaction, so exactly one of them wins.
+
+---
+
+### 19. Payout Insider Abuse
+**Attack:** An ops user (or a leaked MANAGER token) pays out to themselves or a friend, pays twice, pays an inflated amount, or pays a technician while skipping the cash they owe.
+
+**Defense (implemented):**
+- Only MANAGER can list, pay or reject; the payout queue is the ONLY way to write a PAYOUT (the legacy direct-payout endpoint is removed).
+- The technician row is locked for the whole pay; the server computes the net (owed minus cash debt) under the lock and ops record the amount they actually transferred, which must be > 0 and never above the net (`PAYOUT_EXCEEDS_NET`, nothing written); a deleted technician is never paid (`TECHNICIAN_DELETED`).
+- One open request per technician is DB-enforced (partial unique index, backing the lock check); a transfer reference closes at most one request (unique, `TRANSFER_REFERENCE_USED`); `amountPaise > 0` is a CHECK constraint.
+- Cash debt is netted (CASH_DEBT_OFFSET) before the PAYOUT, so cash held can't be paid out.
+- A bank/UPI transfer reference is required evidence (Golden Rule 1) and is stored on the request and in the audit row.
+- Ledger entry + audit row (actor = ADMIN, with reference and ledger entry id) + FK link from request to PAYOUT entry, all in one transaction; reasons can't carry phone/ID numbers, UPI IDs or emails.
+
+**Remaining gaps:**
+- No technician receipt confirmation and no two-person approval: one MANAGER can pay alone, and the technician does not confirm receiving the money (accepted V1 trade-off against Golden Rule 2).
+- No database-level append-only guard on LedgerEntry / AuditLog.
+
+---
+
+### 20. Payout During Suspension
+**Attack:** A technician about to be (or already) suspended for fraud requests a payout to cash out first.
+
+**Defense (implemented):**
+- Suspended technicians can still request (they are owed money for finished work), but ops sees `technicianStatus` on every queue row and the runbook requires a second look before paying a SUSPENDED technician. Cash debt is still netted first.
 
 ---
 
