@@ -1,4 +1,4 @@
-import type { PayoutRequest } from '@prisma/client';
+import type { PayoutRequest, TechnicianStatus } from '@prisma/client';
 
 export interface PayoutRequestDto {
   id: string;
@@ -59,4 +59,8 @@ export interface AdminPayoutRequestDto extends PayoutRequestDto {
   currentCashDebtPaise: number;
   /** max(0, owed − cash debt): the exact figure ops must transfer and send to pay. */
   currentNetPaise: number;
+  /** The technician's current status — ops reviews a SUSPENDED technician before paying. */
+  technicianStatus: TechnicianStatus;
+  /** Bank/UPI reference ops recorded when marking PAID; null otherwise. Admin-only. */
+  transferReference: string | null;
 }

@@ -87,6 +87,13 @@ describe('R3: the reason guard ignores separators', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('a reason carrying a UPI ID / email (@) → 400 with the guidance message', async () => {
+    const c = await makeTechnician(['AC'], 'KYC_SUBMITTED');
+    const res = await post(await makeAdminToken(), `/admin/technicians/${c.technicianId}/send-back`, { reason: 'pay me at name@okbank' });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.stringify(res.json())).toContain("Don't include UPI IDs or email addresses in the reason");
+  });
+
   it.each(['Visit 2 of 3', 'Jobs on 2026-10-02 and 2026-10-05'])('%s → accepted', async (reason) => {
     const c = await makeTechnician(['AC'], 'KYC_SUBMITTED');
     const res = await post(await makeAdminToken(), `/admin/technicians/${c.technicianId}/send-back`, { reason });

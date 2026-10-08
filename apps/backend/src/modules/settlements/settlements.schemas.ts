@@ -28,5 +28,10 @@ export type LedgerQuery = z.infer<typeof ledgerQuery>;
 
 export const payoutRequestIdParams = z.object({ id: z.string().uuid('Invalid payout request id') });
 export const listPayoutRequestsQuery = z.object({ status: z.enum(['REQUESTED', 'PAID', 'REJECTED']).optional() }).strict();
-/** What ops actually transferred — must equal the amount the server computes under the lock. */
-export const payPayoutRequestBody = z.object({ amountPaise: z.number().int().positive() }).strict();
+/** What ops actually transferred — must equal the amount the server computes under the lock — plus the
+ *  bank/UPI transaction reference of that transfer (evidence; Golden Rule 1). Not personal data. */
+export const payPayoutRequestBody = z.object({
+  amountPaise: z.number().int().positive(),
+  transferReference: z.string().trim().min(4, 'transferReference must be 4-64 characters').max(64, 'transferReference must be 4-64 characters')
+    .regex(/^[A-Za-z0-9\-\/]+$/, 'transferReference may only contain letters, digits, - and /'),
+}).strict();

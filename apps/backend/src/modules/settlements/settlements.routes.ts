@@ -53,7 +53,7 @@ export async function registerSettlementRoutes(app: FastifyInstance): Promise<vo
     if (!p.success) throw new ValidationError(p.error.issues[0]?.message ?? 'Invalid input');
     const b = payPayoutRequestBody.safeParse(req.body);
     if (!b.success) throw new ValidationError(b.error.issues[0]?.message ?? 'Invalid input');
-    return reply.send(await payPayoutRequest(req.user!.id, p.data.id, b.data.amountPaise));
+    return reply.send(await payPayoutRequest(req.user!.id, p.data.id, b.data.amountPaise, b.data.transferReference));
   });
 
   app.post('/admin/payout-requests/:id/reject', manager, async (req, reply) => {

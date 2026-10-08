@@ -39,7 +39,7 @@ const NOT_OPEN = () => new ConflictError('This payout request is no longer open'
 async function toAdminDtos(ids: string[]): Promise<AdminPayoutRequestDto[]> {
   const rows = await prisma.payoutRequest.findMany({
     where: { id: { in: ids } },
-    include: { technician: { select: { name: true, cashDebtPaise: true, user: { select: { phone: true } } } } },
+    include: { technician: { select: { name: true, cashDebtPaise: true, status: true, user: { select: { phone: true } } } } },
     orderBy: { createdAt: 'asc' },
   });
   const entryIds = rows.map((r) => r.payoutEntryId).filter((x): x is string => x !== null);
@@ -55,6 +55,8 @@ async function toAdminDtos(ids: string[]): Promise<AdminPayoutRequestDto[]> {
     currentOwedPaise: owedByTech.get(r.technicianId) ?? 0,
     currentCashDebtPaise: r.technician.cashDebtPaise,
     currentNetPaise: Math.max(0, (owedByTech.get(r.technicianId) ?? 0) - r.technician.cashDebtPaise),
+    technicianStatus: r.technician.status,
+    transferReference: r.status === 'PAID' ? r.transferReference : null,
   }));
 }
 
@@ -67,7 +69,7 @@ export async function listPayoutRequests(status?: PayoutRequestStatus): Promise<
 /** Ops transferred the money by hand: net the technician's CURRENT cash debt first (CASH_DEBT_OFFSET, like the
  *  sweep), then record the PAYOUT for the rest, and close the request — one transaction under the technician row
  *  lock. The request row is updated with a status guard, so a racing pay/reject can never both win. */
-export async function payPayoutRequest(adminUserId: string, requestId: string, transferredPaise: number): Promise<AdminPayoutRequestDto> {
+export async function payPayoutRequest(adminUserId: string, requestId: string, transferredPaise: number, transferReference: string): Promise<AdminPayoutRequestDto> {
   // Relies on READ COMMITTED: reads after the row lock see other transactions' commits — never switch this tx to REPEATABLE READ.
   await prisma.$transaction(async (tx) => {
     const req = await tx.payoutRequest.findUnique({ where: { id: requestId }, select: { technicianId: true } });
@@ -91,11 +93,11 @@ export async function payPayoutRequest(adminUserId: string, requestId: string, t
     const entry = await tx.ledgerEntry.create({ data: { technicianId: req.technicianId, type: 'PAYOUT', amountPaise: pay, metadata: { payoutRequestId: requestId } } });
     const closed = await tx.payoutRequest.updateMany({
       where: { id: requestId, status: 'REQUESTED' },
-      data: { status: 'PAID', payoutEntryId: entry.id, reviewedBy: adminUserId, reviewedAt: new Date() },
+      data: { status: 'PAID', payoutEntryId: entry.id, transferReference, reviewedBy: adminUserId, reviewedAt: new Date() },
     });
     if (closed.count === 0) throw NOT_OPEN(); // a reject landed in between — roll everything back
     await tx.auditLog.create({
-      data: { action: 'SETTLEMENT_EVENT', actorType: 'ADMIN', actorId: adminUserId, subjectId: req.technicianId, metadata: { event: 'payout_request_paid', payoutRequestId: requestId, technicianId: req.technicianId, requestedPaise: fresh.amountPaise, offsetPaise: offset, paidPaise: pay } },
+      data: { action: 'SETTLEMENT_EVENT', actorType: 'ADMIN', actorId: adminUserId, subjectId: req.technicianId, metadata: { event: 'payout_request_paid', payoutRequestId: requestId, technicianId: req.technicianId, requestedPaise: fresh.amountPaise, offsetPaise: offset, paidPaise: pay, transferReference, payoutEntryId: entry.id } },
     });
   });
   return (await toAdminDtos([requestId]))[0]!;
