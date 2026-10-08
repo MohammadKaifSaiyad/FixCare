@@ -17,10 +17,18 @@ String _bookingSuffix(LedgerEntryDto e) {
   return b != null ? ' · $b' : '';
 }
 
+/// "FixCare fee (15%)" from the row's recorded rate (basis points); plain "FixCare fee" when none was recorded.
+String _feeLabel(LedgerEntryDto e) {
+  final bps = e.rateBps;
+  if (bps == null) return 'FixCare fee';
+  final pct = bps % 100 == 0 ? '${bps ~/ 100}' : (bps / 100).toStringAsFixed(bps % 10 == 0 ? 1 : 2);
+  return 'FixCare fee ($pct%)';
+}
+
 /// What the row is.
 String ledgerRowLabel(LedgerEntryDto e) => switch (e.type) {
       'EARNING_CREDIT' => 'Earned${_suffix(e)}',
-      'COMMISSION' => 'FixCare fee (20%)${_bookingSuffix(e)}',
+      'COMMISSION' => '${_feeLabel(e)}${_bookingSuffix(e)}',
       'CASH_COLLECTED' => 'Cash collected${_bookingSuffix(e)}',
       'CASH_DEBT_OFFSET' => 'Cash settled from earnings',
       'PAYOUT' => 'Paid to you',

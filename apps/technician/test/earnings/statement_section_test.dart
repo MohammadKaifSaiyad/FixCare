@@ -6,8 +6,8 @@ import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/earnings/data/earnings_repository.dart';
 import 'package:fixcare_technician/features/earnings/presentation/statement_section.dart';
 
-LedgerEntryDto e(String id, String type, int paise, {String? booking, String? service}) =>
-    LedgerEntryDto(id: id, type: type, amountPaise: paise, bookingNumber: booking, serviceName: service, createdAt: '2026-10-01T06:00:00.000Z');
+LedgerEntryDto e(String id, String type, int paise, {String? booking, String? service, int? rate}) =>
+    LedgerEntryDto(id: id, type: type, amountPaise: paise, bookingNumber: booking, serviceName: service, rateBps: rate, createdAt: '2026-10-01T06:00:00.000Z');
 
 class _FakeRepo extends EarningsRepository {
   _FakeRepo(this.pages) : super(Dio());
@@ -24,7 +24,10 @@ void main() {
   test('every ledger type has a label and an effect', () {
     expect(ledgerRowLabel(e('1', 'EARNING_CREDIT', 48000, booking: 'FC-1', service: 'AC gas refill')), 'Earned · FC-1 · AC gas refill');
     expect(ledgerRowEffect(e('1', 'EARNING_CREDIT', 48000)), 'Owed +₹480');
-    expect(ledgerRowLabel(e('2', 'COMMISSION', 12000, booking: 'FC-1')), 'FixCare fee (20%) · FC-1');
+    expect(ledgerRowLabel(e('2', 'COMMISSION', 12000, booking: 'FC-1', rate: 2000)), 'FixCare fee (20%) · FC-1');
+    expect(ledgerRowLabel(e('2', 'COMMISSION', 9000, booking: 'FC-2', rate: 1500)), 'FixCare fee (15%) · FC-2');
+    expect(ledgerRowLabel(e('2', 'COMMISSION', 7500, booking: 'FC-3', rate: 1250)), 'FixCare fee (12.5%) · FC-3');
+    expect(ledgerRowLabel(e('2', 'COMMISSION', 100, booking: 'FC-4')), 'FixCare fee · FC-4'); // no rate recorded
     expect(ledgerRowEffect(e('2', 'COMMISSION', 12000)), 'Info · ₹120');
     expect(ledgerRowEffect(e('3', 'CASH_COLLECTED', 50000)), 'Cash to hand over +₹500');
     expect(ledgerRowLabel(e('4', 'CASH_DEBT_OFFSET', 5000)), 'Cash settled from earnings');

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fixcare_technician/core/result.dart';
@@ -100,17 +101,44 @@ void main() {
     expect(s.loadMoreError, isNull);
   });
 
-  test('a throwing loadMore page never leaves loadingMore stuck at true', () async {
+  test('a throwing loadMore page is reported and shown as loadMoreError — never rethrown, never stuck loading', () async {
     repo.pages[null] = Ok(LedgerPageDto(entries: [_e('a')], nextCursor: 'c1'));
     await c.read(ledgerControllerProvider.future);
     repo.throwsOn.add('c1');
     final n = c.read(ledgerControllerProvider.notifier);
-    await expectLater(n.loadMore(), throwsA(isA<StateError>()));
-    expect(c.read(ledgerControllerProvider).value!.loadingMore, false);
+    final reported = <FlutterErrorDetails>[];
+    final old = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = old);
+    await n.loadMore(); // does not throw
+    FlutterError.onError = old;
+    expect(reported.single.exception, isA<StateError>());
+    final s = c.read(ledgerControllerProvider).value!;
+    expect(s.loadingMore, false);
+    expect(s.loadMoreError, 'Something went wrong. Please try again.');
+    expect(s.entries.map((e) => e.id), ['a']);
     repo.throwsOn.clear();
     repo.pages['c1'] = Ok(LedgerPageDto(entries: [_e('b')]));
     await n.loadMore(); // and Load more works again
     expect(c.read(ledgerControllerProvider).value!.entries.map((e) => e.id), ['a', 'b']);
+    expect(c.read(ledgerControllerProvider).value!.loadMoreError, isNull);
+  });
+
+  test('a throwing refresh is reported and becomes an EarningsLoadException error state', () async {
+    repo.pages[null] = Ok(LedgerPageDto(entries: [_e('a')]));
+    await c.read(ledgerControllerProvider.future);
+    repo.throwsOn.add(null);
+    final reported = <FlutterErrorDetails>[];
+    final old = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = old);
+    await c.read(ledgerControllerProvider.notifier).refresh(); // does not throw
+    FlutterError.onError = old;
+    expect(reported.single.exception, isA<StateError>());
+    final st = c.read(ledgerControllerProvider);
+    expect(st.hasError, true);
+    expect(st.error, isA<EarningsLoadException>());
+    expect('${st.error}', 'Something went wrong. Please try again.');
   });
 
   test('loadMore is a no-op while a refresh is in flight; the fresh page wins', () async {

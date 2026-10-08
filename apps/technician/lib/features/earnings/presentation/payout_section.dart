@@ -38,10 +38,19 @@ class _PayoutSectionState extends ConsumerState<PayoutSection> {
     try {
       final r = await ref.read(earningsRepositoryProvider).requestPayout();
       if (!mounted) return;
-      if (r case Failure(:final message)) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      switch (r) {
+        case Failure(:final message):
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        case Ok(value: final dto):
+          // The server's amount, which may differ from the dialog's if the balance moved meanwhile.
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payout of ${rupees(dto.amountPaise)} requested')));
       }
-      ref.invalidate(earningsSummaryProvider); // either way: show the server's current state
+      // Either way show the server's current state; stay busy (button disabled) until it has loaded.
+      try {
+        final _ = await ref.refresh(earningsSummaryProvider.future);
+      } catch (_) {
+        // The screen shows the load error with its own Retry; nothing more to do here.
+      }
     } catch (e, st) {
       FlutterError.reportError(FlutterErrorDetails(exception: e, stack: st, library: 'fixcare earnings', context: ErrorDescription('requesting a payout')));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Something went wrong. Please try again.')));

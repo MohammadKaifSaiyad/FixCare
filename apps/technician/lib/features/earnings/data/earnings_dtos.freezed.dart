@@ -913,7 +913,8 @@ $PayoutRequestDtoCopyWith<$Res>? get latestPayoutRequest {
 /// @nodoc
 mixin _$LedgerEntryDto {
 
- String get id; String get type; int get amountPaise; String? get bookingNumber; String? get serviceName; String get createdAt;
+ String get id; String get type; int get amountPaise; String? get bookingNumber; String? get serviceName;/// Commission rate (basis points) recorded on the row, when there is one.
+ int? get rateBps; String get createdAt;
 /// Create a copy of LedgerEntryDto
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -927,20 +928,20 @@ $LedgerEntryDtoCopyWith<LedgerEntryDto> get copyWith => _$LedgerEntryDtoCopyWith
 @override
 bool operator ==(Object other) {
   final _this = this as LedgerEntryDto;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LedgerEntryDto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.type, _this.type) || other.type == _this.type)&&(identical(other.amountPaise, _this.amountPaise) || other.amountPaise == _this.amountPaise)&&(identical(other.bookingNumber, _this.bookingNumber) || other.bookingNumber == _this.bookingNumber)&&(identical(other.serviceName, _this.serviceName) || other.serviceName == _this.serviceName)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LedgerEntryDto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.type, _this.type) || other.type == _this.type)&&(identical(other.amountPaise, _this.amountPaise) || other.amountPaise == _this.amountPaise)&&(identical(other.bookingNumber, _this.bookingNumber) || other.bookingNumber == _this.bookingNumber)&&(identical(other.serviceName, _this.serviceName) || other.serviceName == _this.serviceName)&&(identical(other.rateBps, _this.rateBps) || other.rateBps == _this.rateBps)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as LedgerEntryDto;
-  return Object.hash(runtimeType,_this.id,_this.type,_this.amountPaise,_this.bookingNumber,_this.serviceName,_this.createdAt);
+  return Object.hash(runtimeType,_this.id,_this.type,_this.amountPaise,_this.bookingNumber,_this.serviceName,_this.rateBps,_this.createdAt);
 }
 
 @override
 String toString() {
   final _this = this as LedgerEntryDto;
-  return 'LedgerEntryDto(id: ${_this.id}, type: ${_this.type}, amountPaise: ${_this.amountPaise}, bookingNumber: ${_this.bookingNumber}, serviceName: ${_this.serviceName}, createdAt: ${_this.createdAt})';
+  return 'LedgerEntryDto(id: ${_this.id}, type: ${_this.type}, amountPaise: ${_this.amountPaise}, bookingNumber: ${_this.bookingNumber}, serviceName: ${_this.serviceName}, rateBps: ${_this.rateBps}, createdAt: ${_this.createdAt})';
 }
 
 
@@ -951,7 +952,7 @@ abstract mixin class $LedgerEntryDtoCopyWith<$Res>  {
   factory $LedgerEntryDtoCopyWith(LedgerEntryDto value, $Res Function(LedgerEntryDto) _then) = _$LedgerEntryDtoCopyWithImpl;
 @useResult
 $Res call({
- String id, String type, int amountPaise, String? bookingNumber, String? serviceName, String createdAt
+ String id, String type, int amountPaise, String? bookingNumber, String? serviceName, int? rateBps, String createdAt
 });
 
 
@@ -968,14 +969,15 @@ class _$LedgerEntryDtoCopyWithImpl<$Res>
 
 /// Create a copy of LedgerEntryDto
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? type = null,Object? amountPaise = null,Object? bookingNumber = freezed,Object? serviceName = freezed,Object? createdAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? type = null,Object? amountPaise = null,Object? bookingNumber = freezed,Object? serviceName = freezed,Object? rateBps = freezed,Object? createdAt = null,}) {
   return _then(LedgerEntryDto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as String,amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // ignore: cast_nullable_to_non_nullable
 as int,bookingNumber: freezed == bookingNumber ? _self.bookingNumber : bookingNumber // ignore: cast_nullable_to_non_nullable
 as String?,serviceName: freezed == serviceName ? _self.serviceName : serviceName // ignore: cast_nullable_to_non_nullable
-as String?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
+as String?,rateBps: freezed == rateBps ? _self.rateBps : rateBps // ignore: cast_nullable_to_non_nullable
+as int?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }
@@ -1061,10 +1063,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String type,  int amountPaise,  String? bookingNumber,  String? serviceName,  String createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String type,  int amountPaise,  String? bookingNumber,  String? serviceName,  int? rateBps,  String createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LedgerEntryDto() when $default != null:
-return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.serviceName,_that.createdAt);case _:
+return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.serviceName,_that.rateBps,_that.createdAt);case _:
   return orElse();
 
 }
@@ -1082,10 +1084,10 @@ return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String type,  int amountPaise,  String? bookingNumber,  String? serviceName,  String createdAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String type,  int amountPaise,  String? bookingNumber,  String? serviceName,  int? rateBps,  String createdAt)  $default,) {final _that = this;
 switch (_that) {
 case _LedgerEntryDto():
-return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.serviceName,_that.createdAt);case _:
+return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.serviceName,_that.rateBps,_that.createdAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1102,10 +1104,10 @@ return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String type,  int amountPaise,  String? bookingNumber,  String? serviceName,  String createdAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String type,  int amountPaise,  String? bookingNumber,  String? serviceName,  int? rateBps,  String createdAt)?  $default,) {final _that = this;
 switch (_that) {
 case _LedgerEntryDto() when $default != null:
-return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.serviceName,_that.createdAt);case _:
+return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.serviceName,_that.rateBps,_that.createdAt);case _:
   return null;
 
 }
@@ -1117,7 +1119,7 @@ return $default(_that.id,_that.type,_that.amountPaise,_that.bookingNumber,_that.
 @JsonSerializable()
 
 class _LedgerEntryDto implements LedgerEntryDto {
-  const _LedgerEntryDto({required this.id, required this.type, required this.amountPaise, this.bookingNumber, this.serviceName, required this.createdAt});
+  const _LedgerEntryDto({required this.id, required this.type, required this.amountPaise, this.bookingNumber, this.serviceName, this.rateBps, required this.createdAt});
   factory _LedgerEntryDto.fromJson(Map<String, dynamic> json) => _$LedgerEntryDtoFromJson(json);
 
 @override final  String id;
@@ -1125,6 +1127,8 @@ class _LedgerEntryDto implements LedgerEntryDto {
 @override final  int amountPaise;
 @override final  String? bookingNumber;
 @override final  String? serviceName;
+/// Commission rate (basis points) recorded on the row, when there is one.
+@override final  int? rateBps;
 @override final  String createdAt;
 
 /// Create a copy of LedgerEntryDto
@@ -1140,18 +1144,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LedgerEntryDto&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.amountPaise, amountPaise) || other.amountPaise == amountPaise)&&(identical(other.bookingNumber, bookingNumber) || other.bookingNumber == bookingNumber)&&(identical(other.serviceName, serviceName) || other.serviceName == serviceName)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LedgerEntryDto&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.amountPaise, amountPaise) || other.amountPaise == amountPaise)&&(identical(other.bookingNumber, bookingNumber) || other.bookingNumber == bookingNumber)&&(identical(other.serviceName, serviceName) || other.serviceName == serviceName)&&(identical(other.rateBps, rateBps) || other.rateBps == rateBps)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,type,amountPaise,bookingNumber,serviceName,createdAt);
+    return Object.hash(runtimeType,id,type,amountPaise,bookingNumber,serviceName,rateBps,createdAt);
 }
 
 @override
 String toString() {
-    return 'LedgerEntryDto(id: $id, type: $type, amountPaise: $amountPaise, bookingNumber: $bookingNumber, serviceName: $serviceName, createdAt: $createdAt)';
+    return 'LedgerEntryDto(id: $id, type: $type, amountPaise: $amountPaise, bookingNumber: $bookingNumber, serviceName: $serviceName, rateBps: $rateBps, createdAt: $createdAt)';
 }
 
 
@@ -1162,7 +1166,7 @@ abstract mixin class _$LedgerEntryDtoCopyWith<$Res> implements $LedgerEntryDtoCo
   factory _$LedgerEntryDtoCopyWith(_LedgerEntryDto value, $Res Function(_LedgerEntryDto) _then) = __$LedgerEntryDtoCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String type, int amountPaise, String? bookingNumber, String? serviceName, String createdAt
+ String id, String type, int amountPaise, String? bookingNumber, String? serviceName, int? rateBps, String createdAt
 });
 
 
@@ -1179,14 +1183,15 @@ class __$LedgerEntryDtoCopyWithImpl<$Res>
 
 /// Create a copy of LedgerEntryDto
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? type = null,Object? amountPaise = null,Object? bookingNumber = freezed,Object? serviceName = freezed,Object? createdAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? type = null,Object? amountPaise = null,Object? bookingNumber = freezed,Object? serviceName = freezed,Object? rateBps = freezed,Object? createdAt = null,}) {
   return _then(_LedgerEntryDto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as String,amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // ignore: cast_nullable_to_non_nullable
 as int,bookingNumber: freezed == bookingNumber ? _self.bookingNumber : bookingNumber // ignore: cast_nullable_to_non_nullable
 as String?,serviceName: freezed == serviceName ? _self.serviceName : serviceName // ignore: cast_nullable_to_non_nullable
-as String?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
+as String?,rateBps: freezed == rateBps ? _self.rateBps : rateBps // ignore: cast_nullable_to_non_nullable
+as int?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }

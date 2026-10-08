@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/result.dart';
 import '../data/earnings_repository.dart';
@@ -23,6 +24,11 @@ Future<EarningsSummaryDto> earningsSummary(Ref ref) async {
     Failure(message: final m) => throw EarningsLoadException(m),
   };
 }
+
+const _unexpectedMessage = 'Something went wrong. Please try again.';
+
+void _report(Object e, StackTrace st, String what) =>
+    FlutterError.reportError(FlutterErrorDetails(exception: e, stack: st, library: 'fixcare earnings', context: ErrorDescription(what)));
 
 class LedgerState {
   const LedgerState({required this.entries, this.nextCursor, this.loadingMore = false, this.loadMoreError});
@@ -70,6 +76,10 @@ class LedgerController extends _$LedgerController {
     _refreshing = true;
     try {
       await _refreshInner(gen);
+    } catch (e, st) {
+      // Never throw out of a UI-triggered refresh: report it and show the generic message with Retry.
+      _report(e, st, 'refreshing the ledger');
+      if (ref.mounted && gen == _generation) state = AsyncError(const EarningsLoadException(_unexpectedMessage), st);
     } finally {
       if (gen == _generation) _refreshing = false;
     }
@@ -98,6 +108,12 @@ class LedgerController extends _$LedgerController {
         Ok(value: final p) => now.copyWith(entries: [...now.entries, ...p.entries], nextCursor: p.nextCursor, clearCursor: p.nextCursor == null, loadingMore: false),
         Failure(message: final m) => now.copyWith(loadingMore: false, loadMoreError: m),
       });
+    } catch (e, st) {
+      _report(e, st, 'loading more ledger rows');
+      if (ref.mounted && gen == _generation) {
+        final now = state.hasError ? null : state.value;
+        if (now != null) state = AsyncData(now.copyWith(loadingMore: false, loadMoreError: _unexpectedMessage));
+      }
     } finally {
       // Never leave "Load more" stuck on its spinner (a throw, or an early return above).
       if (ref.mounted && gen == _generation) {

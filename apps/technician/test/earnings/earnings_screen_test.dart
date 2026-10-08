@@ -77,6 +77,34 @@ void main() {
     expect(find.byKey(const Key('requestPayoutBtn')), findsNothing);
   });
 
+  testWidgets('success snackbar shows the SERVER amount, even when it differs from the dialog', (tester) async {
+    await pump(tester, [Ok(summary()), Ok(summary(latest: req('REQUESTED')))]);
+    repo.requestResult = Ok(PayoutRequestDto(id: 'p2', status: 'REQUESTED', amountPaise: 15000, requestedAt: '2026-10-03T06:00:00.000Z'));
+    await tester.tap(find.byKey(const Key('requestPayoutBtn')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmPayoutBtn')));
+    await tester.pump(); // request resolved
+    await tester.pump();
+    expect(find.text('Payout of ₹150 requested'), findsOneWidget);
+  });
+
+  testWidgets('the request button stays disabled until the refreshed summary has loaded', (tester) async {
+    await pump(tester, [Ok(summary()), Ok(summary(latest: req('REQUESTED')))]);
+    repo.gate = Completer<void>(); // gates every summary fetch after the first
+    await tester.tap(find.byKey(const Key('requestPayoutBtn')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmPayoutBtn')));
+    await tester.pump();
+    await tester.pump();
+    expect(repo.requestCalls, 1);
+    expect(repo.summaryCalls, 2); // refresh in flight
+    expect(tester.widget<FilledButton>(find.byKey(const Key('requestPayoutBtn'))).onPressed, isNull);
+    repo.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('requestPayoutBtn')), findsNothing); // now the open request replaces the button
+    expect(repo.requestCalls, 1);
+  });
+
   testWidgets('no cash debt → dialog without the cash clause; cancel sends nothing', (tester) async {
     await pump(tester, [Ok(summary(debt: 0, net: 33000))]);
     await tester.tap(find.byKey(const Key('requestPayoutBtn')));

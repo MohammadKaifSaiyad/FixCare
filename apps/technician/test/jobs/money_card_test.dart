@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/earnings/data/earnings_repository.dart';
+import 'package:fixcare_technician/features/earnings/presentation/earnings_providers.dart';
 import 'package:fixcare_technician/features/jobs/presentation/money_card.dart';
 
 EarningsSummaryDto _summary({int debt = 20000, bool blocked = false}) => EarningsSummaryDto(
@@ -66,7 +67,7 @@ void main() {
     expect(find.byKey(const Key('moneyCardError')), findsNothing);
   });
 
-  testWidgets('tap opens /earnings; coming back fetches the summary again', (tester) async {
+  testWidgets('tap opens /earnings; coming back adds no fetch of its own (Earnings refreshes on open)', (tester) async {
     final repo = await pump(tester, [Ok(_summary())]);
     expect(repo.calls, 1);
     await tester.tap(find.byKey(const Key('moneyCard')));
@@ -75,16 +76,14 @@ void main() {
     tester.state<NavigatorState>(find.byType(Navigator)).pop();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('moneyCard')), findsOneWidget);
-    expect(repo.calls, 2);
+    expect(repo.calls, 1);
   });
 
-  testWidgets('a reload keeps showing the old numbers (no blank spacer), then swaps in the new ones', (tester) async {
+  testWidgets('an invalidated summary keeps showing the old numbers (no blank spacer), then swaps in the new ones', (tester) async {
     final gate = Completer<void>();
     final repo = await pump(tester, [Ok(_summary()), Ok(_summary(debt: 0))], gate: gate);
-    await tester.tap(find.byKey(const Key('moneyCard')));
-    await tester.pumpAndSettle();
-    tester.state<NavigatorState>(find.byType(Navigator)).pop();
-    await tester.pumpAndSettle();
+    ProviderScope.containerOf(tester.element(find.byKey(const Key('moneyCard')))).invalidate(earningsSummaryProvider);
+    await tester.pump();
     expect(repo.calls, 2); // reload in flight
     expect(find.byKey(const Key('moneyCard')), findsOneWidget);
     expect(find.text('Cash to hand over ₹200'), findsOneWidget);
@@ -96,9 +95,7 @@ void main() {
 
   testWidgets('a failed reload shows the error row, not the stale card', (tester) async {
     await pump(tester, [Ok(_summary()), const Failure(FailureKind.network, 'down')]);
-    await tester.tap(find.byKey(const Key('moneyCard')));
-    await tester.pumpAndSettle();
-    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    ProviderScope.containerOf(tester.element(find.byKey(const Key('moneyCard')))).invalidate(earningsSummaryProvider);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('moneyCardError')), findsOneWidget);
     expect(find.byKey(const Key('moneyCard')), findsNothing);

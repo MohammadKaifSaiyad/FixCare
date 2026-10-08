@@ -91,6 +91,7 @@ _LedgerEntryDto _$LedgerEntryDtoFromJson(Map<String, dynamic> json) =>
       amountPaise: (json['amountPaise'] as num).toInt(),
       bookingNumber: json['bookingNumber'] as String?,
       serviceName: json['serviceName'] as String?,
+      rateBps: (json['rateBps'] as num?)?.toInt(),
       createdAt: json['createdAt'] as String,
     );
 
@@ -101,6 +102,7 @@ Map<String, dynamic> _$LedgerEntryDtoToJson(_LedgerEntryDto instance) =>
       'amountPaise': instance.amountPaise,
       'bookingNumber': instance.bookingNumber,
       'serviceName': instance.serviceName,
+      'rateBps': instance.rateBps,
       'createdAt': instance.createdAt,
     };
 

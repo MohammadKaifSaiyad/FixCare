@@ -40,13 +40,8 @@ class MoneyCard extends ConsumerWidget {
     return InkWell(
       key: const Key('moneyCard'),
       borderRadius: BorderRadius.circular(FixCareRadii.card),
-      onTap: () async {
-        await context.push('/earnings');
-        if (!context.mounted) return;
-        ref.invalidate(
-          earningsSummaryProvider,
-        ); // back from Earnings → fresh numbers
-      },
+      // The Earnings screen refreshes the shared summary on open and after a request — no second fetch on return.
+      onTap: () => context.push('/earnings'),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(

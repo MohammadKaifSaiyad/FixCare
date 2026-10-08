@@ -53,6 +53,8 @@ abstract class LedgerEntryDto with _$LedgerEntryDto {
     required int amountPaise,
     String? bookingNumber,
     String? serviceName,
+    /// Commission rate (basis points) recorded on the row, when there is one.
+    int? rateBps,
     required String createdAt,
   }) = _LedgerEntryDto;
   factory LedgerEntryDto.fromJson(Map<String, dynamic> j) => _$LedgerEntryDtoFromJson(j);
