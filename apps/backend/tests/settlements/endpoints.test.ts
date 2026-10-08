@@ -31,14 +31,17 @@ describe('GET /technician/me/balance', () => {
 });
 
 describe('admin settlements', () => {
-  it('payout: happy path writes PAYOUT + audit; over-payable → 409; over-debt repayment → 409', async () => {
+  it('the legacy POST /admin/settlements/payouts is gone (404) — the payout queue is the only way to PAYOUT', async () => {
     const t = await seeded();
     const admin = await makeAdminToken();
-    expect((await app.inject({ method: 'POST', url: '/admin/settlements/payouts', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise: 20000 } })).statusCode).toBe(409); // > 18000 payable
-    const ok = await app.inject({ method: 'POST', url: '/admin/settlements/payouts', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise: 18000 } });
-    expect(ok.statusCode).toBe(201);
-    expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(1);
-    expect(await prisma.auditLog.count({ where: { action: 'SETTLEMENT_EVENT', metadata: { path: ['event'], equals: 'payout_recorded' } } })).toBe(1);
+    const res = await app.inject({ method: 'POST', url: '/admin/settlements/payouts', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise: 18000 } });
+    expect(res.statusCode).toBe(404);
+    expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(0);
+  });
+
+  it('over-debt repayment → 409', async () => {
+    const t = await seeded();
+    const admin = await makeAdminToken();
     expect((await app.inject({ method: 'POST', url: '/admin/settlements/repayments', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise: 25000 } })).statusCode).toBe(409); // > 20000 debt
   });
 
@@ -48,15 +51,17 @@ describe('admin settlements', () => {
     const res = await app.inject({ method: 'POST', url: '/admin/settlements/repayments', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise: 20000 } });
     expect(res.statusCode).toBe(201);
     expect((await prisma.technician.findUnique({ where: { id: t.technicianId } }))!.cashDebtPaise).toBe(0);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'SETTLEMENT_EVENT', metadata: { path: ['event'], equals: 'repayment_recorded' } } });
+    expect(audit.actorType).toBe('ADMIN');
   });
 
   it('walls: technician token on admin routes → 403; unknown technician → 404; zero/negative/float amount → 400', async () => {
     const t = await seeded();
     const admin = await makeAdminToken();
-    expect((await app.inject({ method: 'POST', url: '/admin/settlements/payouts', headers: auth(t.token), payload: { technicianId: t.technicianId, amountPaise: 100 } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'POST', url: '/admin/settlements/payouts', headers: auth(admin), payload: { technicianId: '00000000-0000-0000-0000-000000000000', amountPaise: 100 } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/admin/settlements/repayments', headers: auth(t.token), payload: { technicianId: t.technicianId, amountPaise: 100 } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/admin/settlements/repayments', headers: auth(admin), payload: { technicianId: '00000000-0000-0000-0000-000000000000', amountPaise: 100 } })).statusCode).toBe(404);
     for (const amountPaise of [0, -5, 10.5]) {
-      expect((await app.inject({ method: 'POST', url: '/admin/settlements/payouts', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise } })).statusCode).toBe(400);
+      expect((await app.inject({ method: 'POST', url: '/admin/settlements/repayments', headers: auth(admin), payload: { technicianId: t.technicianId, amountPaise } })).statusCode).toBe(400);
     }
   });
 

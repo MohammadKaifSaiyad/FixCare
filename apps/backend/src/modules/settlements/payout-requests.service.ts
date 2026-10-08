@@ -12,7 +12,7 @@ import { toPayoutRequestDto, type AdminPayoutRequestDto, type PayoutRequestDto }
 const rupeeLabel = (paise: number) => formatPaise(paise).replace(/\.00$/, '');
 
 /** The technician asks to be paid everything owed, net of the cash they hold. One open request at a time —
- *  enforced under the technician row lock (the same lock recordPayout / pay use), so two taps can't create two. */
+ *  enforced under the technician row lock (the same lock pay uses), so two taps can't create two. */
 export async function requestPayout(userId: string): Promise<PayoutRequestDto> {
   const tech = await technicianForUser(userId);
   // Relies on READ COMMITTED: reads after the row lock see other transactions' commits — never switch this tx to REPEATABLE READ.
