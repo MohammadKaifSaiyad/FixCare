@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:fixcare_technician/core/format.dart';
 import 'package:fixcare_technician/core/result.dart';
+import 'package:fixcare_technician/features/earnings/data/earnings_repository.dart';
 import 'package:fixcare_technician/features/jobs/data/technician_job_repository.dart';
 import 'package:fixcare_technician/features/jobs/presentation/jobs_home_screen.dart';
 
@@ -57,6 +58,16 @@ class _FakeJobRepo extends TechnicianJobRepository {
   }
 }
 
+/// The money card on jobs home reads the earnings summary — keep it off the network.
+class _FakeEarningsRepo extends EarningsRepository {
+  _FakeEarningsRepo() : super(Dio());
+  @override
+  Future<Result<EarningsSummaryDto>> summary() async => const Ok(EarningsSummaryDto(
+      owedPaise: 33000, netPayoutPaise: 13000, pendingPaise: 0, cashDebtPaise: 0, cashDebtLimitPaise: 50000, acceptBlocked: false, payoutMinPaise: 10000));
+  @override
+  Future<Result<LedgerPageDto>> ledger({String? before, int limit = 20}) async => const Ok(LedgerPageDto());
+}
+
 class _EmptyJobRepo extends TechnicianJobRepository {
   _EmptyJobRepo() : super(Dio());
   @override
@@ -68,7 +79,7 @@ class _EmptyJobRepo extends TechnicianJobRepository {
 Future<void> _pump(WidgetTester tester, TechnicianJobRepository repo) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)],
+      overrides: [technicianJobRepositoryProvider.overrideWithValue(repo), earningsRepositoryProvider.overrideWithValue(_FakeEarningsRepo())],
       child: const MaterialApp(home: JobsHomeScreen()),
     ),
   );
@@ -167,7 +178,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [technicianJobRepositoryProvider.overrideWithValue(repo)],
+        overrides: [technicianJobRepositoryProvider.overrideWithValue(repo), earningsRepositoryProvider.overrideWithValue(_FakeEarningsRepo())],
         child: MaterialApp.router(routerConfig: router),
       ),
     );

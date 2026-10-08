@@ -6,7 +6,9 @@ import '../../../core/format.dart';
 import '../../../core/result.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../data/technician_job_repository.dart';
+import '../../earnings/presentation/earnings_providers.dart';
 import 'available_jobs_controller.dart';
+import 'money_card.dart';
 import 'my_jobs_controller.dart';
 
 /// Tracks which job cards currently have an in-flight accept, so a second tap
@@ -45,6 +47,8 @@ class JobsHomeScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const MoneyCard(),
+            const SizedBox(height: 16),
             const Text('Available', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             _AvailableSection(async: available),
@@ -63,8 +67,10 @@ class _AvailableSection extends ConsumerWidget {
   const _AvailableSection({required this.async});
   final AsyncValue<List<TechnicianJobDto>> async;
 
-  Future<void> _onRefresh(WidgetRef ref) =>
-      ref.read(availableJobsControllerProvider.notifier).refresh();
+  Future<void> _onRefresh(WidgetRef ref) {
+    ref.invalidate(earningsSummaryProvider); // the money card reloads with the pull
+    return ref.read(availableJobsControllerProvider.notifier).refresh();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

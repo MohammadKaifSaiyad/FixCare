@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:fixcare_technician/core/result.dart';
 import 'package:fixcare_technician/features/auth/domain/session.dart';
 import 'package:fixcare_technician/features/auth/presentation/auth_controller.dart';
@@ -28,7 +29,12 @@ void main() {
     final auth = _FakeAuth(p);
     await tester.pumpWidget(ProviderScope(
       overrides: [authControllerProvider.overrideWith(() => auth)],
-      child: const MaterialApp(home: SuspendedScreen()),
+      child: MaterialApp.router(
+        routerConfig: GoRouter(routes: [
+          GoRoute(path: '/', builder: (_, _) => const SuspendedScreen()),
+          GoRoute(path: '/earnings', builder: (_, _) => const Text('EARNINGS PAGE')),
+        ]),
+      ),
     ));
     await tester.pumpAndSettle();
     return auth;
@@ -56,5 +62,13 @@ void main() {
     addTearDown(tester.view.reset);
     await pump(tester, _p(note: 'word ' * 100));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an Earnings button is there and opens /earnings', (tester) async {
+    await pump(tester, _p());
+    expect(find.byKey(const Key('earningsBtn')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('earningsBtn')));
+    await tester.pumpAndSettle();
+    expect(find.text('EARNINGS PAGE'), findsOneWidget);
   });
 }
