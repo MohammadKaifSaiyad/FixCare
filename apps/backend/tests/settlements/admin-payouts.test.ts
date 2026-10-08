@@ -59,7 +59,7 @@ describe('admin payout requests', () => {
     const admin = await makeAdmin();
     const stale = await post(admin.token, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 50000, transferReference: REF });
     expect(stale.statusCode).toBe(409);
-    expect(stale.json()).toEqual({ code: 'PAYOUT_AMOUNT_CHANGED', message: 'The amount to pay is now ₹450 — check it before marking paid' });
+    expect(stale.json()).toEqual({ code: 'PAYOUT_EXCEEDS_NET', message: 'That is more than FixCare owes (₹450) — escalate before recording it' });
     expect(await prisma.ledgerEntry.count({ where: { type: { in: ['PAYOUT', 'CASH_DEBT_OFFSET'] } } })).toBe(0);
     expect((await prisma.technician.findUniqueOrThrow({ where: { id: t.technicianId } })).cashDebtPaise).toBe(15000);
     expect((await prisma.payoutRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe('REQUESTED');
@@ -78,19 +78,81 @@ describe('admin payout requests', () => {
     expect(audit.metadata).toMatchObject({ event: 'payout_request_paid', payoutRequestId: requestId, requestedPaise: 50000, offsetPaise: 15000, paidPaise: 45000, transferReference: REF, payoutEntryId: payout.id });
   });
 
-  it('pay: earnings credited after the request → requested amount is rejected, the new net is accepted', async () => {
-    const { t, requestId } = await openRequest(60000); // requested 60000
-    await ledger(t.technicianId, [{ type: 'EARNING_CREDIT', amountPaise: 20000 }]);
+  it('pay: transferring MORE than the net → 409 PAYOUT_EXCEEDS_NET, nothing written', async () => {
+    const { t, requestId } = await openRequest(60000);
     const admin = await makeAdminToken();
-    const stale = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60000, transferReference: REF });
-    expect(stale.statusCode).toBe(409);
-    expect(stale.json()).toEqual({ code: 'PAYOUT_AMOUNT_CHANGED', message: 'The amount to pay is now ₹800 — check it before marking paid' });
+    const res = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60001, transferReference: REF });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ code: 'PAYOUT_EXCEEDS_NET', message: 'That is more than FixCare owes (₹600) — escalate before recording it' });
     expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(0);
-    const queue = (await app.inject({ method: 'GET', url: '/admin/payout-requests', headers: auth(admin) })).json() as Array<Record<string, unknown>>;
-    expect(queue[0]).toMatchObject({ currentNetPaise: 80000 });
-    const ok = await post(admin, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 80000, transferReference: REF });
+    expect((await prisma.payoutRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe('REQUESTED');
+    expect(await payableBalancePaise(prisma, t.technicianId)).toBe(60000);
+  });
+
+  it('pay: transfer == net → 200 and nothing remains payable', async () => {
+    const { t, requestId } = await openRequest(60000);
+    const res = await post(await makeAdminToken(), `/admin/payout-requests/${requestId}/pay`, { amountPaise: 60000, transferReference: REF });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'PAID', paidPaise: 60000, currentOwedPaise: 0, currentNetPaise: 0 });
+    expect(await payableBalancePaise(prisma, t.technicianId)).toBe(0);
+  });
+
+  it('pay: earnings credited after the transfer → records what was transferred; the rest stays owed; debt consistent', async () => {
+    const { t, requestId } = await openRequest(60000, 10000); // requested 50000; cash debt 10000
+    await ledger(t.technicianId, [{ type: 'EARNING_CREDIT', amountPaise: 20000 }]); // net is now 70000
+    const admin = await makeAdmin();
+    const ok = await post(admin.token, `/admin/payout-requests/${requestId}/pay`, { amountPaise: 50000, transferReference: REF });
     expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toMatchObject({ status: 'PAID', amountPaise: 60000, paidPaise: 80000 });
+    expect(ok.json()).toMatchObject({ status: 'PAID', amountPaise: 50000, paidPaise: 50000, currentOwedPaise: 20000, currentCashDebtPaise: 0, currentNetPaise: 20000 });
+    const req = await prisma.payoutRequest.findUniqueOrThrow({ where: { id: requestId } });
+    expect(await prisma.ledgerEntry.findUniqueOrThrow({ where: { id: req.payoutEntryId! } })).toMatchObject({ type: 'PAYOUT', amountPaise: 50000 });
+    expect(await prisma.ledgerEntry.count({ where: { technicianId: t.technicianId, type: 'CASH_DEBT_OFFSET', amountPaise: 10000 } })).toBe(1);
+    expect(await payableBalancePaise(prisma, t.technicianId)).toBe(20000);
+    expect(await debtBalancePaise(prisma, t.technicianId)).toBe(0);
+    expect((await prisma.technician.findUniqueOrThrow({ where: { id: t.technicianId } })).cashDebtPaise).toBe(0);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'SETTLEMENT_EVENT', actorId: admin.userId } });
+    expect(audit.metadata).toMatchObject({ requestedPaise: 50000, offsetPaise: 10000, paidPaise: 50000, netPaise: 70000 });
+  });
+
+  it('pay: a transfer reference closes at most one request → 409 TRANSFER_REFERENCE_USED, nothing written', async () => {
+    const a = await openRequest(60000);
+    const b = await openRequest(40000);
+    const admin = await makeAdminToken();
+    expect((await post(admin, `/admin/payout-requests/${a.requestId}/pay`, { amountPaise: 60000, transferReference: REF })).statusCode).toBe(200);
+    const dup = await post(admin, `/admin/payout-requests/${b.requestId}/pay`, { amountPaise: 40000, transferReference: REF });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json()).toEqual({ code: 'TRANSFER_REFERENCE_USED', message: 'This transfer reference was already used for another payout' });
+    expect(await prisma.ledgerEntry.count({ where: { technicianId: b.t.technicianId, type: 'PAYOUT' } })).toBe(0);
+    expect((await prisma.payoutRequest.findUniqueOrThrow({ where: { id: b.requestId } })).status).toBe('REQUESTED');
+    expect((await post(admin, `/admin/payout-requests/${b.requestId}/pay`, { amountPaise: 40000, transferReference: 'UTR-OTHER-2' })).statusCode).toBe(200);
+  });
+
+  it('pay: two concurrent pays of different requests with one reference → exactly one wins', async () => {
+    const a = await openRequest(60000);
+    const b = await openRequest(40000);
+    const admin = await makeAdminToken();
+    const [x, y] = await Promise.all([
+      post(admin, `/admin/payout-requests/${a.requestId}/pay`, { amountPaise: 60000, transferReference: REF }),
+      post(admin, `/admin/payout-requests/${b.requestId}/pay`, { amountPaise: 40000, transferReference: REF }),
+    ]);
+    expect([x.statusCode, y.statusCode].sort()).toEqual([200, 409]);
+    const loser = x.statusCode === 409 ? x : y;
+    expect(loser.json().code).toBe('TRANSFER_REFERENCE_USED');
+    expect(await prisma.ledgerEntry.count({ where: { type: 'PAYOUT' } })).toBe(1);
+  });
+
+  it('pay: a deleted technician is not paid → 409 TECHNICIAN_DELETED; a SUSPENDED one still is', async () => {
+    const a = await openRequest(60000);
+    const b = await openRequest(40000);
+    await prisma.technician.update({ where: { id: a.t.technicianId }, data: { deletedAt: new Date() } });
+    await prisma.technician.update({ where: { id: b.t.technicianId }, data: { status: 'SUSPENDED' } });
+    const admin = await makeAdminToken();
+    const res = await post(admin, `/admin/payout-requests/${a.requestId}/pay`, { amountPaise: 60000, transferReference: REF });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ code: 'TECHNICIAN_DELETED', message: 'This technician account was removed — escalate before paying' });
+    expect(await prisma.ledgerEntry.count({ where: { technicianId: a.t.technicianId, type: 'PAYOUT' } })).toBe(0);
+    expect((await prisma.payoutRequest.findUniqueOrThrow({ where: { id: a.requestId } })).status).toBe('REQUESTED');
+    expect((await post(admin, `/admin/payout-requests/${b.requestId}/pay`, { amountPaise: 40000, transferReference: 'UTR-OTHER-3' })).statusCode).toBe(200);
   });
 
   it('pay: missing or invalid body → 400, nothing written', async () => {

@@ -47,6 +47,8 @@ export interface LedgerEntryDto {
   amountPaise: number;
   bookingNumber: string | null;
   serviceName: string | null;
+  /** Commission rate (basis points) the sweep / dispute resolve applied — COMMISSION / EARNING_CREDIT rows only. */
+  rateBps: number | null;
   createdAt: string;
 }
 export interface LedgerPageDto { entries: LedgerEntryDto[]; nextCursor: string | null; }

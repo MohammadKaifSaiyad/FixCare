@@ -54,6 +54,13 @@ export async function earningsSummary(userId: string): Promise<EarningsSummaryDt
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 
+/** The commission rate recorded in a row's metadata (sweep / dispute resolve) — only when it is an integer. */
+function rateBpsOf(metadata: Prisma.JsonValue): number | null {
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const r = metadata.rateBps;
+  return typeof r === 'number' && Number.isInteger(r) ? r : null;
+}
+
 export async function ledgerStatement(userId: string, q: LedgerQuery): Promise<LedgerPageDto> {
   const tech = await technicianForUser(userId);
   const c = q.before ? decodeLedgerCursor(q.before) : null;
@@ -72,7 +79,7 @@ export async function ledgerStatement(userId: string, q: LedgerQuery): Promise<L
     entries: pageRows.map((e) => ({
       id: e.id, type: e.type, amountPaise: e.amountPaise,
       bookingNumber: e.booking?.bookingNumber ?? null, serviceName: e.booking?.service.name ?? null,
-      createdAt: e.createdAt.toISOString(),
+      rateBps: rateBpsOf(e.metadata), createdAt: e.createdAt.toISOString(),
     })),
     nextCursor: rows.length > q.limit && last ? encodeLedgerCursor(last.createdAt, last.id) : null,
   };

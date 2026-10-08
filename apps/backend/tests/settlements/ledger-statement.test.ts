@@ -16,7 +16,7 @@ describe('GET /technician/me/ledger', () => {
     const other = await makeTechnician(['AC']);
     const b = await assignedBooking(app, t.technicianId, 'CLOSED');
     await ledger(t.technicianId, [
-      { type: 'EARNING_CREDIT', amountPaise: 48000, bookingId: b.bookingId, createdAt: new Date('2026-10-01T00:00:00Z') },
+      { type: 'EARNING_CREDIT', amountPaise: 48000, bookingId: b.bookingId, createdAt: new Date('2026-10-01T00:00:00Z'), metadata: { rateBps: 2000, basePaise: 60000 } },
       { type: 'PAYOUT', amountPaise: 48000, createdAt: new Date('2026-10-02T00:00:00Z') },
     ]);
     await ledger(other.technicianId, [{ type: 'EARNING_CREDIT', amountPaise: 1 }]);
@@ -24,11 +24,23 @@ describe('GET /technician/me/ledger', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       entries: [
-        { id: expect.any(String), type: 'PAYOUT', amountPaise: 48000, bookingNumber: null, serviceName: null, createdAt: '2026-10-02T00:00:00.000Z' },
-        { id: expect.any(String), type: 'EARNING_CREDIT', amountPaise: 48000, bookingNumber: b.bookingNumber, serviceName: b.serviceName, createdAt: '2026-10-01T00:00:00.000Z' },
+        { id: expect.any(String), type: 'PAYOUT', amountPaise: 48000, bookingNumber: null, serviceName: null, rateBps: null, createdAt: '2026-10-02T00:00:00.000Z' },
+        { id: expect.any(String), type: 'EARNING_CREDIT', amountPaise: 48000, bookingNumber: b.bookingNumber, serviceName: b.serviceName, rateBps: 2000, createdAt: '2026-10-01T00:00:00.000Z' },
       ],
       nextCursor: null,
     });
+  });
+
+  it('rateBps comes from the row metadata only when it is an integer', async () => {
+    const t = await makeTechnician(['AC']);
+    await ledger(t.technicianId, [
+      { type: 'COMMISSION', amountPaise: 9000, metadata: { rateBps: 1500, basePaise: 60000 }, createdAt: new Date('2026-10-01T00:00:00Z') },
+      { type: 'COMMISSION', amountPaise: 1, metadata: { rateBps: '1500' }, createdAt: new Date('2026-10-02T00:00:00Z') },
+      { type: 'COMMISSION', amountPaise: 2, metadata: { rateBps: 12.5 }, createdAt: new Date('2026-10-03T00:00:00Z') },
+      { type: 'COMMISSION', amountPaise: 3, createdAt: new Date('2026-10-04T00:00:00Z') },
+    ]);
+    const rates = ((await page(t.token)).json() as { entries: Array<{ rateBps: number | null }> }).entries.map((e) => e.rateBps);
+    expect(rates).toEqual([null, null, null, 1500]);
   });
 
   it('pages through rows with identical timestamps without repeating or skipping', async () => {

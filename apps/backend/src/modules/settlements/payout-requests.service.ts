@@ -1,6 +1,6 @@
 import { prisma } from '../../shared/database/prisma.js';
 import { config } from '../../shared/config.js';
-import type { PayoutRequestStatus } from '@prisma/client';
+import { Prisma, type LedgerEntryType, type PayoutRequestStatus } from '@prisma/client';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../shared/errors.js';
 import { maskPhone } from '../../shared/utils/mask.js';
 import { formatPaise } from '../../shared/utils/currency.js';
@@ -34,73 +34,95 @@ export async function requestPayout(userId: string): Promise<PayoutRequestDto> {
   });
 }
 
+const REFERENCE_USED = () => new ConflictError('This transfer reference was already used for another payout', 'TRANSFER_REFERENCE_USED');
 const NOT_OPEN = () => new ConflictError('This payout request is no longer open', 'PAYOUT_REQUEST_NOT_OPEN');
 
-async function toAdminDtos(ids: string[]): Promise<AdminPayoutRequestDto[]> {
-  const rows = await prisma.payoutRequest.findMany({
-    where: { id: { in: ids } },
-    include: { technician: { select: { name: true, cashDebtPaise: true, status: true, user: { select: { phone: true } } } } },
-    orderBy: { createdAt: 'asc' },
-  });
-  const entryIds = rows.map((r) => r.payoutEntryId).filter((x): x is string => x !== null);
-  const entries = await prisma.ledgerEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, amountPaise: true } });
-  const paidById = new Map(entries.map((e) => [e.id, e.amountPaise]));
-  const owedByTech = new Map<string, number>();
-  for (const techId of new Set(rows.map((r) => r.technicianId))) owedByTech.set(techId, await payableBalancePaise(prisma, techId));
-  return rows.map((r) => ({
-    ...toPayoutRequestDto(r, r.payoutEntryId ? paidById.get(r.payoutEntryId) ?? null : null),
-    technicianId: r.technicianId,
-    technicianName: r.technician.name,
-    maskedPhone: maskPhone(r.technician.user.phone),
-    currentOwedPaise: owedByTech.get(r.technicianId) ?? 0,
-    currentCashDebtPaise: r.technician.cashDebtPaise,
-    currentNetPaise: Math.max(0, (owedByTech.get(r.technicianId) ?? 0) - r.technician.cashDebtPaise),
-    technicianStatus: r.technician.status,
-    transferReference: r.status === 'PAID' ? r.transferReference : null,
-  }));
+async function toAdminDtos(where: Prisma.PayoutRequestWhereInput): Promise<AdminPayoutRequestDto[]> {
+  // ONE read-only REPEATABLE READ snapshot: the rows, the technicians' cash debt and every ledger sum come from the
+  // same moment, with one groupBy for all technicians (no per-technician balance query).
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.payoutRequest.findMany({
+      where,
+      include: { technician: { select: { name: true, cashDebtPaise: true, status: true, user: { select: { phone: true } } } } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    if (rows.length === 0) return [];
+    const techIds = [...new Set(rows.map((r) => r.technicianId))];
+    const entryIds = rows.map((r) => r.payoutEntryId).filter((x): x is string => x !== null);
+    const entries = await tx.ledgerEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, amountPaise: true } });
+    const paidById = new Map(entries.map((e) => [e.id, e.amountPaise]));
+    const sums = await tx.ledgerEntry.groupBy({ by: ['technicianId', 'type'], _sum: { amountPaise: true }, where: { technicianId: { in: techIds } } });
+    const sumOf = (techId: string, type: LedgerEntryType) => sums.find((x) => x.technicianId === techId && x.type === type)?._sum.amountPaise ?? 0;
+    // owed = earnings − offsets − payouts (the same formula as payableBalancePaise)
+    const owedOf = (techId: string) => sumOf(techId, 'EARNING_CREDIT') - sumOf(techId, 'CASH_DEBT_OFFSET') - sumOf(techId, 'PAYOUT');
+    return rows.map((r) => {
+      const owed = owedOf(r.technicianId);
+      return {
+        ...toPayoutRequestDto(r, r.payoutEntryId ? paidById.get(r.payoutEntryId) ?? null : null),
+        technicianId: r.technicianId,
+        technicianName: r.technician.name,
+        maskedPhone: maskPhone(r.technician.user.phone),
+        currentOwedPaise: owed,
+        currentCashDebtPaise: r.technician.cashDebtPaise,
+        currentNetPaise: Math.max(0, owed - r.technician.cashDebtPaise),
+        technicianStatus: r.technician.status,
+        transferReference: r.status === 'PAID' ? r.transferReference : null,
+      };
+    });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 
 /** Ops' queue, oldest first. */
 export async function listPayoutRequests(status?: PayoutRequestStatus): Promise<AdminPayoutRequestDto[]> {
-  const ids = await prisma.payoutRequest.findMany({ where: status ? { status } : {}, orderBy: { createdAt: 'asc' }, select: { id: true } });
-  return toAdminDtos(ids.map((r) => r.id));
+  return toAdminDtos(status ? { status } : {});
 }
 
-/** Ops transferred the money by hand: net the technician's CURRENT cash debt first (CASH_DEBT_OFFSET, like the
- *  sweep), then record the PAYOUT for the rest, and close the request — one transaction under the technician row
- *  lock. The request row is updated with a status guard, so a racing pay/reject can never both win. */
+/** Ops transferred the money by hand and records the amount they ACTUALLY sent (0 < amount ≤ the current net).
+ *  Under the technician row lock: net the technician's CURRENT cash debt first (CASH_DEBT_OFFSET, like the sweep), then
+ *  record a PAYOUT of the transferred amount, and close the request — one transaction. Anything above the net is
+ *  refused (a payout can never exceed what is owed); anything below leaves the rest owed. The request row is updated
+ *  with a status guard, so a racing pay/reject can never both win. */
 export async function payPayoutRequest(adminUserId: string, requestId: string, transferredPaise: number, transferReference: string): Promise<AdminPayoutRequestDto> {
-  // Relies on READ COMMITTED: reads after the row lock see other transactions' commits — never switch this tx to REPEATABLE READ.
-  await prisma.$transaction(async (tx) => {
-    const req = await tx.payoutRequest.findUnique({ where: { id: requestId }, select: { technicianId: true } });
-    if (!req) throw new NotFoundError('Payout request not found');
-    await tx.$queryRaw`SELECT id FROM "Technician" WHERE id = ${req.technicianId} FOR UPDATE`;
-    const fresh = await tx.payoutRequest.findUniqueOrThrow({ where: { id: requestId } });
-    if (fresh.status !== 'REQUESTED') throw NOT_OPEN();
-    const owed = await payableBalancePaise(tx, req.technicianId);
-    const { cashDebtPaise } = await tx.technician.findUniqueOrThrow({ where: { id: req.technicianId }, select: { cashDebtPaise: true } });
-    const offset = Math.min(Math.max(owed, 0), cashDebtPaise);
-    const pay = owed - offset;
-    if (pay <= 0) throw new ConflictError('Nothing is owed after settling cash debt — reject this request instead', 'NOTHING_TO_PAY');
-    // Ops states what they actually sent; if the figure moved since they looked, nothing is written.
-    if (transferredPaise !== pay) {
-      throw new ConflictError(`The amount to pay is now ${rupeeLabel(pay)} — check it before marking paid`, 'PAYOUT_AMOUNT_CHANGED');
-    }
-    if (offset > 0) {
-      await tx.technician.update({ where: { id: req.technicianId }, data: { cashDebtPaise: { decrement: offset } } });
-      await tx.ledgerEntry.create({ data: { technicianId: req.technicianId, type: 'CASH_DEBT_OFFSET', amountPaise: offset, metadata: { payoutRequestId: requestId } } });
-    }
-    const entry = await tx.ledgerEntry.create({ data: { technicianId: req.technicianId, type: 'PAYOUT', amountPaise: pay, metadata: { payoutRequestId: requestId } } });
-    const closed = await tx.payoutRequest.updateMany({
-      where: { id: requestId, status: 'REQUESTED' },
-      data: { status: 'PAID', payoutEntryId: entry.id, transferReference, reviewedBy: adminUserId, reviewedAt: new Date() },
+  try {
+    // Relies on READ COMMITTED: reads after the row lock see other transactions' commits — never switch this tx to REPEATABLE READ.
+    await prisma.$transaction(async (tx) => {
+      const req = await tx.payoutRequest.findUnique({ where: { id: requestId }, select: { technicianId: true } });
+      if (!req) throw new NotFoundError('Payout request not found');
+      await tx.$queryRaw`SELECT id FROM "Technician" WHERE id = ${req.technicianId} FOR UPDATE`;
+      const fresh = await tx.payoutRequest.findUniqueOrThrow({ where: { id: requestId } });
+      if (fresh.status !== 'REQUESTED') throw NOT_OPEN();
+      const { cashDebtPaise, deletedAt } = await tx.technician.findUniqueOrThrow({ where: { id: req.technicianId }, select: { cashDebtPaise: true, deletedAt: true } });
+      // A removed account is never paid by this path (SUSPENDED / DEACTIVATED still are — ops sees technicianStatus).
+      if (deletedAt) throw new ConflictError('This technician account was removed — escalate before paying', 'TECHNICIAN_DELETED');
+      const used = await tx.payoutRequest.findFirst({ where: { transferReference }, select: { id: true } });
+      if (used) throw REFERENCE_USED();
+      const owed = await payableBalancePaise(tx, req.technicianId);
+      const offset = Math.min(Math.max(owed, 0), cashDebtPaise);
+      const net = owed - offset;
+      if (net <= 0) throw new ConflictError('Nothing is owed after settling cash debt — reject this request instead', 'NOTHING_TO_PAY');
+      if (transferredPaise > net) {
+        throw new ConflictError(`That is more than FixCare owes (${rupeeLabel(net)}) — escalate before recording it`, 'PAYOUT_EXCEEDS_NET');
+      }
+      if (offset > 0) {
+        await tx.technician.update({ where: { id: req.technicianId }, data: { cashDebtPaise: { decrement: offset } } });
+        await tx.ledgerEntry.create({ data: { technicianId: req.technicianId, type: 'CASH_DEBT_OFFSET', amountPaise: offset, metadata: { payoutRequestId: requestId } } });
+      }
+      const entry = await tx.ledgerEntry.create({ data: { technicianId: req.technicianId, type: 'PAYOUT', amountPaise: transferredPaise, metadata: { payoutRequestId: requestId } } });
+      const closed = await tx.payoutRequest.updateMany({
+        where: { id: requestId, status: 'REQUESTED' },
+        data: { status: 'PAID', payoutEntryId: entry.id, transferReference, reviewedBy: adminUserId, reviewedAt: new Date() },
+      });
+      if (closed.count === 0) throw NOT_OPEN(); // a reject landed in between — roll everything back
+      await tx.auditLog.create({
+        data: { action: 'SETTLEMENT_EVENT', actorType: 'ADMIN', actorId: adminUserId, subjectId: req.technicianId, metadata: { event: 'payout_request_paid', payoutRequestId: requestId, technicianId: req.technicianId, requestedPaise: fresh.amountPaise, offsetPaise: offset, paidPaise: transferredPaise, netPaise: net, transferReference, payoutEntryId: entry.id } },
+      });
     });
-    if (closed.count === 0) throw NOT_OPEN(); // a reject landed in between — roll everything back
-    await tx.auditLog.create({
-      data: { action: 'SETTLEMENT_EVENT', actorType: 'ADMIN', actorId: adminUserId, subjectId: req.technicianId, metadata: { event: 'payout_request_paid', payoutRequestId: requestId, technicianId: req.technicianId, requestedPaise: fresh.amountPaise, offsetPaise: offset, paidPaise: pay, transferReference, payoutEntryId: entry.id } },
-    });
-  });
-  return (await toAdminDtos([requestId]))[0]!;
+  } catch (e) {
+    // Backstop: the unique index caught a concurrent pay of another request with the same reference (tx rolled back).
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' && JSON.stringify(e.meta?.target ?? '').includes('transferReference')) throw REFERENCE_USED();
+    throw e;
+  }
+  return (await toAdminDtos({ id: requestId }))[0]!;
 }
 
 export async function rejectPayoutRequest(adminUserId: string, requestId: string, reason: string): Promise<AdminPayoutRequestDto> {
@@ -116,5 +138,5 @@ export async function rejectPayoutRequest(adminUserId: string, requestId: string
       data: { action: 'SETTLEMENT_EVENT', actorType: 'ADMIN', actorId: adminUserId, subjectId: req.technicianId, metadata: { event: 'payout_request_rejected', payoutRequestId: requestId, technicianId: req.technicianId, reason } },
     });
   });
-  return (await toAdminDtos([requestId]))[0]!;
+  return (await toAdminDtos({ id: requestId }))[0]!;
 }

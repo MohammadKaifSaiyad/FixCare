@@ -18,8 +18,8 @@ export async function assignedBooking(app: App, technicianId: string, state: Boo
 }
 
 /** Seed ledger rows directly (amounts positive, as the ledger stores them). */
-export async function ledger(technicianId: string, rows: { type: LedgerEntryType; amountPaise: number; bookingId?: string; createdAt?: Date }[]) {
-  for (const r of rows) await prisma.ledgerEntry.create({ data: { technicianId, type: r.type, amountPaise: r.amountPaise, bookingId: r.bookingId ?? null, ...(r.createdAt ? { createdAt: r.createdAt } : {}) } });
+export async function ledger(technicianId: string, rows: { type: LedgerEntryType; amountPaise: number; bookingId?: string; createdAt?: Date; metadata?: object }[]) {
+  for (const r of rows) await prisma.ledgerEntry.create({ data: { technicianId, type: r.type, amountPaise: r.amountPaise, bookingId: r.bookingId ?? null, ...(r.metadata ? { metadata: r.metadata } : {}), ...(r.createdAt ? { createdAt: r.createdAt } : {}) } });
 }
 
 export { makeTechnician };
