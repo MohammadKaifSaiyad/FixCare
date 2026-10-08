@@ -7,6 +7,7 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/otp_entry_screen.dart';
 import '../../features/auth/presentation/phone_entry_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/earnings/presentation/earnings_screen.dart';
 import '../../features/jobs/presentation/job_detail_screen.dart';
 import '../../features/onboarding/presentation/home_gate.dart';
 
@@ -79,6 +80,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(path: '/home', builder: (_, _) => const HomeGate()),
+      GoRoute(path: '/earnings', builder: (_, _) => const EarningsScreen()),
       GoRoute(
         path: '/job/:id',
         builder: (_, state) => JobDetailScreen(bookingId: state.pathParameters['id']!),
