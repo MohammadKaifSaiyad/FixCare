@@ -24,6 +24,7 @@ abstract class PayoutRequestDto with _$PayoutRequestDto {
     required String requestedAt,
     String? reviewedAt,
     String? reviewNote,
+    int? paidPaise, // amount actually paid when PAID; can differ from amountPaise
   }) = _PayoutRequestDto;
   factory PayoutRequestDto.fromJson(Map<String, dynamic> j) => _$PayoutRequestDtoFromJson(j);
 }

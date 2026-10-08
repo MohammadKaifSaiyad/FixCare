@@ -34,6 +34,7 @@ _PayoutRequestDto _$PayoutRequestDtoFromJson(Map<String, dynamic> json) =>
       requestedAt: json['requestedAt'] as String,
       reviewedAt: json['reviewedAt'] as String?,
       reviewNote: json['reviewNote'] as String?,
+      paidPaise: (json['paidPaise'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$PayoutRequestDtoToJson(_PayoutRequestDto instance) =>
@@ -44,6 +45,7 @@ Map<String, dynamic> _$PayoutRequestDtoToJson(_PayoutRequestDto instance) =>
       'requestedAt': instance.requestedAt,
       'reviewedAt': instance.reviewedAt,
       'reviewNote': instance.reviewNote,
+      'paidPaise': instance.paidPaise,
     };
 
 _EarningsSummaryDto _$EarningsSummaryDtoFromJson(Map<String, dynamic> json) =>

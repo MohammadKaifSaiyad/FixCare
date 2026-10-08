@@ -11,7 +11,7 @@ Map<String, dynamic> summaryJson() => {
         {'bookingId': 'b1', 'bookingNumber': 'FC-1', 'serviceName': 'AC gas refill', 'amountPaise': 48000, 'releasesAt': '2026-10-07T08:30:00.000Z', 'onHold': false},
         {'bookingId': 'b2', 'bookingNumber': 'FC-2', 'serviceName': 'Fan repair', 'amountPaise': 8000, 'releasesAt': null, 'onHold': true},
       ],
-      'latestPayoutRequest': {'id': 'p1', 'status': 'REJECTED', 'amountPaise': 20000, 'requestedAt': '2026-10-03T00:00:00.000Z', 'reviewedAt': '2026-10-04T00:00:00.000Z', 'reviewNote': 'Bank details not confirmed'},
+      'latestPayoutRequest': {'id': 'p1', 'status': 'REJECTED', 'amountPaise': 20000, 'requestedAt': '2026-10-03T00:00:00.000Z', 'reviewedAt': '2026-10-04T00:00:00.000Z', 'reviewNote': 'Bank details not confirmed', 'paidPaise': null},
     };
 
 void main() {
@@ -34,6 +34,18 @@ void main() {
     expect(v.pending.last.releasesAt, isNull);
     expect(v.latestPayoutRequest!.status, 'REJECTED');
     expect(v.latestPayoutRequest!.reviewNote, 'Bank details not confirmed');
+    expect(v.latestPayoutRequest!.paidPaise, isNull);
+  });
+
+  test('a PAID payout request parses paidPaise (can differ from the requested amount)', () async {
+    adapter.onGet('/technician/me/earnings', (s) => s.reply(200, {
+          ...summaryJson(),
+          'latestPayoutRequest': {'id': 'p3', 'status': 'PAID', 'amountPaise': 20000, 'paidPaise': 12000, 'requestedAt': '2026-10-03T00:00:00.000Z', 'reviewedAt': '2026-10-04T00:00:00.000Z', 'reviewNote': null},
+        }));
+    final r = (await repo.summary() as Ok<EarningsSummaryDto>).value.latestPayoutRequest!;
+    expect(r.status, 'PAID');
+    expect(r.amountPaise, 20000);
+    expect(r.paidPaise, 12000);
   });
 
   test('summary with no request parses latestPayoutRequest as null', () async {

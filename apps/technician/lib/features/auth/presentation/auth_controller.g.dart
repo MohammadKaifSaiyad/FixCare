@@ -63,7 +63,7 @@ final class AuthControllerProvider
   AuthController create() => AuthController();
 }
 
-String _$authControllerHash() => r'8c91c6a7a69db86d2e4e7a62f080bdd912421b3a';
+String _$authControllerHash() => r'214c2db75a8d37d9fcb1255ed8846cfb02279994';
 
 /// Owns the session lifecycle: boot from storage, OTP verify, logout, and the
 /// interceptor's session-lost signal. The auth interceptor is the ONLY place a

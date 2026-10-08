@@ -301,7 +301,7 @@ as bool,
 /// @nodoc
 mixin _$PayoutRequestDto {
 
- String get id; String get status; int get amountPaise; String get requestedAt; String? get reviewedAt; String? get reviewNote;
+ String get id; String get status; int get amountPaise; String get requestedAt; String? get reviewedAt; String? get reviewNote; int? get paidPaise;
 /// Create a copy of PayoutRequestDto
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -315,20 +315,20 @@ $PayoutRequestDtoCopyWith<PayoutRequestDto> get copyWith => _$PayoutRequestDtoCo
 @override
 bool operator ==(Object other) {
   final _this = this as PayoutRequestDto;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PayoutRequestDto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.amountPaise, _this.amountPaise) || other.amountPaise == _this.amountPaise)&&(identical(other.requestedAt, _this.requestedAt) || other.requestedAt == _this.requestedAt)&&(identical(other.reviewedAt, _this.reviewedAt) || other.reviewedAt == _this.reviewedAt)&&(identical(other.reviewNote, _this.reviewNote) || other.reviewNote == _this.reviewNote));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PayoutRequestDto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.amountPaise, _this.amountPaise) || other.amountPaise == _this.amountPaise)&&(identical(other.requestedAt, _this.requestedAt) || other.requestedAt == _this.requestedAt)&&(identical(other.reviewedAt, _this.reviewedAt) || other.reviewedAt == _this.reviewedAt)&&(identical(other.reviewNote, _this.reviewNote) || other.reviewNote == _this.reviewNote)&&(identical(other.paidPaise, _this.paidPaise) || other.paidPaise == _this.paidPaise));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as PayoutRequestDto;
-  return Object.hash(runtimeType,_this.id,_this.status,_this.amountPaise,_this.requestedAt,_this.reviewedAt,_this.reviewNote);
+  return Object.hash(runtimeType,_this.id,_this.status,_this.amountPaise,_this.requestedAt,_this.reviewedAt,_this.reviewNote,_this.paidPaise);
 }
 
 @override
 String toString() {
   final _this = this as PayoutRequestDto;
-  return 'PayoutRequestDto(id: ${_this.id}, status: ${_this.status}, amountPaise: ${_this.amountPaise}, requestedAt: ${_this.requestedAt}, reviewedAt: ${_this.reviewedAt}, reviewNote: ${_this.reviewNote})';
+  return 'PayoutRequestDto(id: ${_this.id}, status: ${_this.status}, amountPaise: ${_this.amountPaise}, requestedAt: ${_this.requestedAt}, reviewedAt: ${_this.reviewedAt}, reviewNote: ${_this.reviewNote}, paidPaise: ${_this.paidPaise})';
 }
 
 
@@ -339,7 +339,7 @@ abstract mixin class $PayoutRequestDtoCopyWith<$Res>  {
   factory $PayoutRequestDtoCopyWith(PayoutRequestDto value, $Res Function(PayoutRequestDto) _then) = _$PayoutRequestDtoCopyWithImpl;
 @useResult
 $Res call({
- String id, String status, int amountPaise, String requestedAt, String? reviewedAt, String? reviewNote
+ String id, String status, int amountPaise, String requestedAt, String? reviewedAt, String? reviewNote, int? paidPaise
 });
 
 
@@ -356,7 +356,7 @@ class _$PayoutRequestDtoCopyWithImpl<$Res>
 
 /// Create a copy of PayoutRequestDto
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? status = null,Object? amountPaise = null,Object? requestedAt = null,Object? reviewedAt = freezed,Object? reviewNote = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? status = null,Object? amountPaise = null,Object? requestedAt = null,Object? reviewedAt = freezed,Object? reviewNote = freezed,Object? paidPaise = freezed,}) {
   return _then(PayoutRequestDto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
@@ -364,7 +364,8 @@ as String,amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // 
 as int,requestedAt: null == requestedAt ? _self.requestedAt : requestedAt // ignore: cast_nullable_to_non_nullable
 as String,reviewedAt: freezed == reviewedAt ? _self.reviewedAt : reviewedAt // ignore: cast_nullable_to_non_nullable
 as String?,reviewNote: freezed == reviewNote ? _self.reviewNote : reviewNote // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,paidPaise: freezed == paidPaise ? _self.paidPaise : paidPaise // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -449,10 +450,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String status,  int amountPaise,  String requestedAt,  String? reviewedAt,  String? reviewNote)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String status,  int amountPaise,  String requestedAt,  String? reviewedAt,  String? reviewNote,  int? paidPaise)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PayoutRequestDto() when $default != null:
-return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.reviewedAt,_that.reviewNote);case _:
+return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.reviewedAt,_that.reviewNote,_that.paidPaise);case _:
   return orElse();
 
 }
@@ -470,10 +471,10 @@ return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String status,  int amountPaise,  String requestedAt,  String? reviewedAt,  String? reviewNote)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String status,  int amountPaise,  String requestedAt,  String? reviewedAt,  String? reviewNote,  int? paidPaise)  $default,) {final _that = this;
 switch (_that) {
 case _PayoutRequestDto():
-return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.reviewedAt,_that.reviewNote);case _:
+return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.reviewedAt,_that.reviewNote,_that.paidPaise);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -490,10 +491,10 @@ return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String status,  int amountPaise,  String requestedAt,  String? reviewedAt,  String? reviewNote)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String status,  int amountPaise,  String requestedAt,  String? reviewedAt,  String? reviewNote,  int? paidPaise)?  $default,) {final _that = this;
 switch (_that) {
 case _PayoutRequestDto() when $default != null:
-return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.reviewedAt,_that.reviewNote);case _:
+return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.reviewedAt,_that.reviewNote,_that.paidPaise);case _:
   return null;
 
 }
@@ -505,7 +506,7 @@ return $default(_that.id,_that.status,_that.amountPaise,_that.requestedAt,_that.
 @JsonSerializable()
 
 class _PayoutRequestDto implements PayoutRequestDto {
-  const _PayoutRequestDto({required this.id, required this.status, required this.amountPaise, required this.requestedAt, this.reviewedAt, this.reviewNote});
+  const _PayoutRequestDto({required this.id, required this.status, required this.amountPaise, required this.requestedAt, this.reviewedAt, this.reviewNote, this.paidPaise});
   factory _PayoutRequestDto.fromJson(Map<String, dynamic> json) => _$PayoutRequestDtoFromJson(json);
 
 @override final  String id;
@@ -514,6 +515,7 @@ class _PayoutRequestDto implements PayoutRequestDto {
 @override final  String requestedAt;
 @override final  String? reviewedAt;
 @override final  String? reviewNote;
+@override final  int? paidPaise;
 
 /// Create a copy of PayoutRequestDto
 /// with the given fields replaced by the non-null parameter values.
@@ -528,18 +530,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PayoutRequestDto&&(identical(other.id, id) || other.id == id)&&(identical(other.status, status) || other.status == status)&&(identical(other.amountPaise, amountPaise) || other.amountPaise == amountPaise)&&(identical(other.requestedAt, requestedAt) || other.requestedAt == requestedAt)&&(identical(other.reviewedAt, reviewedAt) || other.reviewedAt == reviewedAt)&&(identical(other.reviewNote, reviewNote) || other.reviewNote == reviewNote));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PayoutRequestDto&&(identical(other.id, id) || other.id == id)&&(identical(other.status, status) || other.status == status)&&(identical(other.amountPaise, amountPaise) || other.amountPaise == amountPaise)&&(identical(other.requestedAt, requestedAt) || other.requestedAt == requestedAt)&&(identical(other.reviewedAt, reviewedAt) || other.reviewedAt == reviewedAt)&&(identical(other.reviewNote, reviewNote) || other.reviewNote == reviewNote)&&(identical(other.paidPaise, paidPaise) || other.paidPaise == paidPaise));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,status,amountPaise,requestedAt,reviewedAt,reviewNote);
+    return Object.hash(runtimeType,id,status,amountPaise,requestedAt,reviewedAt,reviewNote,paidPaise);
 }
 
 @override
 String toString() {
-    return 'PayoutRequestDto(id: $id, status: $status, amountPaise: $amountPaise, requestedAt: $requestedAt, reviewedAt: $reviewedAt, reviewNote: $reviewNote)';
+    return 'PayoutRequestDto(id: $id, status: $status, amountPaise: $amountPaise, requestedAt: $requestedAt, reviewedAt: $reviewedAt, reviewNote: $reviewNote, paidPaise: $paidPaise)';
 }
 
 
@@ -550,7 +552,7 @@ abstract mixin class _$PayoutRequestDtoCopyWith<$Res> implements $PayoutRequestD
   factory _$PayoutRequestDtoCopyWith(_PayoutRequestDto value, $Res Function(_PayoutRequestDto) _then) = __$PayoutRequestDtoCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String status, int amountPaise, String requestedAt, String? reviewedAt, String? reviewNote
+ String id, String status, int amountPaise, String requestedAt, String? reviewedAt, String? reviewNote, int? paidPaise
 });
 
 
@@ -567,7 +569,7 @@ class __$PayoutRequestDtoCopyWithImpl<$Res>
 
 /// Create a copy of PayoutRequestDto
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? status = null,Object? amountPaise = null,Object? requestedAt = null,Object? reviewedAt = freezed,Object? reviewNote = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? status = null,Object? amountPaise = null,Object? requestedAt = null,Object? reviewedAt = freezed,Object? reviewNote = freezed,Object? paidPaise = freezed,}) {
   return _then(_PayoutRequestDto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
@@ -575,7 +577,8 @@ as String,amountPaise: null == amountPaise ? _self.amountPaise : amountPaise // 
 as int,requestedAt: null == requestedAt ? _self.requestedAt : requestedAt // ignore: cast_nullable_to_non_nullable
 as String,reviewedAt: freezed == reviewedAt ? _self.reviewedAt : reviewedAt // ignore: cast_nullable_to_non_nullable
 as String?,reviewNote: freezed == reviewNote ? _self.reviewNote : reviewNote // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,paidPaise: freezed == paidPaise ? _self.paidPaise : paidPaise // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
