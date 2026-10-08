@@ -33,6 +33,28 @@ describe('PayoutRequest model', () => {
       .rejects.toMatchObject({ code: 'P2003' });
   });
 
+  it('the DB rejects a second REQUESTED row for one technician (partial unique index); a closed one is allowed', async () => {
+    const t = await tech();
+    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 25000 } });
+    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 30000 } })).rejects.toMatchObject({ code: 'P2002' });
+    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 30000, status: 'REJECTED' } });
+  });
+
+  it('the DB rejects a zero or negative amount (CHECK)', async () => {
+    const t = await tech();
+    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 0 } })).rejects.toThrow();
+    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: -5 } })).rejects.toThrow();
+  });
+
+  it('a transfer reference is unique across requests (many NULLs allowed)', async () => {
+    const t = await tech();
+    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, status: 'REJECTED' } });
+    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, status: 'REJECTED' } });
+    await prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, status: 'PAID', transferReference: 'UTR-1' } });
+    await expect(prisma.payoutRequest.create({ data: { technicianId: t.id, amountPaise: 100, status: 'PAID', transferReference: 'UTR-1' } }))
+      .rejects.toMatchObject({ code: 'P2002' });
+  });
+
   it('PAYOUT_MIN_PAISE defaults to ₹100', () => {
     expect(config.PAYOUT_MIN_PAISE).toBe(10000);
   });
