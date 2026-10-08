@@ -15,6 +15,7 @@ class _FakeRepo extends EarningsRepository {
   final pages = <String?, Result<LedgerPageDto>>{};
   final ledgerCalls = <String?>[];
   Completer<void>? gate;
+  final gates = <String?, Completer<void>>{};
   @override
   Future<Result<EarningsSummaryDto>> summary() async {
     summaryCalls++;
@@ -24,6 +25,7 @@ class _FakeRepo extends EarningsRepository {
   Future<Result<LedgerPageDto>> ledger({String? before, int limit = 20}) async {
     ledgerCalls.add(before);
     if (gate case final g?) await g.future;
+    if (gates[before] case final g?) await g.future;
     return pages[before] ?? const Ok(LedgerPageDto());
   }
 }
@@ -78,14 +80,21 @@ void main() {
   test('a loadMore that lands after a refresh is dropped', () async {
     repo.pages[null] = Ok(LedgerPageDto(entries: [_e('a')], nextCursor: 'c1'));
     await c.read(ledgerControllerProvider.future);
-    repo.gate = Completer<void>();
+    repo.gates[null] = Completer<void>();
+    repo.gates['c1'] = Completer<void>();
     repo.pages['c1'] = Ok(LedgerPageDto(entries: [_e('stale')]));
     final n = c.read(ledgerControllerProvider.notifier);
     final more = n.loadMore();
     repo.pages[null] = Ok(LedgerPageDto(entries: [_e('fresh')]));
     final refreshed = n.refresh();
-    repo.gate!.complete();
-    await Future.wait([more, refreshed]);
+    repo.gates[null]!.complete();
+    await refreshed;
     expect(c.read(ledgerControllerProvider).value!.entries.map((e) => e.id), ['fresh']);
+    repo.gates['c1']!.complete();
+    await more;
+    final s = c.read(ledgerControllerProvider).value!;
+    expect(s.entries.map((e) => e.id), ['fresh']);
+    expect(s.loadingMore, false);
+    expect(s.loadMoreError, isNull);
   });
 }
