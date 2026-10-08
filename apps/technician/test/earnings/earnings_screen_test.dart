@@ -113,6 +113,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('You already have a payout request in progress'), findsOneWidget);
     expect(repo.summaryCalls, 2);
+    expect(find.text('₹130 requested on 3 Oct — FixCare will transfer it soon'), findsOneWidget);
+    expect(find.byKey(const Key('requestPayoutBtn')), findsNothing);
   });
 
   testWidgets('load error → message + Retry reloads', (tester) async {
